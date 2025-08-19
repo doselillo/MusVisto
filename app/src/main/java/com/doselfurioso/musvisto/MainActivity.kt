@@ -13,15 +13,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
-import com.doselfurioso.musvisto.logic.MusGameLogic
-import com.doselfurioso.musvisto.model.Player
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.activity.viewModels
+import com.doselfurioso.musvisto.presentation.GameScreen
+import com.doselfurioso.musvisto.presentation.GameViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    // This is how we get an instance of our Hilt-powered ViewModel.
+    private val viewModel: GameViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        setContent {
+            // Here we tell the activity to display our GameScreen
+            GameScreen()
+        }
 
     }
 }
