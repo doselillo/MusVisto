@@ -3,63 +3,85 @@ package com.doselfurioso.musvisto.presentation
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.Card as CardData
-import com.doselfurioso.musvisto.model.Player
 
-// Composable for a single card (no changes here)
+// Custom modifier for the bottom border (no changes here)
+fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
+    factory = {
+        val density = LocalDensity.current
+        val strokeWidthPx = density.run { strokeWidth.toPx() }
+
+        Modifier.drawBehind {
+            val width = size.width
+            val height = size.height - strokeWidthPx / 2
+
+            drawLine(
+                color = color,
+                start = Offset(x = 0f, y = height),
+                end = Offset(x = width, y = height),
+                strokeWidth = strokeWidthPx
+            )
+        }
+    }
+)
+
+// MODIFIED: Composable for a single card without the Surface wrapper
 @Composable
 fun GameCard(card: CardData) {
-    Card(
+    Image(
+        painter = cardToPainter(card = card),
+        contentDescription = "${card.rank} of ${card.suit}",
         modifier = Modifier
-            .padding(horizontal = 4.dp)
             .width(80.dp)
-            .aspectRatio(0.7f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Image(
-            painter = cardToPainter(card = card),
-            contentDescription = "${card.rank} of ${card.suit}"
-        )
-    }
+            .aspectRatio(0.7f)
+            .padding(horizontal = 4.dp)
+            .shadow(elevation = 1.dp, shape = RoundedCornerShape(4.dp)) // Add shadow directly
+            .clip(RoundedCornerShape(4.dp)) // Clip the image to have rounded corners
+    )
 }
 
-// Composable for the back of a card (no changes here)
+// MODIFIED: Composable for the back of a card without the Surface wrapper
 @Composable
 fun CardBack() {
-    Card(
+    Image(
+        painter = painterResource(id = R.drawable.card_back),
+        contentDescription = "Card back",
         modifier = Modifier
-            .padding(vertical = 4.dp) // Changed to vertical padding for side hands
-            .height(80.dp) // For side hands, it's better to control height
-            .aspectRatio(0.7f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.card_back),
-            contentDescription = "Card back"
-        )
-    }
+            .height(80.dp)
+            .aspectRatio(0.7f)
+            .padding(vertical = 4.dp)
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(4.dp))
+    )
 }
 
-// MODIFIED: Composable for the player's hand with the "fanned" effect
+
+// --- The rest of the file (PlayerHandFanned, OpponentHand, GameScreen) remains the same ---
 @Composable
 fun PlayerHandFanned(cards: List<CardData>) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp), // Increased padding to lift the hand a bit
+            .padding(bottom = 32.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom
     ) {
@@ -67,8 +89,6 @@ fun PlayerHandFanned(cards: List<CardData>) {
         cards.forEachIndexed { index, card ->
             val rotation = (index - cardCount / 2f) * 8f
             val offsetY = (kotlin.math.abs(index - cardCount / 2f) * -12f).dp
-
-            // THE KEY CHANGE: We add translationX to spread the cards horizontally
             val translationX = (index - cardCount / 2f) * 40f
 
             Box(
@@ -85,7 +105,6 @@ fun PlayerHandFanned(cards: List<CardData>) {
     }
 }
 
-// MODIFIED: Opponent hands are simpler now
 @Composable
 fun TopOpponentHand() {
     Row { repeat(4) { CardBack() } }
@@ -96,8 +115,6 @@ fun SideOpponentHand() {
     Column { repeat(4) { CardBack() } }
 }
 
-
-// MODIFIED: The main screen Composable with the corrected layout
 @Composable
 fun GameScreen(
     gameViewModel: GameViewModel = viewModel()
@@ -108,17 +125,14 @@ fun GameScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF006A4E)) // A classic green table color
+            .background(Color(0xFF006A4E))
     ) {
         if (players.size == 4) {
             val player = players[0]
 
-            // Player's Hand (Bottom Center)
             Box(modifier = Modifier.align(Alignment.BottomCenter)) {
                 PlayerHandFanned(cards = player.hand)
             }
-
-            // Partner's Hand (Top Center)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -126,8 +140,6 @@ fun GameScreen(
             ) {
                 TopOpponentHand()
             }
-
-            // Rival Left (Center Start)
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -135,8 +147,6 @@ fun GameScreen(
             ) {
                 SideOpponentHand()
             }
-
-            // Rival Right (Center End)
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
