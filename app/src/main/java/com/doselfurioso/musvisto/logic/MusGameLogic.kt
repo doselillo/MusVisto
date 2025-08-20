@@ -22,54 +22,21 @@ class MusGameLogic @Inject constructor() {
     fun shuffleDeck(deck: List<Card>): List<Card> {
         return deck.shuffled()
     }
+
     fun dealCards(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
         if (players.size != 4) throw IllegalArgumentException("4 players are required.")
-
         var tempDeck = deck
-        Log.d("MusVistoDebug", "DEALCARDS: Starting with ${tempDeck.size} cards.")
-
-        val hand1 = tempDeck.take(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Hand for P1: $hand1")
-        tempDeck = tempDeck.drop(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
-
-        val hand2 = tempDeck.take(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Hand for P2: $hand2")
-        tempDeck = tempDeck.drop(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
-
-        val hand3 = tempDeck.take(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Hand for P3: $hand3")
-        tempDeck = tempDeck.drop(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
-
-        val hand4 = tempDeck.take(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Hand for P4: $hand4")
-        tempDeck = tempDeck.drop(4)
-        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
-
-        val updatedPlayers = listOf(
-            players[0].copy(hand = hand1),
-            players[1].copy(hand = hand2),
-            players[2].copy(hand = hand3),
-            players[3].copy(hand = hand4)
-        )
-
+        val hands = (1..4).map {
+            val hand = tempDeck.take(4)
+            tempDeck = tempDeck.drop(4)
+            hand
+        }
+        val updatedPlayers = players.mapIndexed { index, player ->
+            player.copy(hand = hands[index])
+        }
         return Pair(updatedPlayers, tempDeck)
     }
-    // Deals 4 cards to each of the 4 players.
-    //fun dealCards(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
-    //    if (players.size != 4) throw IllegalArgumentException("4 players are required.")
-    //    var currentDeck = deck
-    //    val updatedPlayers = mutableListOf<Player>()
-//
-    //    for (player in players) {
-    //        val hand = currentDeck.take(4)
-    //        currentDeck = currentDeck.drop(4)
-    //        updatedPlayers.add(player.copy(hand = hand))
-    //    }
-    //    return Pair(updatedPlayers, currentDeck)
-    //}
+
 
     /**
      * Gets the highest card from a hand for the "Grande" lance.
@@ -410,38 +377,38 @@ class MusGameLogic @Inject constructor() {
 
     private fun advanceToNextPhase(currentState: GameState): GameState {
         val nextPhase = when (currentState.gamePhase) {
+            GamePhase.MUS_DECISION -> GamePhase.GRANDE
             GamePhase.GRANDE -> GamePhase.CHICA
             GamePhase.CHICA -> GamePhase.PARES
             GamePhase.PARES -> GamePhase.JUEGO
-            GamePhase.JUEGO -> GamePhase.SCORING
-            else -> GamePhase.SCORING // End of the round
+            GamePhase.JUEGO -> GamePhase.ROUND_OVER
+            else -> GamePhase.ROUND_OVER
         }
 
-        if (nextPhase == GamePhase.SCORING) {
+        // Si la siguiente fase es el final de la ronda, no hay acciones.
+        if (nextPhase == GamePhase.ROUND_OVER) {
             return currentState.copy(gamePhase = nextPhase, availableActions = emptyList())
         }
-        // Check for Pares before entering the Pares phase
+
+        var updatedState = currentState.copy(gamePhase = nextPhase)
+
+        // Comprobación previa de Pares
         if (nextPhase == GamePhase.PARES) {
-            val playersWithPares = currentState.players.filter { getHandPares(it.hand).strength > 0 }
+            val playersWithPares = updatedState.players.filter { getHandPares(it.hand).strength > 0 }
             if (playersWithPares.isEmpty()) {
                 Log.d("MusVistoTest", "PARES: No one has pairs. Skipping to JUEGO.")
-                return advanceToNextPhase(currentState.copy(gamePhase = GamePhase.PARES)) // Recursive call to skip
+                return advanceToNextPhase(updatedState) // Llama recursivamente para saltar a la siguiente fase
             }
         }
 
-        // Check for Juego/Punto before entering the Juego phase
+        // Comprobación previa de Juego
         if (nextPhase == GamePhase.JUEGO) {
-            val hasJuego = currentState.players.any { getHandJuegoValue(it.hand) >= 31 }
-            return currentState.copy(
-                gamePhase = GamePhase.JUEGO,
-                isPuntoPhase = !hasJuego, // If no one has Juego, it's a Punto round
-                availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-            )
+            val hasJuego = updatedState.players.any { getHandJuegoValue(it.hand) >= 31 }
+            updatedState = updatedState.copy(isPuntoPhase = !hasJuego)
         }
 
-        return currentState.copy(
-            gamePhase = nextPhase,
-            // Every new lance starts with the same betting options
+        // Para cualquier otra fase de apuesta, resetea las acciones
+        return updatedState.copy(
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
     }

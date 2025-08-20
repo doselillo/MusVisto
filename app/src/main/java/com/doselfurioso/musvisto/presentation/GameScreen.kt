@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
-import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
@@ -53,10 +52,7 @@ import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 import com.doselfurioso.musvisto.model.Card as CardData
 
 // Custom modifier for the bottom border (no changes here)
@@ -200,7 +196,7 @@ fun PartnerHand(
 
 
 @Composable
-fun SideOpponentHandStacked(cards: List<CardData>, isDebugMode: Boolean) {
+fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean) {
     Box {
         repeat(cards.size) { index ->
             Box(
@@ -216,7 +212,7 @@ fun SideOpponentHandStacked(cards: List<CardData>, isDebugMode: Boolean) {
                         modifier = Modifier.graphicsLayer { rotationZ = 90f }
                     )
                 } else {
-                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 90f })
+                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f })
                 }
             }
         }
@@ -236,7 +232,6 @@ fun VerticalPlayerArea(
     ) {
         PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
         handContent()
-        // Ponemos el indicador de descarte debajo del avatar
         DiscardCountIndicator(count = discardCount ?: 0)
     }
 }
@@ -253,7 +248,6 @@ fun HorizontalPlayerArea(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
-        // Usamos un Box para superponer el texto sobre la mano
         Box(contentAlignment = Alignment.Center) {
             handContent()
             DiscardCountIndicator(count = discardCount ?: 0)
@@ -306,7 +300,7 @@ fun GameScreen(
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     discardCount = gameState.discardCounts[partner.id],
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
-                        cards = partner.hand.sortedByDescending { it.rank.value }, // <-- Pass the real hand
+                        cards = partner.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -317,7 +311,10 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
-                    handContent = { SideOpponentHandStacked(cards = rivalLeft.hand.sortedByDescending { it.rank.value }, // <-- Pass the real hand
+                    handContent = { SideOpponentHandStacked(
+                        modifier = Modifier.padding(16.dp)
+                            .graphicsLayer { rotationX = 90f },
+                        cards = rivalLeft.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -328,7 +325,10 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     discardCount = gameState.discardCounts[rivalRight.id],
-                    handContent = { SideOpponentHandStacked(cards = rivalRight.hand.sortedBy { it.rank.value }, // <-- Pass the real hand
+                    handContent = { SideOpponentHandStacked(
+                        modifier = Modifier
+                            .graphicsLayer { rotationZ = 180f },
+                        cards = rivalRight.hand.sortedBy { it.rank.value },
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -544,7 +544,7 @@ fun LanceInfo(
         GamePhase.GAME_OVER -> {
             if (gameState.winningTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
         }
-        GamePhase.SCORING -> "FIN DE LA RONDA"
+        GamePhase.ROUND_OVER -> "FIN DE LA RONDA"
         else -> {
             var text = gameState.gamePhase.name.replace('_', ' ')
             gameState.currentBet?.let {
