@@ -99,7 +99,7 @@ fun GameCard(
             .graphicsLayer{clip = if (isSelected) false else true
             translationY = if (isSelected) -80f else 0f}
             .clickable(
-                enabled = (gamePhase == GamePhase.DISCARD), // Only enabled in discard phase
+                enabled = (gamePhase == GamePhase.DISCARD && isMyTurn), // Only enabled in discard phase
                 onClick = { onClick() }
             )
     )

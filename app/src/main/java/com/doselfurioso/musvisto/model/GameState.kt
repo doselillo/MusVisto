@@ -8,6 +8,7 @@ enum class GamePhase {
 data class GameState(
     val players: List<Player> = emptyList(),
     val deck: List<Card> = emptyList(),
+    val discardPile: List<Card> = emptyList(),
     val currentTurnPlayerId: String? = null,
     val gamePhase: GamePhase = GamePhase.PRE_GAME,
     val isPuntoPhase: Boolean = false,

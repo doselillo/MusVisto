@@ -92,6 +92,10 @@ class GameViewModel @Inject constructor(
     }
 
     fun onCardSelected(card: Card) {
+        // --- LA CORRECCIÓN CLAVE ---
+        // If it's not the human player's turn, do nothing.
+        if (_gameState.value.currentTurnPlayerId != humanPlayerId) return
+
         val currentSelection = _gameState.value.selectedCardsForDiscard
         val newSelection = if (card in currentSelection) {
             currentSelection - card
@@ -118,9 +122,11 @@ class GameViewModel @Inject constructor(
                 Log.d("MusVistoDebug", "AI (${currentPlayer.name}) decided to: ${aiAction.displayText}")
 
                 if (aiAction is GameAction.ConfirmDiscard) {
-                    val cardToDiscard = currentPlayer.hand.firstOrNull()
+                    // La IA decidirá qué cartas tirar (por ahora, la primera que no sea un Rey)
+                    val cardToDiscard = currentPlayer.hand.firstOrNull { it.rank != Rank.REY } ?: currentPlayer.hand.firstOrNull()
                     if (cardToDiscard != null) {
-                        _gameState.value = currentState.copy(selectedCardsForDiscard = setOf(cardToDiscard))
+                        // Actualizamos el estado INMEDIATAMENTE para que la lógica lo vea
+                        _gameState.value = _gameState.value.copy(selectedCardsForDiscard = setOf(cardToDiscard))
                     }
                 }
 

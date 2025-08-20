@@ -423,45 +423,59 @@ class MusGameLogic @Inject constructor() {
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
-        val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
-
-        // In Mus, you must discard at least one card
-        if (cardsToDiscard.isEmpty()) return currentState
-
-        val newHand = player.hand.filterNot { it in cardsToDiscard }
-
-        val cardsNeeded = cardsToDiscard.size
-        val newCards = currentState.deck.take(cardsNeeded)
-        val remainingDeck = currentState.deck.drop(cardsNeeded)
-
-        val updatedPlayer = player.copy(hand = newHand + newCards)
-        val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
+        if (cardsToDiscard.isEmpty() && currentState.gamePhase == GamePhase.DISCARD) return currentState
 
         val newPassedSet = currentState.playersWhoPassed + playerId
+        val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
 
-        // Check if everyone has discarded
+        var currentDeck = currentState.deck
+        var currentDiscardPile = currentState.discardPile + cardsToDiscard
+        val cardsNeeded = cardsToDiscard.size
+        var newCards: List<Card>
+
+        if (currentDeck.size < cardsNeeded) {
+            Log.d("MusVistoTest", "Deck empty! Shuffling discard pile.")
+            val remainingFromDeck = currentDeck
+            val shuffledDiscards = (currentDiscardPile - cardsToDiscard).shuffled()
+            currentDeck = shuffledDiscards
+            currentDiscardPile = emptyList()
+
+            val neededFromNewDeck = cardsNeeded - remainingFromDeck.size
+            newCards = remainingFromDeck + currentDeck.take(neededFromNewDeck)
+            currentDeck = currentDeck.drop(neededFromNewDeck)
+        } else {
+            newCards = currentDeck.take(cardsNeeded)
+            currentDeck = currentDeck.drop(cardsNeeded)
+        }
+
+        val newHand = player.hand.filterNot { it in cardsToDiscard } + newCards
+        val updatedPlayer = player.copy(hand = newHand)
+        val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
+
+        // --- LA CORRECCIÓN CLAVE ---
+        // Comprobamos si el jugador actual es el ÚLTIMO que faltaba por descartar
         if (newPassedSet.size == updatedPlayers.size) {
-            // If so, the discard phase is over. Go back to Mus Decision with the new hands.
-            Log.d("MusVistoTest", "All players have discarded. Returning to Mus decision.")
             return currentState.copy(
                 players = updatedPlayers,
-                deck = remainingDeck,
+                deck = currentDeck,
+                discardPile = currentDiscardPile,
                 gamePhase = GamePhase.MUS_DECISION,
                 availableActions = listOf(GameAction.Mus, GameAction.NoMus),
-                discardCounts = newDiscardCounts,
                 selectedCardsForDiscard = emptySet(),
                 playersWhoPassed = emptySet(),
-                currentTurnPlayerId = currentState.manoPlayerId // Turn returns to "mano"
+                discardCounts = newDiscardCounts,
+                currentTurnPlayerId = currentState.manoPlayerId
             )
         }
 
-        // If not, pass the turn to the next player to discard
+        // Si no, pasa el turno al siguiente jugador para que descarte
         return setNextPlayerTurn(currentState).copy(
             players = updatedPlayers,
-            deck = remainingDeck,
-            discardCounts = newDiscardCounts,
+            deck = currentDeck,
+            discardPile = currentDiscardPile,
             selectedCardsForDiscard = emptySet(),
-            playersWhoPassed = newPassedSet
+            playersWhoPassed = newPassedSet,
+            discardCounts = newDiscardCounts
         )
     }
 
