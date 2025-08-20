@@ -53,10 +53,12 @@ class GameViewModel @Inject constructor(
 
                 if (newState.gamePhase == GamePhase.ROUND_OVER) {
                     processEndOfRound(newState)
-                } else {
+                }
+                ///TODO he borrado esto porque duplica turnos, si no falla nada listo
+                /*else {
                     _gameState.value = newState
                     handleAiTurn()
-                }
+                }*/
             }
         }
         val newState = gameLogic.processAction(currentState, action, playerId)
