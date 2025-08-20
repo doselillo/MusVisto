@@ -258,8 +258,12 @@ class MusGameLogic @Inject constructor() {
 
         Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
 
-        // SIMPLIFIED: Just advance the phase and reset. No scoring here.
-        return advanceToNextPhase(currentState).copy(
+        // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
+        // We advance to the next phase...
+        val nextState = advanceToNextPhase(currentState)
+
+        // ... and then we build the final state, ensuring the turn goes to the "mano"
+        return nextState.copy(
             currentBet = null,
             playersWhoPassed = emptySet(),
             score = newScore,
