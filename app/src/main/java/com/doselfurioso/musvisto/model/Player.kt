@@ -5,5 +5,6 @@ data class Player(
     val name: String,
     val hand: List<Card> = emptyList(), // The player's hand of cards, initially empty
     val avatarResId: Int,
-    val isAi: Boolean = false // Whether the player is an AI or a human
+    val isAi: Boolean = false,
+    val team: String// Whether the player is an AI or a human
 )

@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
+import android.util.Log
 import com.doselfurioso.musvisto.model.*
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -255,8 +256,53 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Mus -> handleMus(currentState, playerId)
             is GameAction.NoMus -> handleNoMus(currentState)
             is GameAction.Paso -> handlePaso(currentState, playerId)
-            else -> currentState
+            is GameAction.Envido -> handleEnvido(currentState, playerId)
+            is GameAction.Quiero -> handleQuiero(currentState)
+            is GameAction.NoQuiero -> handleNoQuiero(currentState)
+            is GameAction.Órdago -> handleOrdago(currentState, playerId)
         }
+    }
+
+    private fun handleEnvido(currentState: GameState, playerId: String): GameState {
+        val newBet = BetInfo(amount = 2, bettingPlayerId = playerId)
+        val nextState = currentState.copy(
+            currentBet = newBet,
+            availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Órdago)
+        )
+        return setNextPlayerTurn(nextState)
+    }
+
+    private fun handleQuiero(currentState: GameState): GameState {
+        // The bet is accepted. We'll handle scoring later.
+        // The lance ends for everyone.
+        Log.d("MusVistoTest", "Bet of ${currentState.currentBet?.amount} ACCEPTED.")
+        return advanceToNextPhase(currentState).copy(
+            currentBet = null, // Clear the bet for the new lance
+            playersWhoPassed = emptySet(),
+            currentTurnPlayerId = currentState.players.first().id // Turn returns to "mano"
+        )
+    }
+
+    private fun handleNoQuiero(currentState: GameState): GameState {
+        val bet = currentState.currentBet ?: return currentState
+        val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
+
+        // The betting player's team gets 1 point (the value of the "no quiero").
+        val pointsWon = 1
+        val currentScore = currentState.score[bettingPlayer.team] ?: 0
+        val newScore = currentState.score.toMutableMap().apply {
+            this[bettingPlayer.team] = currentScore + pointsWon
+        }
+
+        Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
+
+        // The lance ends.
+        return advanceToNextPhase(currentState).copy(
+            currentBet = null,
+            playersWhoPassed = emptySet(),
+            score = newScore,
+            currentTurnPlayerId = currentState.players.first().id
+        )
     }
 
     private fun handleMus(currentState: GameState, playerId: String): GameState {
@@ -302,6 +348,12 @@ class MusGameLogic @Inject constructor() {
             )
         }
     }
+    private fun handleOrdago(currentState: GameState, playerId: String): GameState {
+        Log.d("MusVistoTest", "ÓRDAGO!!!")
+        // Placeholder logic for now
+        return currentState
+    }
+
 
     private fun advanceToNextPhase(currentState: GameState): GameState {
         val nextPhase = when (currentState.gamePhase) {

@@ -241,13 +241,20 @@ fun GameScreen(
                     .padding(end = 16.dp, bottom = 240.dp)
             )
 
+            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
+
             // --- BOTONES DE ACCIÓN ---
             ActionButtons(
                 actions = gameState.availableActions,
-                onActionClick = { action -> gameViewModel.onAction(action) },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 240.dp, end = 16.dp)
+                onActionClick = { action ->
+                    // We pass the current player's ID with the action
+                    if (gameState.currentTurnPlayerId != null) {
+                        gameViewModel.onAction(action, gameState.currentTurnPlayerId!!)
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 240.dp, end = 16.dp),
+                // The buttons are enabled only if the current player is human
+                isEnabled = currentPlayer != null && !currentPlayer.isAi
             )
         }
     }
@@ -258,7 +265,8 @@ fun GameScreen(
 fun ActionButtons(
     actions: List<GameAction>,
     onActionClick: (GameAction) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isEnabled: Boolean
 ) {
     Column(
         modifier = modifier,
@@ -279,6 +287,7 @@ fun ActionButtons(
             Button(
                 onClick = { onActionClick(action) },
                 colors = buttonColors, // Apply the determined colors
+                enabled = isEnabled,
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
                 // NEW: Add the icon to the button

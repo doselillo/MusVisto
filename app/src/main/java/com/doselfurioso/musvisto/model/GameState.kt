@@ -13,5 +13,6 @@ data class GameState(
     val score: Map<String, Int> = mapOf("teamA" to 0, "teamB" to 0),
     // This is the line we added in the last step
     val availableActions: List<GameAction> = emptyList(),
-    val playersWhoPassed: Set<String> = emptySet()
+    val playersWhoPassed: Set<String> = emptySet(),
+    val currentBet: BetInfo? = null
 )

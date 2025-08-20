@@ -27,17 +27,25 @@ class GameViewModel @Inject constructor(
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
-    // We define who the human player is. In a real game, this would come from a login system.
-    private val humanPlayerId = "p1"
+    // We removed the hardcoded humanPlayerId
 
     init {
         startNewGame()
     }
 
-    fun onAction(action: GameAction) {
+    // MODIFIED: This function now takes the playerId as a parameter
+    fun onAction(action: GameAction, playerId: String) {
         val currentState = _gameState.value
-        // The action is always performed by the human player
-        val newState = logic.processAction(currentState, action, humanPlayerId)
+        val player = currentState.players.find { it.id == playerId }
+
+        // Safety check: only process actions from human players
+        if (player == null || player.isAi) {
+            return
+        }
+
+        Log.d("MusVistoTest", "Player $playerId performed action: ${action.displayText}")
+
+        val newState = logic.processAction(currentState, action, playerId)
         _gameState.value = newState
 
         // After our action, check if it's an AI's turn
@@ -77,10 +85,10 @@ class GameViewModel @Inject constructor(
 
     private fun startNewGame() {
         val players = listOf(
-            Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false),
-            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_aragon, isAi = true),
-            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra, isAi = true), // Let's make player 3 human for now
-            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true)
+            Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
+            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamB"),
+            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra, isAi = false, team = "teamA"), // Let's make player 3 human for now
+            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true,  team = "teamB")
         )
         val deck = logic.shuffleDeck(logic.createDeck())
         val (updatedPlayers, remainingDeck) = logic.dealCards(players, deck)
