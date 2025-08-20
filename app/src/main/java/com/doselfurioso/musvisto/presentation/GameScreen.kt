@@ -145,10 +145,10 @@ fun PlayerHandArc(
                 modifier = Modifier
                     .zIndex(if (isSelected) 1f else 0f)
                     .graphicsLayer {
-                        this.rotationZ = rotation
+                        // THE KEY CHANGE IS HERE:
+                        this.rotationZ = if (isSelected) 0f else rotation
                         this.translationY = translationY
                         this.translationX = translationX
-                        // LA CLAVE: Permitimos que la carta se dibuje fuera de sus límites
                         this.clip = false
                     }
             )
