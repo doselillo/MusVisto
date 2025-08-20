@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,13 +27,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
+import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.Player
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.cos
 import kotlin.math.sin
 import com.doselfurioso.musvisto.model.Card as CardData
@@ -135,7 +142,7 @@ fun PartnerHand() {
     Row { repeat(4) { CardBack() } }
 }
 
-// NEW: A dedicated Composable for a full player area (avatar + hand)
+//A dedicated Composable for a full player area (avatar + hand)
 @Composable
 fun PlayerArea(
     player: Player,
@@ -241,6 +248,26 @@ fun GameScreen(
                     .padding(end = 16.dp, bottom = 240.dp)
             )
 
+            // --- ELEMENTOS DE INFORMACIÓN DE LA PARTIDA ---
+
+            // 1. Marcador de Puntuación
+            Column (modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 128.dp)) {
+                Scoreboard(
+                    score = gameState.score,
+                    modifier = Modifier
+                        .padding(16.dp)
+                )
+
+                // 2. Indicador del Lance Actual
+                LanceInfo(
+                    gamePhase = gameState.gamePhase,
+                    currentBet = gameState.currentBet,
+                    players = players
+                )
+            }
+
             val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
 
             // --- BOTONES DE ACCIÓN ---
@@ -260,7 +287,7 @@ fun GameScreen(
     }
 }
 
-// NEW: A Composable to display a list of action buttons
+//A Composable to display a list of action buttons
 @Composable
 fun ActionButtons(
     actions: List<GameAction>,
@@ -271,7 +298,7 @@ fun ActionButtons(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End,
-        // NEW: Adds 8.dp of space between each button automatically
+        //Adds 8.dp of space between each button automatically
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         actions.forEach { action ->
@@ -290,7 +317,7 @@ fun ActionButtons(
                 enabled = isEnabled,
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
-                // NEW: Add the icon to the button
+                //Add the icon to the button
                 if (action.iconResId != null) {
                     Icon(
                         painter = painterResource(id = action.iconResId),
@@ -325,4 +352,57 @@ fun PlayerAvatar(
             .clip(CircleShape) // Make the avatar circular
             .border(4.dp, borderColor, CircleShape) // Apply the glowing border
     )
+}
+
+@Composable
+fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
+    // We use a Card for a nice background
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "NOSOTROS: ${score["teamA"] ?: 0}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "ELLOS: ${score["teamB"] ?: 0}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        }
+    }
+}
+@Composable
+fun LanceInfo(
+    gamePhase: GamePhase,
+    currentBet: BetInfo?,
+    players: List<Player>,
+    modifier: Modifier = Modifier
+) {
+    val phaseText = gamePhase.name.replace('_', ' ') // Format the enum name nicely
+    var betText = ""
+
+    if (currentBet != null) {
+        val playerName = players.find { it.id == currentBet.bettingPlayerId }?.name ?: ""
+        betText = "\nEnvite de ${currentBet.amount} por $playerName"
+    }
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
+    ) {
+        Text(
+            text = phaseText + betText,
+            color = Color.Yellow,
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+        )
+    }
 }
