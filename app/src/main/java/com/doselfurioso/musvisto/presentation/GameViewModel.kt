@@ -30,11 +30,18 @@ class GameViewModel @Inject constructor(
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
+    private val _isDebugMode = MutableStateFlow(false)
+    val isDebugMode: StateFlow<Boolean> = _isDebugMode.asStateFlow()
+
     // We removed the hardcoded humanPlayerId
     val humanPlayerId = "p1"
 
     init {
         startNewGame()
+    }
+
+    fun onToggleDebugMode() {
+        _isDebugMode.value = !_isDebugMode.value
     }
 
     // MODIFIED: This function now takes the playerId as a parameter
@@ -47,8 +54,6 @@ class GameViewModel @Inject constructor(
             return
         }
 
-        Log.d("MusVistoTest", "Player $playerId performed action: ${action.displayText}")
-
         val newState = logic.processAction(currentState, action, playerId)
         _gameState.value = newState
 
@@ -56,12 +61,7 @@ class GameViewModel @Inject constructor(
         if (newState.gamePhase == GamePhase.SCORING) {
             finalizeRound(newState)
         } else {
-            // If not ended, check if it's an AI's turn
             handleAiTurn()
-        }
-        if (action is GameAction.NewGame) {
-            startNewGame()
-            return
         }
     }
 
@@ -73,8 +73,7 @@ class GameViewModel @Inject constructor(
 
         Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
 
-        // --- NEW: VICTORY CHECK ---
-        val scoreToWin = 4 // Standard Mus is 40 points
+        val scoreToWin = 40
         val teamAScore = scoredState.score["teamA"] ?: 0
         val teamBScore = scoredState.score["teamB"] ?: 0
 
@@ -85,15 +84,14 @@ class GameViewModel @Inject constructor(
         }
 
         if (winner != null) {
-            // --- GAME OVER ---
             Log.d("MusVistoTest", "GAME OVER! Winner is $winner")
             _gameState.value = scoredState.copy(
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
-                availableActions = listOf(GameAction.NewGame) // A new action
+                availableActions = listOf(GameAction.NewGame)
             )
         } else {
-            // --- CONTINUE TO NEXT ROUND ---
+            // This coroutine will now execute without issues
             viewModelScope.launch {
                 delay(5000) // Wait 5 seconds to show the results
                 Log.d("MusVistoTest", "--- STARTING NEW ROUND ---")

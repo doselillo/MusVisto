@@ -18,6 +18,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -172,26 +173,56 @@ fun PlayerHandArc(
 }
 
 @Composable
-fun PartnerHand(modifier: Modifier) {
-    Row (modifier){ repeat(4) { CardBack() } }
+fun PartnerHand(
+    modifier: Modifier = Modifier,
+    cards: List<CardData>,
+    isDebugMode: Boolean
+) {
+    Row(modifier = modifier) {
+        cards.forEach { card ->
+            if (isDebugMode) {
+                // If debug is on, show the real card
+                GameCard(
+                    card = card,
+                    isSelected = false,
+                    gamePhase = GamePhase.PRE_GAME, // These don't matter for display
+                    isMyTurn = false,
+                    onClick = {}
+                )
+            } else {
+                // If debug is off, show the back
+                CardBack()
+            }
+        }
+    }
 }
 
 
 
 @Composable
-fun SideOpponentHandStacked(cardCount: Int = 4) {
+fun SideOpponentHandStacked(cards: List<CardData>, isDebugMode: Boolean) {
     Box {
-        repeat(cardCount) { index ->
+        repeat(cards.size) { index ->
             Box(
-                // Offset vertical para que se superpongan
                 modifier = Modifier.offset(y = (index * 30).dp)
             ) {
-                // Rotación individual para cada carta
-                CardBack(modifier = Modifier.graphicsLayer { rotationZ = 90f })
+                if (isDebugMode) {
+                    GameCard(
+                        card = cards[index],
+                        isSelected = false,
+                        gamePhase = GamePhase.PRE_GAME,
+                        isMyTurn = false,
+                        onClick = {},
+                        modifier = Modifier.graphicsLayer { rotationZ = 90f }
+                    )
+                } else {
+                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 90f })
+                }
             }
         }
     }
 }
+
 @Composable
 fun VerticalPlayerArea(
     player: Player,
@@ -237,6 +268,7 @@ fun GameScreen(
     gameViewModel: GameViewModel = viewModel()
 ) {
     val gameState by gameViewModel.gameState.collectAsState()
+    val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
 
     Box(
@@ -273,7 +305,9 @@ fun GameScreen(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     discardCount = gameState.discardCounts[partner.id],
-                    handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f }) }
+                    handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                        cards = partner.hand, // <-- Pass the real hand
+                        isDebugMode = isDebugMode) }
                 )
             }
 
@@ -283,7 +317,8 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
-                    handContent = { SideOpponentHandStacked() }
+                    handContent = { SideOpponentHandStacked(cards = partner.hand, // <-- Pass the real hand
+                        isDebugMode = isDebugMode) }
                 )
             }
 
@@ -293,7 +328,8 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     discardCount = gameState.discardCounts[rivalRight.id],
-                    handContent = { SideOpponentHandStacked() }
+                    handContent = { SideOpponentHandStacked(cards = partner.hand, // <-- Pass the real hand
+                        isDebugMode = isDebugMode) }
                 )
             }
 
@@ -339,6 +375,17 @@ fun GameScreen(
                 GameOverOverlay(
                     winner = gameState.winningTeam!!,
                     onNewGameClick = { gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId) }
+                )
+            }
+            // --- NEW: DEBUG BUTTON ---
+            IconButton(
+                onClick = { gameViewModel.onToggleDebugMode() },
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_debug),
+                    contentDescription = "Toggle Debug Mode",
+                    tint = Color.White.copy(alpha = 0.7f)
                 )
             }
         }

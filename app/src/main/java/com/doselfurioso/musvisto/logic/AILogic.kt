@@ -9,6 +9,8 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
+
 
 
 
@@ -29,16 +31,42 @@ class AILogic @Inject constructor(// 1. INJECT MusGameLogic HERE
     fun makeDecision(gameState: GameState, aiPlayer: Player): GameAction {
         val strength = evaluateHand(aiPlayer.hand)
 
+        // First, check if there is an active bet we need to respond to.
+        if (gameState.currentBet != null) {
+            return decideResponse(strength, gameState)
+        }
+
+        // If no active bet, the AI decides its own move.
         return when (gameState.gamePhase) {
             GamePhase.MUS_DECISION -> decideMus(strength)
-            GamePhase.DISCARD -> decideDiscard(aiPlayer) // Lo mantenemos simple por ahora
-            GamePhase.GRANDE -> decideBet(strength.grande)
-            GamePhase.CHICA -> decideBet(strength.chica)
-            GamePhase.PARES -> decideBet(strength.pares)
-            GamePhase.JUEGO -> decideBet(strength.juego)
+            GamePhase.DISCARD -> decideDiscard(aiPlayer)
+            GamePhase.GRANDE -> decideInitialBet(strength.grande)
+            GamePhase.CHICA -> decideInitialBet(strength.chica)
+            GamePhase.PARES -> decideInitialBet(strength.pares)
+            GamePhase.JUEGO -> decideInitialBet(strength.juego)
             else -> GameAction.Paso
         }
     }
+
+    private fun decideResponse(strength: HandStrength, gameState: GameState): GameAction {
+        val strengthScore = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> strength.grande
+            GamePhase.CHICA -> strength.chica
+            GamePhase.PARES -> strength.pares
+            GamePhase.JUEGO -> strength.juego
+            else -> 0
+        }
+
+        // --- AI's Response Logic ---
+        return when {
+            strengthScore > 85 -> GameAction.Envido(2) // Con mano muy buena, sube
+            strengthScore > 60 -> GameAction.Quiero   // Con mano buena, quiere
+            // Con mano mediocre (40-60), hay un 25% de probabilidades de que acepte de farol
+            strengthScore > 40 && Random.nextInt(100) < 25 -> GameAction.Quiero
+            else -> GameAction.NoQuiero // Con mano mala, no quiere
+        }
+    }
+
 
     private fun decideMus(strength: HandStrength): GameAction {
         // Si tiene buen Juego o buenos Pares, corta el Mus. Si no, pide Mus.
@@ -55,14 +83,12 @@ class AILogic @Inject constructor(// 1. INJECT MusGameLogic HERE
         return GameAction.ConfirmDiscard
     }
 
-    private fun decideBet(strengthScore: Int): GameAction {
+    private fun decideInitialBet(strengthScore: Int): GameAction {
         return when {
-            // If the hand is very strong, it bets
-            strengthScore > 85 -> GameAction.Envido(2)
-            // If the hand is decent, it passes, but might accept a bet later
-            strengthScore > 50 -> GameAction.Paso
-            // If the hand is weak, it passes
-            else -> GameAction.Paso
+            strengthScore > 80 -> GameAction.Envido(2) // Con mano muy buena, envida
+            // Con mano mediocre (50-80), hay un 20% de probabilidades de que envide de farol
+            strengthScore > 50 && Random.nextInt(100) < 20 -> GameAction.Envido(2)
+            else -> GameAction.Paso // En el resto de los casos, pasa
         }
     }
 

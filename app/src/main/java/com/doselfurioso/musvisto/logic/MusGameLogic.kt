@@ -296,6 +296,7 @@ class MusGameLogic @Inject constructor() {
         )
     }
 
+
     private fun handleQuiero(currentState: GameState): GameState {
         val bet = currentState.currentBet ?: return currentState
 
@@ -305,18 +306,12 @@ class MusGameLogic @Inject constructor() {
 
         Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${currentState.gamePhase}.")
 
-        val nextState = advanceToNextPhase(currentState.copy(agreedBets = newAgreedBets))
-
-        // If advancing the phase leads to scoring, score immediately.
-        return if (nextState.gamePhase == GamePhase.SCORING) {
-            scoreRound(nextState.copy(currentBet = null, playersWhoPassed = emptySet()))
-        } else {
-            nextState.copy(
-                currentBet = null,
-                playersWhoPassed = emptySet(),
-                currentTurnPlayerId = currentState.players.first().id
-            )
-        }
+        return advanceToNextPhase(currentState).copy(
+            currentBet = null,
+            playersWhoPassed = emptySet(),
+            agreedBets = newAgreedBets,
+            currentTurnPlayerId = currentState.players.first().id
+        )
     }
 
     private fun handleNoQuiero(currentState: GameState): GameState {
@@ -331,19 +326,15 @@ class MusGameLogic @Inject constructor() {
 
         Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
 
-        val nextState = advanceToNextPhase(currentState.copy(score = newScore))
-
-        // If advancing the phase leads to scoring, score immediately.
-        return if (nextState.gamePhase == GamePhase.SCORING) {
-            scoreRound(nextState.copy(currentBet = null, playersWhoPassed = emptySet()))
-        } else {
-            nextState.copy(
-                currentBet = null,
-                playersWhoPassed = emptySet(),
-                currentTurnPlayerId = currentState.players.first().id
-            )
-        }
+        // SIMPLIFIED: Just advance the phase and reset. No scoring here.
+        return advanceToNextPhase(currentState).copy(
+            currentBet = null,
+            playersWhoPassed = emptySet(),
+            score = newScore,
+            currentTurnPlayerId = currentState.players.first().id
+        )
     }
+
 
     private fun handleMus(currentState: GameState, playerId: String): GameState {
         val newState = currentState.copy(
@@ -377,17 +368,10 @@ class MusGameLogic @Inject constructor() {
         val newPassedSet = currentState.playersWhoPassed + playerId
 
         if (newPassedSet.size == currentState.players.size) {
-            val nextState = advanceToNextPhase(currentState)
-
-            // If advancing the phase leads to scoring, score immediately.
-            return if (nextState.gamePhase == GamePhase.SCORING) {
-                scoreRound(nextState.copy(playersWhoPassed = emptySet()))
-            } else {
-                nextState.copy(
-                    playersWhoPassed = emptySet(),
-                    currentTurnPlayerId = currentState.players.first().id
-                )
-            }
+            return advanceToNextPhase(currentState).copy(
+                playersWhoPassed = emptySet(),
+                currentTurnPlayerId = currentState.players.first().id
+            )
         }
 
         return setNextPlayerTurn(currentState).copy(
