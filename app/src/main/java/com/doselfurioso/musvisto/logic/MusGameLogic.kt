@@ -185,8 +185,23 @@ class MusGameLogic @Inject constructor() {
 
 
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
+        // --- VALIDACIÓN DE ACCIÓN ---
+        val player = currentState.players.find { it.id == playerId } ?: return currentState
+
+        // 1. No se puede actuar si no es tu turno
         if (currentState.currentTurnPlayerId != playerId) return currentState
 
+        // 2. No se puede realizar una acción que no está disponible
+        if (action !in currentState.availableActions) return currentState
+
+        // 3. Lógica específica del lance
+        when (currentState.gamePhase) {
+            GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(currentState, playerId)
+            GamePhase.JUEGO -> if (!currentState.isPuntoPhase && getHandJuegoValue(player.hand) < 31) return handlePaso(currentState, playerId)
+            else -> {} // No special logic for other phases
+        }
+
+        // Si la acción es válida, la procesamos
         val nextState = when (action) {
             is GameAction.Mus -> handleMus(currentState, playerId)
             is GameAction.NoMus -> handleNoMus(currentState)
@@ -199,7 +214,6 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Continue, is GameAction.NewGame -> currentState
         }
 
-        // If the state changed, record the action that caused it
         return if (nextState != currentState) {
             nextState.copy(lastAction = LastActionInfo(playerId, action))
         } else {
@@ -222,53 +236,37 @@ class MusGameLogic @Inject constructor() {
             respondingPlayerId = respondingPlayer.id
         )
 
-        return currentState.copy(
+        val nextState = currentState.copy(
             currentBet = newBet,
-            // The responding player has a new set of actions available
+            // Las acciones para el que responde son siempre estas
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
-            currentTurnPlayerId = respondingPlayer.id, // The turn goes to the responder
-            playersWhoPassed = emptySet() // A bet resets who has passed
+            currentTurnPlayerId = respondingPlayer.id,
+            playersWhoPassed = emptySet()
         )
+        // No llamamos a setNextPlayerTurn aquí porque el turno se asigna al que responde.
+        return nextState
     }
 
 
     private fun handleQuiero(currentState: GameState): GameState {
-        val bet = currentState.currentBet ?: return currentState
-        val newAgreedBets = currentState.agreedBets.toMutableMap().apply {
-            this[currentState.gamePhase] = bet.amount
+        return endLanceAndAdvance(currentState) {
+            val bet = this.currentBet ?: return@endLanceAndAdvance this
+            val newAgreedBets = this.agreedBets + (this.gamePhase to bet.amount)
+            Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${this.gamePhase}.")
+            this.copy(agreedBets = newAgreedBets)
         }
-        Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${currentState.gamePhase}.")
-        return advanceToNextPhase(currentState).copy(
-            currentBet = null,
-            playersWhoPassed = emptySet(),
-            agreedBets = newAgreedBets,
-            currentTurnPlayerId = currentState.manoPlayerId
-        )
     }
 
     private fun handleNoQuiero(currentState: GameState): GameState {
-        val bet = currentState.currentBet ?: return currentState
-        val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
-
-        val pointsWon = currentState.agreedBets[currentState.gamePhase] ?: 1
-        val currentScore = currentState.score[bettingPlayer.team] ?: 0
-        val newScore = currentState.score.toMutableMap().apply {
-            this[bettingPlayer.team] = currentScore + pointsWon
+        return endLanceAndAdvance(currentState) {
+            val bet = this.currentBet ?: return@endLanceAndAdvance this
+            val bettingPlayer = this.players.find { it.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
+            val pointsWon = this.agreedBets[this.gamePhase] ?: 1
+            val currentScore = this.score[bettingPlayer.team] ?: 0
+            val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
+            Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
+            this.copy(score = newScore)
         }
-
-        Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
-
-        // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
-        // We advance to the next phase...
-        val nextState = advanceToNextPhase(currentState)
-
-        // ... and then we build the final state, ensuring the turn goes to the "mano"
-        return nextState.copy(
-            currentBet = null,
-            playersWhoPassed = emptySet(),
-            score = newScore,
-            currentTurnPlayerId = currentState.manoPlayerId
-        )
     }
 
 
@@ -302,15 +300,22 @@ class MusGameLogic @Inject constructor() {
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
         val newPassedSet = currentState.playersWhoPassed + playerId
-        if (newPassedSet.size == currentState.players.size) {
-            return advanceToNextPhase(currentState).copy(
-                playersWhoPassed = emptySet(),
-                currentTurnPlayerId =  currentState.manoPlayerId
-            )
+
+        val eligiblePlayers = currentState.players.filter { player ->
+            when (currentState.gamePhase) {
+                GamePhase.PARES -> getHandPares(player.hand).strength > 0
+                GamePhase.JUEGO -> if (currentState.isPuntoPhase) true else getHandJuegoValue(player.hand) >= 31
+                else -> true
+            }
         }
-        return setNextPlayerTurn(currentState).copy(
-            playersWhoPassed = newPassedSet
-        )
+
+        // Si todos los jugadores aptos han pasado, el lance termina
+        if (newPassedSet.containsAll(eligiblePlayers.map { it.id })) {
+            return endLanceAndAdvance(currentState) { this }
+        }
+
+        // Si no, pasa el turno al siguiente jugador apto
+        return setNextPlayerTurn(currentState).copy(playersWhoPassed = newPassedSet)
     }
 
 
@@ -320,63 +325,96 @@ class MusGameLogic @Inject constructor() {
         return currentState
     }
 
+    private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
+        val updatedState = currentState.updates()
+        var nextPhase = advanceToNextPhase(updatedState.gamePhase)
 
-    private fun advanceToNextPhase(currentState: GameState): GameState {
-        val nextPhase = when (currentState.gamePhase) {
-            GamePhase.MUS_DECISION -> GamePhase.GRANDE
-            GamePhase.GRANDE -> GamePhase.CHICA
-            GamePhase.CHICA -> GamePhase.PARES
-            GamePhase.PARES -> GamePhase.JUEGO
-            GamePhase.JUEGO -> GamePhase.ROUND_OVER
-            else -> GamePhase.ROUND_OVER
-        }
-
-        var updatedState = currentState.copy(gamePhase = nextPhase)
-
-        if (nextPhase == GamePhase.ROUND_OVER) {
-            return updatedState.copy(availableActions = emptyList())
-        }
-
-        // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
-        // At the start of ANY new betting lance, the turn ALWAYS returns to the "mano".
-        updatedState = updatedState.copy(
+        var finalState = updatedState.copy(
+            gamePhase = nextPhase,
             currentTurnPlayerId = updatedState.manoPlayerId,
             playersWhoPassed = emptySet(),
             currentBet = null
         )
 
-        // Comprobación previa de Pares
+        // --- LÓGICA DE SALTO DE LANCE MEJORADA ---
+
+        // Comprobación de Pares
         if (nextPhase == GamePhase.PARES) {
-            val playersWithPares = updatedState.players.filter { getHandPares(it.hand).strength > 0 }
+            val playersWithPares = finalState.players.filter { getHandPares(it.hand).strength > 0 }
             if (playersWithPares.isEmpty()) {
-                Log.d("MusVistoTest", "PARES: No one has pairs. Skipping to JUEGO.")
-                return advanceToNextPhase(updatedState) // Llama recursivamente para saltar a la siguiente fase
+                Log.d("MusVistoTest", "PARES: Nadie tiene. Saltando a Juego.")
+                return endLanceAndAdvance(finalState) { this } // Llama recursivamente para saltar a Juego
+            }
+            // Comprueba si todos los que tienen pares son del mismo equipo
+            val teamsWithPares = playersWithPares.map { it.team }.distinct()
+            if (teamsWithPares.size == 1) {
+                Log.d("MusVistoTest", "PARES: Solo el equipo ${teamsWithPares.first()} tiene. Ganan puntos y se salta el lance.")
+                val scoredState = scoreParesPlays(finalState) // Suma los puntos de las jugadas de pares
+                return endLanceAndAdvance(scoredState) { this } // Llama recursivamente para saltar a Juego
             }
         }
 
-        // Comprobación previa de Juego
+        // Comprobación de Juego
         if (nextPhase == GamePhase.JUEGO) {
-            val hasJuego = updatedState.players.any { getHandJuegoValue(it.hand) >= 31 }
-            updatedState = updatedState.copy(isPuntoPhase = !hasJuego)
+            val playersWithJuego = finalState.players.filter { getHandJuegoValue(it.hand) >= 31 }
+            if (playersWithJuego.isEmpty()) {
+                // Nadie tiene Juego, se juega al Punto
+                finalState = finalState.copy(isPuntoPhase = true)
+            } else {
+                // Alguien tiene Juego, se juega a Juego
+                finalState = finalState.copy(isPuntoPhase = false)
+                val teamsWithJuego = playersWithJuego.map { it.team }.distinct()
+                if (teamsWithJuego.size == 1) {
+                    Log.d("MusVistoTest", "JUEGO: Solo el equipo ${teamsWithJuego.first()} tiene. Ganan puntos y se acaba la ronda.")
+                    val scoredState = scoreJuegoPlays(finalState) // Suma los puntos de las jugadas de juego
+                    return endLanceAndAdvance(scoredState) { this } // Llama recursivamente para terminar la ronda
+                }
+            }
         }
 
-        // Para cualquier otra fase de apuesta, resetea las acciones
-        return updatedState.copy(
+        return finalState.copy(
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
     }
 
+
+    private fun advanceToNextPhase(currentPhase: GamePhase): GamePhase {
+        return when (currentPhase) {
+            GamePhase.GRANDE -> GamePhase.CHICA
+            GamePhase.CHICA -> GamePhase.PARES // It will now go to PARES first
+            GamePhase.PARES -> GamePhase.JUEGO
+            GamePhase.JUEGO -> GamePhase.ROUND_OVER
+            else -> currentPhase // Should not happen
+        }
+    }
+
     private fun setNextPlayerTurn(currentState: GameState): GameState {
         val currentPlayerId = currentState.currentTurnPlayerId ?: return currentState
-        val currentPlayerIndex = currentState.players.indexOfFirst { it.id == currentPlayerId }
-        if (currentPlayerIndex == -1) return currentState
+        var currentIndex = currentState.players.indexOfFirst { it.id == currentPlayerId }
+        if (currentIndex == -1) return currentState
 
-        val nextPlayerIndex = (currentPlayerIndex + 1) % currentState.players.size
-        val nextPlayerId = currentState.players[nextPlayerIndex].id
+        val eligiblePlayers = currentState.players.filter { player ->
+            when (currentState.gamePhase) {
+                GamePhase.PARES -> getHandPares(player.hand).strength > 0
+                GamePhase.JUEGO -> if (currentState.isPuntoPhase) true else getHandJuegoValue(player.hand) >= 31
+                else -> true
+            }
+        }
 
-        return currentState.copy(
-            currentTurnPlayerId = nextPlayerId
-        )
+        if (eligiblePlayers.isEmpty()) {
+            return endLanceAndAdvance(currentState) { this }
+        }
+
+        // Find the next eligible player in the original turn order
+        for (i in 1 until currentState.players.size) {
+            val nextPlayer = currentState.players[(currentIndex + i) % currentState.players.size]
+            if (nextPlayer in eligiblePlayers) {
+                return currentState.copy(currentTurnPlayerId = nextPlayer.id)
+            }
+        }
+
+        // If we loop through everyone and only the current player is eligible, the lance is over
+        return endLanceAndAdvance(currentState) { this }
     }
 
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
@@ -410,7 +448,7 @@ class MusGameLogic @Inject constructor() {
                 discardCounts = newDiscardCounts,
                 selectedCardsForDiscard = emptySet(),
                 playersWhoPassed = emptySet(),
-                currentTurnPlayerId = updatedPlayers.first().id // Turn returns to "mano"
+                currentTurnPlayerId = currentState.manoPlayerId // Turn returns to "mano"
             )
         }
 
@@ -525,5 +563,35 @@ class MusGameLogic @Inject constructor() {
         if (manoIndex == -1) return players
         return players.drop(manoIndex) + players.take(manoIndex)
     }
+
+    // --- NUEVAS FUNCIONES DE AYUDA PARA PUNTUAR ---
+    private fun scoreParesPlays(currentState: GameState): GameState {
+        var tempScore = currentState.score.toMutableMap()
+        currentState.players.forEach { player ->
+            val play = getHandPares(player.hand)
+            val points = when (play) {
+                is ParesPlay.Duples -> 3
+                is ParesPlay.Medias -> 2
+                is ParesPlay.Pares -> 1
+                else -> 0
+            }
+            if (points > 0) {
+                tempScore[player.team] = (tempScore[player.team] ?: 0) + points
+            }
+        }
+        return currentState.copy(score = tempScore)
+    }
+    private fun scoreJuegoPlays(currentState: GameState): GameState {
+        var tempScore = currentState.score.toMutableMap()
+        currentState.players.forEach { player ->
+            val value = getHandJuegoValue(player.hand)
+            if (value >= 31) {
+                val points = if (value == 31) 3 else 2
+                tempScore[player.team] = (tempScore[player.team] ?: 0) + points
+            }
+        }
+        return currentState.copy(score = tempScore)
+    }
+
 
 }
