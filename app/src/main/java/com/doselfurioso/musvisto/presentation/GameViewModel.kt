@@ -17,7 +17,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
-    private val gameLogic: MusGameLogic,
+    internal val gameLogic: MusGameLogic,
     private val aiLogic: AILogic
 ) : ViewModel() {
 

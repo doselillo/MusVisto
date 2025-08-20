@@ -43,8 +43,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
@@ -264,6 +266,7 @@ fun GameScreen(
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
+    val gameLogic: MusGameLogic = hiltViewModel<GameViewModel>().gameLogic
 
     Box(
         modifier = Modifier
@@ -278,7 +281,22 @@ fun GameScreen(
             val rivalRight = players[3]
 
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
-
+            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
+            var actionsForUi = gameState.availableActions
+            if (currentPlayer?.id == gameViewModel.humanPlayerId) {
+                val playerHand = currentPlayer.hand
+                actionsForUi = when (gameState.gamePhase) {
+                    GamePhase.PARES -> {
+                        if (gameLogic.getHandPares(playerHand).strength > 0) gameState.availableActions
+                        else listOf(GameAction.Paso)
+                    }
+                    GamePhase.JUEGO -> {
+                        if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) >= 31) gameState.availableActions
+                        else listOf(GameAction.Paso)
+                    }
+                    else -> gameState.availableActions
+                }
+            }
             // --- ANUNCIOS DE ACCIÓN ---
             Box(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 198.dp)) {
                 ActionAnnouncement(gameState.lastAction, rivalLeft)
