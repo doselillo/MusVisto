@@ -17,6 +17,9 @@ sealed class GameAction(
     object Mus : GameAction("Mus", ButtonColorType.CONFIRM, R.drawable.ic_cycle)
     object NoMus : GameAction("No Mus", ButtonColorType.DENY, R.drawable.ic_stop)
     object ConfirmDiscard : GameAction("Descartar", ButtonColorType.CONFIRM, R.drawable.ic_check)
+    object NewGame : GameAction("Jugar de Nuevo", ButtonColorType.CONFIRM, R.drawable.ic_newgame)
+
+
 
     // Betting Actions
     object Paso : GameAction("Paso", ButtonColorType.PASS, R.drawable.ic_pass)

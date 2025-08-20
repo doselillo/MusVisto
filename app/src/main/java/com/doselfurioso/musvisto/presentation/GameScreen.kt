@@ -304,6 +304,13 @@ fun GameScreen(
                 selectedCardCount = gameState.selectedCardsForDiscard.size,
                 isEnabled = isMyTurn
             )
+
+            if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
+                GameOverOverlay(
+                    winner = gameState.winningTeam!!,
+                    onNewGameClick = { gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId) }
+                )
+            }
         }
     }
 }
@@ -409,14 +416,14 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
                 text = "NOSOTROS: ${score["teamA"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontSize = 14.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "ELLOS: ${score["teamB"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontSize = 14.sp
             )
         }
     }
@@ -444,8 +451,32 @@ fun LanceInfo(
             text = phaseText + betText,
             color = Color.Yellow,
             fontWeight = FontWeight.Bold,
-            fontSize = 22.sp,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+            fontSize = 18.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
         )
     }
 }
+
+@Composable
+fun GameOverOverlay(winner: String, onNewGameClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.8f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = if (winner == "teamA") "¡HAS GANADO!" else "HAS PERDIDO",
+                color = Color.Yellow,
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(onClick = onNewGameClick) {
+                Text(text = "Jugar de Nuevo", fontSize = 24.sp)
+            }
+        }
+    }
+}
+
