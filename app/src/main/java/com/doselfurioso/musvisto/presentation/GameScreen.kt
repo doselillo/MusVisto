@@ -306,7 +306,7 @@ fun GameScreen(
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     discardCount = gameState.discardCounts[partner.id],
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
-                        cards = partner.hand, // <-- Pass the real hand
+                        cards = partner.hand.sortedByDescending { it.rank.value }, // <-- Pass the real hand
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -317,7 +317,7 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
-                    handContent = { SideOpponentHandStacked(cards = partner.hand, // <-- Pass the real hand
+                    handContent = { SideOpponentHandStacked(cards = rivalLeft.hand.sortedByDescending { it.rank.value }, // <-- Pass the real hand
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -328,7 +328,7 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     discardCount = gameState.discardCounts[rivalRight.id],
-                    handContent = { SideOpponentHandStacked(cards = partner.hand, // <-- Pass the real hand
+                    handContent = { SideOpponentHandStacked(cards = rivalRight.hand.sortedBy { it.rank.value }, // <-- Pass the real hand
                         isDebugMode = isDebugMode) }
                 )
             }
@@ -357,7 +357,7 @@ fun GameScreen(
                 .padding(bottom = 180.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Scoreboard(score = gameState.score)
                 Spacer(modifier = Modifier.height(16.dp))
-                LanceInfo(gamePhase = gameState.gamePhase, currentBet = gameState.currentBet, players = players)
+                LanceInfo(gameState, players = players)
             }
 
             ActionButtons(
@@ -535,17 +535,24 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
 }
 @Composable
 fun LanceInfo(
-    gamePhase: GamePhase,
-    currentBet: BetInfo?,
+    gameState: GameState, // Pass the whole state for more context
     players: List<Player>,
     modifier: Modifier = Modifier
 ) {
-    val phaseText = gamePhase.name.replace('_', ' ') // Format the enum name nicely
-    var betText = ""
-
-    if (currentBet != null) {
-        val playerName = players.find { it.id == currentBet.bettingPlayerId }?.name ?: ""
-        betText = "\nEnvite de ${currentBet.amount} por $playerName"
+    // Determine the text based on the game phase
+    val displayText = when (gameState.gamePhase) {
+        GamePhase.GAME_OVER -> {
+            if (gameState.winningTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
+        }
+        GamePhase.SCORING -> "FIN DE LA RONDA"
+        else -> {
+            var text = gameState.gamePhase.name.replace('_', ' ')
+            gameState.currentBet?.let {
+                val playerName = players.find { p -> p.id == it.bettingPlayerId }?.name ?: ""
+                text += "\nEnvite de ${it.amount} por $playerName"
+            }
+            text
+        }
     }
 
     Card(
@@ -553,7 +560,7 @@ fun LanceInfo(
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
     ) {
         Text(
-            text = phaseText + betText,
+            text = displayText,
             color = Color.Yellow,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,

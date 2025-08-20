@@ -44,24 +44,28 @@ class GameViewModel @Inject constructor(
         _isDebugMode.value = !_isDebugMode.value
     }
 
-    // MODIFIED: This function now takes the playerId as a parameter
+    //This function now takes the playerId as a parameter
     fun onAction(action: GameAction, playerId: String) {
-        val currentState = _gameState.value
-        val player = currentState.players.find { it.id == playerId }
+        // NEW: Handle the Continue and NewGame actions first
+        when (action) {
+            is GameAction.Continue, is GameAction.NewGame -> {
+                startNewGame()
+                return
+            }
+            else -> {
+                // The rest of the logic for normal game actions
+                val currentState = _gameState.value
+                if (currentState.gamePhase == GamePhase.GAME_OVER || currentState.gamePhase == GamePhase.SCORING) return
 
-        // Safety check: only process actions from human players
-        if (player == null || player.isAi) {
-            return
-        }
+                val newState = logic.processAction(currentState, action, playerId)
+                _gameState.value = newState
 
-        val newState = logic.processAction(currentState, action, playerId)
-        _gameState.value = newState
-
-        // After our action, check if it's an AI's turn
-        if (newState.gamePhase == GamePhase.SCORING) {
-            finalizeRound(newState)
-        } else {
-            handleAiTurn()
+                if (newState.gamePhase == GamePhase.SCORING) {
+                    finalizeRound(newState)
+                } else {
+                    handleAiTurn()
+                }
+            }
         }
     }
 
@@ -69,34 +73,26 @@ class GameViewModel @Inject constructor(
         Log.d("MusVistoTest", "--- ROUND END --- SCORING ---")
 
         val scoredState = logic.scoreRound(roundEndState)
-        _gameState.value = scoredState
-
         Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
 
         val scoreToWin = 40
         val teamAScore = scoredState.score["teamA"] ?: 0
         val teamBScore = scoredState.score["teamB"] ?: 0
-
-        val winner = when {
-            teamAScore >= scoreToWin -> "teamA"
-            teamBScore >= scoreToWin -> "teamB"
-            else -> null
-        }
+        val winner = if (teamAScore >= scoreToWin) "teamA" else if (teamBScore >= scoreToWin) "teamB" else null
 
         if (winner != null) {
-            Log.d("MusVistoTest", "GAME OVER! Winner is $winner")
+            // GAME OVER: Show winner and "New Game" button
             _gameState.value = scoredState.copy(
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
                 availableActions = listOf(GameAction.NewGame)
             )
         } else {
-            // This coroutine will now execute without issues
-            viewModelScope.launch {
-                delay(5000) // Wait 5 seconds to show the results
-                Log.d("MusVistoTest", "--- STARTING NEW ROUND ---")
-                startNewGame()
-            }
+            // END OF ROUND: Show score and "Continue" button
+            // We removed the automatic delay and restart
+            _gameState.value = scoredState.copy(
+                availableActions = listOf(GameAction.Continue)
+            )
         }
     }
 
@@ -139,18 +135,34 @@ class GameViewModel @Inject constructor(
     private fun startNewGame() {
         val players = listOf(
             Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamB"),
-            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamA"), // Let's make player 3 human for now
-            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true,  team = "teamB")
+            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+            Player(id = "p3", "Sara", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
+            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
         )
-        val deck = logic.shuffleDeck(logic.createDeck())
-        val (updatedPlayers, remainingDeck) = logic.dealCards(players, deck)
+
+        val initialDeck = logic.createDeck()
+        val shuffledDeck = logic.shuffleDeck(initialDeck)
+
+        // --- DEBUG LOGS START ---
+        Log.d("MusVistoDebug", "--- STARTING A NEW GAME ---")
+        Log.d("MusVistoDebug", "Shuffled deck before dealing (${shuffledDeck.size} cards): $shuffledDeck")
+        // --- DEBUG LOGS END ---
+
+        val (updatedPlayers, remainingDeck) = logic.dealCards(players, shuffledDeck)
+
+        // --- DEBUG LOGS START ---
+        Log.d("MusVistoDebug", "--- DEALING COMPLETE ---")
+        updatedPlayers.forEach { player ->
+            Log.d("MusVistoDebug", "Hand dealt to ${player.name}: ${player.hand}")
+        }
+        Log.d("MusVistoDebug", "Deck after dealing (${remainingDeck.size} cards): $remainingDeck")
+        // --- DEBUG LOGS END ---
 
         _gameState.value = GameState(
             players = updatedPlayers,
             deck = remainingDeck,
             gamePhase = GamePhase.MUS_DECISION,
-            currentTurnPlayerId = players.first().id, // The first player starts
+            currentTurnPlayerId = players.first().id,
             availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
     }

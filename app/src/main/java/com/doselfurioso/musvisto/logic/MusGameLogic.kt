@@ -4,15 +4,14 @@ import android.util.Log
 import com.doselfurioso.musvisto.model.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 
 @Singleton
 class MusGameLogic @Inject constructor() {
 
     // Creates a standard 40-card Spanish deck.
     fun createDeck(): List<Card> {
-        // flatMap combines the lists created for each suit into a single list
         return Suit.values().flatMap { suit ->
-            // map creates a list of cards for the current suit
             Rank.values().map { rank ->
                 Card(suit, rank)
             }
@@ -23,27 +22,54 @@ class MusGameLogic @Inject constructor() {
     fun shuffleDeck(deck: List<Card>): List<Card> {
         return deck.shuffled()
     }
-
-    // Deals 4 cards to each of the 4 players.
-    fun dealCards(
-        players: List<Player>,
-        deck: List<Card>
-    ): Pair<List<Player>, List<Card>> {
+    fun dealCards(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
         if (players.size != 4) throw IllegalArgumentException("4 players are required.")
 
-        var remainingDeck = deck
-        val updatedPlayers = players.map { player ->
-            // Take the top 4 cards for the hand
-            val hand = remainingDeck.take(4)
-            // Remove those 4 cards from the deck
-            remainingDeck = remainingDeck.drop(4)
-            // Return a new Player object with the updated hand
-            player.copy(hand = hand)
-        }
+        var tempDeck = deck
+        Log.d("MusVistoDebug", "DEALCARDS: Starting with ${tempDeck.size} cards.")
 
-        // Return the list of players with their hands and the rest of the deck
-        return Pair(updatedPlayers, remainingDeck)
+        val hand1 = tempDeck.take(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Hand for P1: $hand1")
+        tempDeck = tempDeck.drop(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
+
+        val hand2 = tempDeck.take(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Hand for P2: $hand2")
+        tempDeck = tempDeck.drop(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
+
+        val hand3 = tempDeck.take(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Hand for P3: $hand3")
+        tempDeck = tempDeck.drop(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
+
+        val hand4 = tempDeck.take(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Hand for P4: $hand4")
+        tempDeck = tempDeck.drop(4)
+        Log.d("MusVistoDebug", "DEALCARDS: Deck is now ${tempDeck.size} cards.")
+
+        val updatedPlayers = listOf(
+            players[0].copy(hand = hand1),
+            players[1].copy(hand = hand2),
+            players[2].copy(hand = hand3),
+            players[3].copy(hand = hand4)
+        )
+
+        return Pair(updatedPlayers, tempDeck)
     }
+    // Deals 4 cards to each of the 4 players.
+    //fun dealCards(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
+    //    if (players.size != 4) throw IllegalArgumentException("4 players are required.")
+    //    var currentDeck = deck
+    //    val updatedPlayers = mutableListOf<Player>()
+//
+    //    for (player in players) {
+    //        val hand = currentDeck.take(4)
+    //        currentDeck = currentDeck.drop(4)
+    //        updatedPlayers.add(player.copy(hand = hand))
+    //    }
+    //    return Pair(updatedPlayers, currentDeck)
+    //}
 
     /**
      * Gets the highest card from a hand for the "Grande" lance.
@@ -261,7 +287,7 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Quiero -> handleQuiero(currentState)
             is GameAction.NoQuiero -> handleNoQuiero(currentState)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
-            is GameAction.NewGame -> currentState // This is handled in the ViewModel
+            is GameAction.Continue, is GameAction.NewGame -> currentState
         }
 
         // If the state changed, record the action that caused it
@@ -299,13 +325,10 @@ class MusGameLogic @Inject constructor() {
 
     private fun handleQuiero(currentState: GameState): GameState {
         val bet = currentState.currentBet ?: return currentState
-
         val newAgreedBets = currentState.agreedBets.toMutableMap().apply {
             this[currentState.gamePhase] = bet.amount
         }
-
         Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${currentState.gamePhase}.")
-
         return advanceToNextPhase(currentState).copy(
             currentBet = null,
             playersWhoPassed = emptySet(),
@@ -366,14 +389,12 @@ class MusGameLogic @Inject constructor() {
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
         val newPassedSet = currentState.playersWhoPassed + playerId
-
         if (newPassedSet.size == currentState.players.size) {
             return advanceToNextPhase(currentState).copy(
                 playersWhoPassed = emptySet(),
                 currentTurnPlayerId = currentState.players.first().id
             )
         }
-
         return setNextPlayerTurn(currentState).copy(
             playersWhoPassed = newPassedSet
         )
@@ -394,6 +415,10 @@ class MusGameLogic @Inject constructor() {
             GamePhase.PARES -> GamePhase.JUEGO
             GamePhase.JUEGO -> GamePhase.SCORING
             else -> GamePhase.SCORING // End of the round
+        }
+
+        if (nextPhase == GamePhase.SCORING) {
+            return currentState.copy(gamePhase = nextPhase, availableActions = emptyList())
         }
         // Check for Pares before entering the Pares phase
         if (nextPhase == GamePhase.PARES) {
