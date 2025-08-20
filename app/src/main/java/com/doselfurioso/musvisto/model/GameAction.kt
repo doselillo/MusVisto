@@ -13,10 +13,11 @@ sealed class GameAction(
     val colorType: ButtonColorType,
     val iconResId: Int? // El ID del recurso del icono
 ) {
-    object Mus : GameAction("Mus", ButtonColorType.CONFIRM, R.drawable.ic_cycle)
-    object NoMus : GameAction("No Mus", ButtonColorType.DENY, R.drawable.ic_stop)
-    object Envido : GameAction("Envido", ButtonColorType.NEUTRAL, R.drawable.ic_arrow_up)
-    object Quiero : GameAction("Quiero", ButtonColorType.CONFIRM, R.drawable.ic_check)
-    object NoQuiero : GameAction("No Quiero", ButtonColorType.DENY, R.drawable.ic_close)
+    ///TODO descomentar
+   // object Mus : GameAction("Mus", ButtonColorType.CONFIRM, R.drawable.ic_cycle)
+   // object NoMus : GameAction("No Mus", ButtonColorType.DENY, R.drawable.ic_stop)
+   // object Envido : GameAction("Envido", ButtonColorType.NEUTRAL, R.drawable.ic_arrow_up)
+   // object Quiero : GameAction("Quiero", ButtonColorType.CONFIRM, R.drawable.ic_check)
+   // object NoQuiero : GameAction("No Quiero", ButtonColorType.DENY, R.drawable.ic_close)
     // Añadiremos más acciones (Órdago, Paso, etc.) aquí más tarde
 }

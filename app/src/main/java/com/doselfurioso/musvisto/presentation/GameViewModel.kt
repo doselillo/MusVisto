@@ -55,7 +55,8 @@ class GameViewModel @Inject constructor(
             deck = remainingDeck,
             gamePhase = GamePhase.MUS_DECISION,
             // When the game starts, the player can either want Mus or not
-            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            ///TODO descomentar
+            //availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
 
     }
