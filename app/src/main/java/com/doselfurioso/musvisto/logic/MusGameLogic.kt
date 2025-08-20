@@ -293,30 +293,31 @@ class MusGameLogic @Inject constructor() {
     private fun handleQuiero(currentState: GameState): GameState {
         val bet = currentState.currentBet ?: return currentState
 
-        // Store the agreed bet amount for the current phase
         val newAgreedBets = currentState.agreedBets.toMutableMap().apply {
             this[currentState.gamePhase] = bet.amount
         }
 
         Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${currentState.gamePhase}.")
 
-        // The lance ends for everyone.
-        return advanceToNextPhase(currentState).copy(
-            currentBet = null, // Clear the bet for the new lance
-            playersWhoPassed = emptySet(),
-            agreedBets = newAgreedBets,
-            currentTurnPlayerId = currentState.players.first().id // Turn returns to "mano"
-        )
+        val nextState = advanceToNextPhase(currentState.copy(agreedBets = newAgreedBets))
+
+        // If advancing the phase leads to scoring, score immediately.
+        return if (nextState.gamePhase == GamePhase.SCORING) {
+            scoreRound(nextState.copy(currentBet = null, playersWhoPassed = emptySet()))
+        } else {
+            nextState.copy(
+                currentBet = null,
+                playersWhoPassed = emptySet(),
+                currentTurnPlayerId = currentState.players.first().id
+            )
+        }
     }
 
     private fun handleNoQuiero(currentState: GameState): GameState {
         val bet = currentState.currentBet ?: return currentState
         val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
 
-        // On a "No Quiero", the betting team gets the points of the PREVIOUS bet.
-        // If it was the first bet, they get 1 point.
         val pointsWon = currentState.agreedBets[currentState.gamePhase] ?: 1
-
         val currentScore = currentState.score[bettingPlayer.team] ?: 0
         val newScore = currentState.score.toMutableMap().apply {
             this[bettingPlayer.team] = currentScore + pointsWon
@@ -324,13 +325,18 @@ class MusGameLogic @Inject constructor() {
 
         Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
 
-        // The lance ends.
-        return advanceToNextPhase(currentState).copy(
-            currentBet = null,
-            playersWhoPassed = emptySet(),
-            score = newScore,
-            currentTurnPlayerId = currentState.players.first().id
-        )
+        val nextState = advanceToNextPhase(currentState.copy(score = newScore))
+
+        // If advancing the phase leads to scoring, score immediately.
+        return if (nextState.gamePhase == GamePhase.SCORING) {
+            scoreRound(nextState.copy(currentBet = null, playersWhoPassed = emptySet()))
+        } else {
+            nextState.copy(
+                currentBet = null,
+                playersWhoPassed = emptySet(),
+                currentTurnPlayerId = currentState.players.first().id
+            )
+        }
     }
 
     private fun handleMus(currentState: GameState, playerId: String): GameState {
@@ -361,20 +367,27 @@ class MusGameLogic @Inject constructor() {
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
         val newPassedSet = currentState.playersWhoPassed + playerId
-        val allPlayersPassed = newPassedSet.size == currentState.players.size
 
-        return if (allPlayersPassed) {
-            advanceToNextPhase(currentState).copy(
-                playersWhoPassed = emptySet(),
-                // The turn returns to the "mano" for the new lance
-                currentTurnPlayerId = currentState.players.first().id
-            )
-        } else {
-            setNextPlayerTurn(currentState).copy(
-                playersWhoPassed = newPassedSet
-            )
+        if (newPassedSet.size == currentState.players.size) {
+            val nextState = advanceToNextPhase(currentState)
+
+            // If advancing the phase leads to scoring, score immediately.
+            return if (nextState.gamePhase == GamePhase.SCORING) {
+                scoreRound(nextState.copy(playersWhoPassed = emptySet()))
+            } else {
+                nextState.copy(
+                    playersWhoPassed = emptySet(),
+                    currentTurnPlayerId = currentState.players.first().id
+                )
+            }
         }
+
+        return setNextPlayerTurn(currentState).copy(
+            playersWhoPassed = newPassedSet
+        )
     }
+
+
     private fun handleOrdago(currentState: GameState, playerId: String): GameState {
         Log.d("MusVistoTest", "ÓRDAGO!!!")
         // Placeholder logic for now
@@ -390,6 +403,25 @@ class MusGameLogic @Inject constructor() {
             GamePhase.JUEGO -> GamePhase.SCORING
             else -> GamePhase.SCORING // End of the round
         }
+        // Check for Pares before entering the Pares phase
+        if (nextPhase == GamePhase.PARES) {
+            val playersWithPares = currentState.players.filter { getHandPares(it.hand).strength > 0 }
+            if (playersWithPares.isEmpty()) {
+                Log.d("MusVistoTest", "PARES: No one has pairs. Skipping to JUEGO.")
+                return advanceToNextPhase(currentState.copy(gamePhase = GamePhase.PARES)) // Recursive call to skip
+            }
+        }
+
+        // Check for Juego/Punto before entering the Juego phase
+        if (nextPhase == GamePhase.JUEGO) {
+            val hasJuego = currentState.players.any { getHandJuegoValue(it.hand) >= 31 }
+            return currentState.copy(
+                gamePhase = GamePhase.JUEGO,
+                isPuntoPhase = !hasJuego, // If no one has Juego, it's a Punto round
+                availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+            )
+        }
+
         return currentState.copy(
             gamePhase = nextPhase,
             // Every new lance starts with the same betting options
