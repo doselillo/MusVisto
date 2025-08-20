@@ -256,29 +256,55 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Mus -> handleMus(currentState, playerId)
             is GameAction.NoMus -> handleNoMus(currentState)
             is GameAction.Paso -> handlePaso(currentState, playerId)
-            is GameAction.Envido -> handleEnvido(currentState, playerId)
+            is GameAction.Envido -> handleEnvido(currentState, playerId, action.amount)
             is GameAction.Quiero -> handleQuiero(currentState)
             is GameAction.NoQuiero -> handleNoQuiero(currentState)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
+            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId)
+
+            else -> currentState
         }
     }
 
-    private fun handleEnvido(currentState: GameState, playerId: String): GameState {
-        val newBet = BetInfo(amount = 2, bettingPlayerId = playerId)
-        val nextState = currentState.copy(
-            currentBet = newBet,
-            availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Órdago)
+    private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
+        val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
+
+        // Find the next player from the opposing team to respond
+        val respondingPlayer = findNextOpponent(currentState, bettingPlayer) ?: return currentState
+
+        // Check if this is a raise (re-envite)
+        val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
+
+        val newBet = BetInfo(
+            amount = totalAmount,
+            bettingPlayerId = playerId,
+            respondingPlayerId = respondingPlayer.id
         )
-        return setNextPlayerTurn(nextState)
+
+        return currentState.copy(
+            currentBet = newBet,
+            // The responding player has a new set of actions available
+            availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
+            currentTurnPlayerId = respondingPlayer.id, // The turn goes to the responder
+            playersWhoPassed = emptySet() // A bet resets who has passed
+        )
     }
 
     private fun handleQuiero(currentState: GameState): GameState {
-        // The bet is accepted. We'll handle scoring later.
+        val bet = currentState.currentBet ?: return currentState
+
+        // Store the agreed bet amount for the current phase
+        val newAgreedBets = currentState.agreedBets.toMutableMap().apply {
+            this[currentState.gamePhase] = bet.amount
+        }
+
+        Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${currentState.gamePhase}.")
+
         // The lance ends for everyone.
-        Log.d("MusVistoTest", "Bet of ${currentState.currentBet?.amount} ACCEPTED.")
         return advanceToNextPhase(currentState).copy(
             currentBet = null, // Clear the bet for the new lance
             playersWhoPassed = emptySet(),
+            agreedBets = newAgreedBets,
             currentTurnPlayerId = currentState.players.first().id // Turn returns to "mano"
         )
     }
@@ -287,8 +313,10 @@ class MusGameLogic @Inject constructor() {
         val bet = currentState.currentBet ?: return currentState
         val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
 
-        // The betting player's team gets 1 point (the value of the "no quiero").
-        val pointsWon = 1
+        // On a "No Quiero", the betting team gets the points of the PREVIOUS bet.
+        // If it was the first bet, they get 1 point.
+        val pointsWon = currentState.agreedBets[currentState.gamePhase] ?: 1
+
         val currentScore = currentState.score[bettingPlayer.team] ?: 0
         val newScore = currentState.score.toMutableMap().apply {
             this[bettingPlayer.team] = currentScore + pointsWon
@@ -314,8 +342,7 @@ class MusGameLogic @Inject constructor() {
         return if (newState.playersWhoPassed.size == newState.players.size) {
             newState.copy(
                 gamePhase = GamePhase.DISCARD,
-                // TODO: Implement discard logic and actions
-                availableActions = emptyList(),
+                availableActions = listOf(GameAction.ConfirmDiscard),
                 playersWhoPassed = emptySet()
             )
         } else {
@@ -327,7 +354,7 @@ class MusGameLogic @Inject constructor() {
     private fun handleNoMus(currentState: GameState): GameState {
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
-            availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago),
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet()
         )
     }
@@ -360,12 +387,13 @@ class MusGameLogic @Inject constructor() {
             GamePhase.GRANDE -> GamePhase.CHICA
             GamePhase.CHICA -> GamePhase.PARES
             GamePhase.PARES -> GamePhase.JUEGO
+            GamePhase.JUEGO -> GamePhase.SCORING
             else -> GamePhase.SCORING // End of the round
         }
         return currentState.copy(
             gamePhase = nextPhase,
             // Every new lance starts with the same betting options
-            availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago)
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
     }
 
@@ -381,4 +409,127 @@ class MusGameLogic @Inject constructor() {
             currentTurnPlayerId = nextPlayerId
         )
     }
+
+    private fun handleDiscard(currentState: GameState, playerId: String): GameState {
+        val player = currentState.players.find { it.id == playerId } ?: return currentState
+        val cardsToDiscard = currentState.selectedCardsForDiscard
+
+        // Remove discarded cards from player's hand
+        val newHand = player.hand.filterNot { it in cardsToDiscard }
+
+        // Take new cards from the top of the deck
+        val cardsNeeded = cardsToDiscard.size
+        val newCards = currentState.deck.take(cardsNeeded)
+        val remainingDeck = currentState.deck.drop(cardsNeeded)
+
+        // Update the player with their new hand
+        val updatedPlayer = player.copy(hand = newHand + newCards)
+        val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
+
+        // After discarding, the Mus decision round starts again
+        return currentState.copy(
+            players = updatedPlayers,
+            deck = remainingDeck,
+            gamePhase = GamePhase.MUS_DECISION,
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+            selectedCardsForDiscard = emptySet(), // Reset selection
+            playersWhoPassed = emptySet() // Reset passed players for the new round
+        )
+    }
+
+    private fun findNextOpponent(currentState: GameState, fromPlayer: Player): Player? {
+        val startIndex = currentState.players.indexOf(fromPlayer)
+        // We check the next 3 players in order
+        for (i in 1..3) {
+            val nextPlayer = currentState.players[(startIndex + i) % 4]
+            if (nextPlayer.team != fromPlayer.team) {
+                return nextPlayer
+            }
+        }
+        return null // Should not happen in a 2v2 game
+    }
+    fun scoreRound(currentState: GameState): GameState {
+        var finalScore = currentState.score.toMutableMap()
+
+        // 1. Score "Grande"
+        getGrandeWinner(currentState.players)?.let { winner ->
+            val points = currentState.agreedBets[GamePhase.GRANDE] ?: 0
+            if (points > 0) {
+                val currentScore = finalScore[winner.team] ?: 0
+                finalScore[winner.team] = currentScore + points
+                Log.d("MusVistoTest", "GRANDE: Team ${winner.team} wins $points points.")
+            }
+        }
+
+        // 2. Score "Chica"
+        getChicaWinner(currentState.players)?.let { winner ->
+            val points = currentState.agreedBets[GamePhase.CHICA] ?: 0
+            if (points > 0) {
+                val currentScore = finalScore[winner.team] ?: 0
+                finalScore[winner.team] = currentScore + points
+                Log.d("MusVistoTest", "CHICA: Team ${winner.team} wins $points points.")
+            }
+        }
+
+        // 3. Score "Pares" (Points for having the best pares, plus points for the bet)
+        getParesWinner(currentState.players)?.let { winner ->
+            // Points for the bet
+            val betPoints = currentState.agreedBets[GamePhase.PARES] ?: 0
+            if (betPoints > 0) {
+                val currentScore = finalScore[winner.team] ?: 0
+                finalScore[winner.team] = currentScore + betPoints
+                Log.d("MusVistoTest", "PARES (Bet): Team ${winner.team} wins $betPoints points.")
+            }
+            // Points for the plays themselves
+            currentState.players.forEach { player ->
+                val play = getHandPares(player.hand)
+                val playPoints = when (play) {
+                    is ParesPlay.Duples -> 3
+                    is ParesPlay.Medias -> 2
+                    is ParesPlay.Pares -> 1
+                    else -> 0
+                }
+                if (playPoints > 0) {
+                    val currentScore = finalScore[player.team] ?: 0
+                    finalScore[player.team] = currentScore + playPoints
+                    Log.d("MusVistoTest", "PARES (Play): Team ${player.team} scores $playPoints points for ${play::class.simpleName}.")
+                }
+            }
+        }
+
+        // 4. Score "Juego" (Similar to Pares)
+        getJuegoWinner(currentState.players)?.let { winner ->
+            // Points for the bet
+            val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
+            if (betPoints > 0) {
+                val currentScore = finalScore[winner.team] ?: 0
+                finalScore[winner.team] = currentScore + betPoints
+                Log.d("MusVistoTest", "JUEGO (Bet): Team ${winner.team} wins $betPoints points.")
+            }
+            // Points for the plays themselves
+            currentState.players.forEach { player ->
+                if ((getHandJuegoValue(player.hand)) != 31) {
+                    val playPoints = when (getHandJuegoValue(player.hand)) {
+                        32, 40, 37, 36, 35, 34, 33 -> 2
+                        else -> 0
+                    }
+                    if (playPoints > 0) {
+                        val currentScore = finalScore[player.team] ?: 0
+                        finalScore[player.team] = currentScore + playPoints
+                        Log.d("MusVistoTest", "JUEGO (Play): Team ${player.team} scores $playPoints points.")
+                    }
+                } else {
+                    val playPoints = 3
+                    val currentScore = finalScore[player.team] ?: 0
+                    finalScore[player.team] = currentScore + playPoints
+                    Log.d("MusVistoTest", "JUEGO (Play): Team ${player.team} scores $playPoints points.")
+                }
+            }
+        }
+
+
+        return currentState.copy(score = finalScore)
+    }
+
+
 }

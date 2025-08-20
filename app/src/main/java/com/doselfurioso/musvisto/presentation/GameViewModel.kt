@@ -50,11 +50,34 @@ class GameViewModel @Inject constructor(
         _gameState.value = newState
 
         // After our action, check if it's an AI's turn
-        handleAiTurn()
+        if (newState.gamePhase == GamePhase.SCORING) {
+            finalizeRound(newState)
+        } else {
+            // If not ended, check if it's an AI's turn
+            handleAiTurn()
+        }
+    }
+
+    private fun finalizeRound(roundEndState: GameState) {
+        Log.d("MusVistoTest", "--- ROUND END --- SCORING ---")
+
+        // Call the scoring logic
+        val scoredState = logic.scoreRound(roundEndState)
+        _gameState.value = scoredState
+
+        Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
+
+        // After showing the score for a few seconds, start a new round
+        viewModelScope.launch {
+            delay(5000) // Wait 5 seconds to show the results
+            Log.d("MusVistoTest", "--- STARTING NEW ROUND ---")
+            startNewGame()
+        }
     }
 
     private fun handleAiTurn() {
         val currentState = _gameState.value
+        if (currentState.gamePhase == GamePhase.SCORING) return // Don't act if scoring
         val currentPlayerId = currentState.currentTurnPlayerId
         val currentPlayer = currentState.players.find { it.id == currentPlayerId }
 
