@@ -361,7 +361,8 @@ class MusGameLogic @Inject constructor() {
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
-            playersWhoPassed = emptySet()
+            playersWhoPassed = emptySet(),
+            discardCounts = emptyMap()
         )
     }
 
@@ -445,6 +446,7 @@ class MusGameLogic @Inject constructor() {
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
+        val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
 
         // In Mus, you must discard at least one card
         if (cardsToDiscard.isEmpty()) return currentState
@@ -469,6 +471,7 @@ class MusGameLogic @Inject constructor() {
                 deck = remainingDeck,
                 gamePhase = GamePhase.MUS_DECISION,
                 availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+                discardCounts = newDiscardCounts,
                 selectedCardsForDiscard = emptySet(),
                 playersWhoPassed = emptySet(),
                 currentTurnPlayerId = updatedPlayers.first().id // Turn returns to "mano"
@@ -479,6 +482,7 @@ class MusGameLogic @Inject constructor() {
         return setNextPlayerTurn(currentState).copy(
             players = updatedPlayers,
             deck = remainingDeck,
+            discardCounts = newDiscardCounts,
             selectedCardsForDiscard = emptySet(),
             playersWhoPassed = newPassedSet
         )

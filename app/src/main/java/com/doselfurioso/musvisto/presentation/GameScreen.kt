@@ -160,27 +160,11 @@ fun PlayerHandArc(
 }
 
 @Composable
-fun PartnerHand() {
-    Row { repeat(4) { CardBack() } }
+fun PartnerHand(modifier: Modifier) {
+    Row (modifier){ repeat(4) { CardBack() } }
 }
 
-//A dedicated Composable for a full player area (avatar + hand)
-@Composable
-fun PlayerArea(
-    player: Player,
-    isCurrentTurn: Boolean,
-    handContent: @Composable () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
-        handContent()
-    }
-}
+
 
 @Composable
 fun SideOpponentHandStacked(cardCount: Int = 4) {
@@ -196,6 +180,45 @@ fun SideOpponentHandStacked(cardCount: Int = 4) {
         }
     }
 }
+@Composable
+fun VerticalPlayerArea(
+    player: Player,
+    isCurrentTurn: Boolean,
+    discardCount: Int?,
+    handContent: @Composable () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
+        handContent()
+        // Ponemos el indicador de descarte debajo del avatar
+        DiscardCountIndicator(count = discardCount ?: 0)
+    }
+}
+
+@Composable
+fun HorizontalPlayerArea(
+    player: Player,
+    isCurrentTurn: Boolean,
+    discardCount: Int?,
+    handContent: @Composable () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
+        // Usamos un Box para superponer el texto sobre la mano
+        Box(contentAlignment = Alignment.Center) {
+            handContent()
+            DiscardCountIndicator(count = discardCount ?: 0)
+        }
+    }
+}
+
+
 
 @Composable
 fun GameScreen(
@@ -215,104 +238,87 @@ fun GameScreen(
             val partner = players[2]
             val rivalRight = players[3]
 
-            // --- JUGADOR PRINCIPAL (AVATAR + MANO AGRUPADOS) ---
-            val sortedHand = player.hand.sortedByDescending { it.rank.value }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp, start = 16.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy((-40).dp) // Negative space to overlap
-            ) {
-                PlayerAvatar(
-                    player = player,
-                    isCurrentTurn = gameState.currentTurnPlayerId == player.id,
-                    modifier = Modifier.padding(bottom = 20.dp) // Lift avatar slightly
-                )
-                PlayerHandArc(
-                    cards = sortedHand,
-                    selectedCards = gameState.selectedCardsForDiscard,
-                    gamePhase = gameState.gamePhase,
-                    isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId,
-                    // When a card is clicked, the UI tells the ViewModel about it
-                    onCardClick = { card -> gameViewModel.onCardSelected(card) }
-                )
-            }
+            val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
 
-            // --- COMPAÑERO (AVATAR + MANO AGRUPADOS) ---
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(bottom = 16.dp, top = 32.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy((20).dp) // Negative space to overlap
-            )    {
-                PlayerAvatar(
+            // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
+            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
+                HorizontalPlayerArea(
                     player = partner,
-                    isCurrentTurn = gameState.currentTurnPlayerId == partner.id
-                )
-                PartnerHand()
-            }
-
-
-            // Rival Left Area (Center Start)
-            PlayerArea(
-                player = rivalLeft,
-                isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                handContent = { SideOpponentHandStacked() },
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 16.dp, bottom = 240.dp)
-            )
-
-            // Rival Right Area (Center End)
-            PlayerArea(
-                player = rivalRight,
-                isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                handContent = { SideOpponentHandStacked() },
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp, bottom = 240.dp)
-            )
-
-            // --- ELEMENTOS DE INFORMACIÓN DE LA PARTIDA ---
-
-            // 1. Marcador de Puntuación
-            Column (modifier = Modifier
-                .align(Alignment.Center)
-                .padding(bottom = 128.dp)) {
-                Scoreboard(
-                    score = gameState.score,
-                    modifier = Modifier
-                        .padding(16.dp)
-                )
-
-                // 2. Indicador del Lance Actual
-                LanceInfo(
-                    gamePhase = gameState.gamePhase,
-                    currentBet = gameState.currentBet,
-                    players = players
+                    isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
+                    discardCount = gameState.discardCounts[partner.id],
+                    handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f }) }
                 )
             }
 
-            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
+            // ÁREA DEL RIVAL IZQUIERDO - Horizontal
+            Box(modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp, bottom = 240.dp)) {
+                VerticalPlayerArea(
+                    player = rivalLeft,
+                    isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
+                    discardCount = gameState.discardCounts[rivalLeft.id],
+                    handContent = { SideOpponentHandStacked() }
+                )
+            }
 
-            // --- BOTONES DE ACCIÓN ---
+            // ÁREA DEL RIVAL DERECHO - Horizontal
+            Box(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 240.dp)) {
+                VerticalPlayerArea(
+                    player = rivalRight,
+                    isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
+                    discardCount = gameState.discardCounts[rivalRight.id],
+                    handContent = { SideOpponentHandStacked() }
+                )
+            }
+
+            // ÁREA DEL JUGADOR PRINCIPAL (ABAJO) - Vertical
+            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp, start = 32.dp)) {
+                HorizontalPlayerArea(
+                    player = player,
+                    isCurrentTurn = isMyTurn,
+                    discardCount = gameState.discardCounts[player.id],
+                    handContent = {
+                        PlayerHandArc(
+                            cards = player.hand.sortedByDescending { it.rank.value },
+                            selectedCards = gameState.selectedCardsForDiscard,
+                            gamePhase = gameState.gamePhase,
+                            isMyTurn = isMyTurn,
+                            onCardClick = { card -> gameViewModel.onCardSelected(card) }
+                        )
+                    }
+                )
+            }
+
+            // INFO CENTRAL Y BOTONES
+            Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Scoreboard(score = gameState.score)
+                Spacer(modifier = Modifier.height(16.dp))
+                LanceInfo(gamePhase = gameState.gamePhase, currentBet = gameState.currentBet, players = players)
+            }
+
             ActionButtons(
                 actions = gameState.availableActions,
-                onActionClick = { action ->
-                    // We pass the current player's ID with the action
-                    if (gameState.currentTurnPlayerId != null) {
-                        gameViewModel.onAction(action, gameState.currentTurnPlayerId!!)
-                    }
-                },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 240.dp, end = 16.dp),
-                // The buttons are enabled only if the current player is human
+                onActionClick = { action -> gameViewModel.onAction(action, gameState.currentTurnPlayerId!!) },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 240.dp, end = 16.dp),
                 selectedCardCount = gameState.selectedCardsForDiscard.size,
-                isEnabled = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
-
+                isEnabled = isMyTurn
             )
         }
+    }
+}
+@Composable
+fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
+    if (count > 0) {
+        Text(
+            text = "Descarta: $count",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            modifier = modifier
+                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 
