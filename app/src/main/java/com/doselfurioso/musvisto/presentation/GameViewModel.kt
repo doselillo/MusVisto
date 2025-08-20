@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
@@ -22,7 +23,8 @@ import javax.inject.Inject
 // This annotation tells Hilt that this is a ViewModel and it can be injected.
 @HiltViewModel
 class GameViewModel @Inject constructor(
-    private val logic: MusGameLogic
+    private val logic: MusGameLogic,
+    private val aiLogic: AILogic
 ) : ViewModel() {
 
     private val _gameState = MutableStateFlow(GameState())
@@ -108,23 +110,18 @@ class GameViewModel @Inject constructor(
         // First, check if it's an AI's turn
         if (currentPlayer != null && currentPlayer.isAi) {
 
+            val aiAction = aiLogic.makeDecision(currentState, currentPlayer)
             // THE KEY CHANGE IS HERE: The AI now chooses the correct action based on the phase
-            val aiAction = when (currentState.gamePhase) {
-                GamePhase.MUS_DECISION -> GameAction.Mus
-                GamePhase.DISCARD -> {
-                    // For now, the AI will always discard one card (we'll make this smarter later)
-                    // We need to set the selected card in the state before calling the action
-                    val cardToDiscard = currentPlayer.hand.first()
-                    _gameState.value = currentState.copy(selectedCardsForDiscard = setOf(cardToDiscard))
-                    GameAction.ConfirmDiscard
-                }
-                else -> GameAction.Paso // For Grande, Chica, etc., the AI will just pass for now
+            if (aiAction is GameAction.ConfirmDiscard) {
+                // For now, AI discards its first card. We'll make this smarter later.
+                val cardToDiscard = currentPlayer.hand.first()
+                _gameState.value = currentState.copy(selectedCardsForDiscard = setOf(cardToDiscard))
             }
 
             Log.d("MusVistoTest", "AI ${currentPlayer.name} performs action: ${aiAction.displayText}")
 
             viewModelScope.launch {
-                delay(1500) // 1.5 second delay
+                delay(1000) // 1.5 second delay
 
                 // We need to get the most current state, as it might have been modified
                 val stateBeforeAiAction = _gameState.value

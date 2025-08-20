@@ -252,16 +252,23 @@ class MusGameLogic @Inject constructor() {
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
         if (currentState.currentTurnPlayerId != playerId) return currentState
 
-        return when (action) {
+        val nextState = when (action) {
             is GameAction.Mus -> handleMus(currentState, playerId)
             is GameAction.NoMus -> handleNoMus(currentState)
+            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId)
             is GameAction.Paso -> handlePaso(currentState, playerId)
             is GameAction.Envido -> handleEnvido(currentState, playerId, action.amount)
             is GameAction.Quiero -> handleQuiero(currentState)
             is GameAction.NoQuiero -> handleNoQuiero(currentState)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
-            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId) // <-- AÑADE ESTO
-            else -> currentState
+            is GameAction.NewGame -> currentState // This is handled in the ViewModel
+        }
+
+        // If the state changed, record the action that caused it
+        return if (nextState != currentState) {
+            nextState.copy(lastAction = LastActionInfo(playerId, action))
+        } else {
+            nextState
         }
     }
 

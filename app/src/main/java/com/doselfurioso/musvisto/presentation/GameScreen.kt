@@ -1,6 +1,11 @@
 package com.doselfurioso.musvisto.presentation
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,8 +20,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -40,7 +49,9 @@ import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.abs
 import kotlin.math.cos
@@ -233,6 +244,7 @@ fun GameScreen(
             .fillMaxSize()
             .background(Color(0xFF006A4E))
     ) {
+
         if (players.size == 4) {
             val player = players[0]
             val rivalLeft = players[1]
@@ -240,6 +252,20 @@ fun GameScreen(
             val rivalRight = players[3]
 
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
+
+            // --- ANUNCIOS DE ACCIÓN ---
+            Box(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 198.dp)) {
+                ActionAnnouncement(gameState.lastAction, rivalLeft)
+            }
+            Box(Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 198.dp)) {
+                ActionAnnouncement(gameState.lastAction, rivalRight)
+            }
+            Box(Modifier.align(Alignment.TopStart).padding(start = 50.dp, top = 100.dp)) {
+                ActionAnnouncement(gameState.lastAction, partner)
+            }
+            Box(Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 140.dp)) {
+                ActionAnnouncement(gameState.lastAction, player)
+            }
 
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
@@ -488,6 +514,46 @@ fun LanceInfo(
         )
     }
 }
+@Composable
+fun ActionAnnouncement(
+    lastAction: LastActionInfo?,
+    player: Player
+) {
+    // This controls the visibility of the announcement
+    var visible by remember(lastAction) { mutableStateOf(false) }
+
+    // When lastAction changes and matches this player, show the announcement
+    if (lastAction?.playerId == player.id) {
+        visible = true
+    }
+
+    // After a delay, hide the announcement
+    LaunchedEffect(lastAction) {
+        if (lastAction?.playerId == player.id) {
+            delay(2000) // 2 seconds
+            visible = false
+        }
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInVertically(),
+        exit = fadeOut() + slideOutVertically()
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
+            modifier = Modifier.padding(8.dp)
+        ) {
+            Text(
+                text = lastAction?.action?.displayText ?: "",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
 
 @Composable
 fun GameOverOverlay(winner: String, onNewGameClick: () -> Unit) {

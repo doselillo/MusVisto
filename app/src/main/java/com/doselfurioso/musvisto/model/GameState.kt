@@ -19,6 +19,7 @@ data class GameState(
     val agreedBets: Map<GamePhase, Int> = emptyMap(),
     val discardCounts: Map<String, Int> = emptyMap(),
     val selectedCardsForDiscard: Set<Card> = emptySet(),
-    val winningTeam: String? = null
+    val winningTeam: String? = null,
+    val lastAction: LastActionInfo? = null
 
 )
