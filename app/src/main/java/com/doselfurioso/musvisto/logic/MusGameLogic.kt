@@ -210,7 +210,7 @@ class MusGameLogic @Inject constructor() {
      * Calculates the total value of a hand for the "Juego" lance.
      * Figures (Sota, Caballo, Rey) are worth 10. Other cards are worth their face value.
      */
-    private fun getHandJuegoValue(hand: List<Card>): Int {
+    internal fun getHandJuegoValue(hand: List<Card>): Int {
         return hand.sumOf { card ->
             when (card.rank) {
                 Rank.SOTA, Rank.CABALLO, Rank.REY -> 10
