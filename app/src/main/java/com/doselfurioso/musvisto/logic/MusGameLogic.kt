@@ -247,41 +247,70 @@ class MusGameLogic @Inject constructor() {
             playersAtPunto.maxByOrNull { it.second }?.first
         }
     }
+
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
-        // First, ensure the action is valid for the current player and phase
-        if (currentState.currentTurnPlayerId != playerId || !currentState.availableActions.contains(action)) {
-            return currentState // If action is not valid, do nothing
-        }
+        // Ensure the action is valid for the current player
+        if (currentState.currentTurnPlayerId != playerId) return currentState
 
         return when (action) {
-            is GameAction.Mus, is GameAction.NoMus -> {
-                // Logic for the Mus decision phase will go here.
-                // For now, let's just move to the next phase as a placeholder.
-                val nextState = currentState.copy(
-                    gamePhase = GamePhase.GRANDE,
-                    availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago)
-                )
-                // We need to determine the next player's turn
-                setNextPlayerTurn(nextState)
-            }
-            // We will add cases for other actions (Envido, Quiero, etc.) later
-            else -> currentState
+            is GameAction.NoMus -> handleNoMus(currentState)
+            is GameAction.Paso -> handlePaso(currentState, playerId)
+            else -> currentState // Placeholder for other actions
         }
+    }
+
+    private fun handleNoMus(currentState: GameState): GameState {
+        // When someone says "No Mus", the game phase advances to Grande
+        return currentState.copy(
+            gamePhase = GamePhase.GRANDE,
+            // The actions for the Grande lance are now available
+            availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago),
+            // We reset the "passed" players for the new lance
+            playersWhoPassed = emptySet()
+        )
+    }
+
+    private fun handlePaso(currentState: GameState, playerId: String): GameState {
+        // Add the current player to the set of players who have passed
+        val newPassedSet = currentState.playersWhoPassed + playerId
+
+        // If all players have passed, the lance is over. Advance to the next one.
+        if (newPassedSet.size == currentState.players.size) {
+            return advanceToNextPhase(currentState).copy(
+                playersWhoPassed = emptySet() // Reset for the new lance
+            )
+        }
+
+        // If not everyone has passed, just advance the turn to the next player.
+        return setNextPlayerTurn(currentState).copy(
+            playersWhoPassed = newPassedSet
+        )
+    }
+
+    private fun advanceToNextPhase(currentState: GameState): GameState {
+        val nextPhase = when (currentState.gamePhase) {
+            GamePhase.GRANDE -> GamePhase.CHICA
+            GamePhase.CHICA -> GamePhase.PARES
+            GamePhase.PARES -> GamePhase.JUEGO
+            else -> GamePhase.SCORING // End of the round
+        }
+        return currentState.copy(
+            gamePhase = nextPhase,
+            // Every new lance starts with the same betting options
+            availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago)
+        )
     }
 
     private fun setNextPlayerTurn(currentState: GameState): GameState {
         val currentPlayerId = currentState.currentTurnPlayerId ?: return currentState
         val currentPlayerIndex = currentState.players.indexOfFirst { it.id == currentPlayerId }
-
-        if (currentPlayerIndex == -1) return currentState // Player not found
+        if (currentPlayerIndex == -1) return currentState
 
         val nextPlayerIndex = (currentPlayerIndex + 1) % currentState.players.size
-        val nextPlayer = currentState.players[nextPlayerIndex]
+        val nextPlayerId = currentState.players[nextPlayerIndex].id
 
         return currentState.copy(
-            currentTurnPlayerId = nextPlayer.id
-            // We would also update availableActions for the next player here
+            currentTurnPlayerId = nextPlayerId
         )
     }
-
 }

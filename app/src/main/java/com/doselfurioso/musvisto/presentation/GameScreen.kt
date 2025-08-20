@@ -3,7 +3,9 @@ package com.doselfurioso.musvisto.presentation
 import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,11 +31,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
+import com.doselfurioso.musvisto.model.Player
 import kotlin.math.cos
 import kotlin.math.sin
 import com.doselfurioso.musvisto.model.Card as CardData
 
 // Custom modifier for the bottom border (no changes here)
+@SuppressLint("UnnecessaryComposedModifier")
 fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
     factory = {
         val density = LocalDensity.current
@@ -131,18 +135,33 @@ fun PartnerHand() {
     Row { repeat(4) { CardBack() } }
 }
 
+// NEW: A dedicated Composable for a full player area (avatar + hand)
+@Composable
+fun PlayerArea(
+    player: Player,
+    isCurrentTurn: Boolean,
+    handContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
+        handContent()
+    }
+}
+
 @Composable
 fun SideOpponentHandStacked(cardCount: Int = 4) {
-    // We use a Box to allow for overlapping children
     Box {
         repeat(cardCount) { index ->
-            // We wrap each card in a Box to apply the offset
             Box(
-                modifier = Modifier
-                    // Apply a vertical offset to each card
-                    .offset(y = (index * 60).dp)
+                // Offset vertical para que se superpongan
+                modifier = Modifier.offset(y = (index * 30).dp)
             ) {
-                // We still apply the rotation to each individual card
+                // Rotación individual para cada carta
                 CardBack(modifier = Modifier.graphicsLayer { rotationZ = 90f })
             }
         }
@@ -163,40 +182,72 @@ fun GameScreen(
     ) {
         if (players.size == 4) {
             val player = players[0]
+            val rivalLeft = players[1]
+            val partner = players[2]
+            val rivalRight = players[3]
 
-            Box(modifier = Modifier
-                .padding(bottom = 32.dp)
-                .align(Alignment.BottomCenter)) {
+            // --- JUGADOR PRINCIPAL (AVATAR + MANO AGRUPADOS) ---
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp, start = 16.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy((-40).dp) // Negative space to overlap
+            ) {
+                PlayerAvatar(
+                    player = player,
+                    isCurrentTurn = gameState.currentTurnPlayerId == player.id,
+                    modifier = Modifier.padding(bottom = 20.dp) // Lift avatar slightly
+                )
                 PlayerHandArc(cards = player.hand)
             }
-            Box(
+
+            // --- COMPAÑERO (AVATAR + MANO AGRUPADOS) ---
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 32.dp)
-            ) {
+                    .padding(bottom = 16.dp, top = 32.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy((20).dp) // Negative space to overlap
+            )    {
+                PlayerAvatar(
+                    player = partner,
+                    isCurrentTurn = gameState.currentTurnPlayerId == partner.id
+                )
                 PartnerHand()
             }
-            Box(
+
+            // --- RIVAL IZQUIERDO (AVATAR + MANO SEPARADOS PERO REPOSICIONADOS) ---
+
+
+
+            // Rival Left Area (Center Start)
+            PlayerArea(
+                player = rivalLeft,
+                isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
+                handContent = { SideOpponentHandStacked() },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 16.dp, bottom = 180.dp)
-            ) {
-                SideOpponentHandStacked()
-            }
-            Box(
+                    .padding(start = 16.dp, bottom = 240.dp)
+            )
+
+            // Rival Right Area (Center End)
+            PlayerArea(
+                player = rivalRight,
+                isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
+                handContent = { SideOpponentHandStacked() },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp, bottom = 180.dp)
-            ) {
-                SideOpponentHandStacked()
-            }
+                    .padding(end = 16.dp, bottom = 240.dp)
+            )
+
+            // --- BOTONES DE ACCIÓN ---
             ActionButtons(
                 actions = gameState.availableActions,
                 onActionClick = { action -> gameViewModel.onAction(action) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    // Add padding to push the buttons up and away from the edge
-                    .padding(bottom = 180.dp, end = 16.dp)
+                    .padding(bottom = 240.dp, end = 16.dp)
             )
         }
     }
@@ -242,4 +293,26 @@ fun ActionButtons(
             }
         }
     }
+}
+
+@Composable
+fun PlayerAvatar(
+    player: Player,
+    isCurrentTurn: Boolean, // This will control the glow
+    modifier: Modifier = Modifier
+) {
+    val borderColor = if (isCurrentTurn) {
+        Color.Yellow // The color of the glow when it's their turn
+    } else {
+        Color.Transparent // No border when it's not their turn
+    }
+
+    Image(
+        painter = painterResource(id = player.avatarResId),
+        contentDescription = "Avatar of ${player.name}",
+        modifier = modifier
+            .size(80.dp)
+            .clip(CircleShape) // Make the avatar circular
+            .border(4.dp, borderColor, CircleShape) // Apply the glowing border
+    )
 }

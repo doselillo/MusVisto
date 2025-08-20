@@ -3,6 +3,7 @@ package com.doselfurioso.musvisto.presentation
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
@@ -50,10 +51,10 @@ class GameViewModel @Inject constructor(
 
     private fun startNewGame() {
         val players = listOf(
-            Player(id = "p1", name = "Ana"),
-            Player(id = "p2", name = "Luis"),
-            Player(id = "p3", name = "Sara"),
-            Player(id = "p4", name = "Juan")
+            Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_aragon),
+            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_granada),
+            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra),
+            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_castilla)
         )
         val deck = logic.shuffleDeck(logic.createDeck())
         val (updatedPlayers, remainingDeck) = logic.dealCards(players, deck)
