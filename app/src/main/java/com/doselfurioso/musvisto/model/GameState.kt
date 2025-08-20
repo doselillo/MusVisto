@@ -2,7 +2,7 @@ package com.doselfurioso.musvisto.model
 
 // Defines the game phases or "lances".
 enum class GamePhase {
-    PRE_GAME, DEALING, MUS_DECISION, GRANDE, CHICA, PARES, JUEGO, GAME_OVER, SCORING
+    PRE_GAME, DEALING, MUS_DECISION, DISCARD, GRANDE, CHICA, PARES, JUEGO, GAME_OVER, SCORING
 }
 
 data class GameState(

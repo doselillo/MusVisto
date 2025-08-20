@@ -249,42 +249,58 @@ class MusGameLogic @Inject constructor() {
     }
 
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
-        // Ensure the action is valid for the current player
         if (currentState.currentTurnPlayerId != playerId) return currentState
 
         return when (action) {
+            is GameAction.Mus -> handleMus(currentState, playerId)
             is GameAction.NoMus -> handleNoMus(currentState)
             is GameAction.Paso -> handlePaso(currentState, playerId)
-            else -> currentState // Placeholder for other actions
+            else -> currentState
+        }
+    }
+
+    private fun handleMus(currentState: GameState, playerId: String): GameState {
+        val newState = currentState.copy(
+            playersWhoPassed = currentState.playersWhoPassed + playerId
+        )
+
+        // If everyone has said "Mus", we go to the discard phase
+        return if (newState.playersWhoPassed.size == newState.players.size) {
+            newState.copy(
+                gamePhase = GamePhase.DISCARD,
+                // TODO: Implement discard logic and actions
+                availableActions = emptyList(),
+                playersWhoPassed = emptySet()
+            )
+        } else {
+            // If not, it's the next player's turn to decide on Mus
+            setNextPlayerTurn(newState)
         }
     }
 
     private fun handleNoMus(currentState: GameState): GameState {
-        // When someone says "No Mus", the game phase advances to Grande
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
-            // The actions for the Grande lance are now available
             availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago),
-            // We reset the "passed" players for the new lance
             playersWhoPassed = emptySet()
         )
     }
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
-        // Add the current player to the set of players who have passed
         val newPassedSet = currentState.playersWhoPassed + playerId
+        val allPlayersPassed = newPassedSet.size == currentState.players.size
 
-        // If all players have passed, the lance is over. Advance to the next one.
-        if (newPassedSet.size == currentState.players.size) {
-            return advanceToNextPhase(currentState).copy(
-                playersWhoPassed = emptySet() // Reset for the new lance
+        return if (allPlayersPassed) {
+            advanceToNextPhase(currentState).copy(
+                playersWhoPassed = emptySet(),
+                // The turn returns to the "mano" for the new lance
+                currentTurnPlayerId = currentState.players.first().id
+            )
+        } else {
+            setNextPlayerTurn(currentState).copy(
+                playersWhoPassed = newPassedSet
             )
         }
-
-        // If not everyone has passed, just advance the turn to the next player.
-        return setNextPlayerTurn(currentState).copy(
-            playersWhoPassed = newPassedSet
-        )
     }
 
     private fun advanceToNextPhase(currentState: GameState): GameState {
