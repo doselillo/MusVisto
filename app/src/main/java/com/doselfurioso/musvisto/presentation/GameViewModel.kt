@@ -34,52 +34,30 @@ class GameViewModel @Inject constructor(
     }
 
     fun onAction(action: GameAction, playerId: String) {
-        val currentState = _gameState.value
-
-        // Handle flow control actions directly
-        if (action is GameAction.Continue || action is GameAction.NewGame) {
-            startNewGame(currentState)
-            return
-        }
-
-        // Prevent actions during non-playable phases
-        if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
-
-        // Process the game action to get the next state
-        var newState = gameLogic.processAction(currentState, action, playerId)
-
-        // After ANY action, check if the round is over
-        if (newState.gamePhase == GamePhase.ROUND_OVER) {
-            // If the round ended, score it immediately and set up for the next step
-            Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")
-
-            val scoredState = gameLogic.scoreRound(newState)
-            Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
-
-            val scoreToWin = 40
-            val teamAScore = scoredState.score["teamA"] ?: 0
-            val teamBScore = scoredState.score["teamB"] ?: 0
-            val winner = if (teamAScore >= scoreToWin) "teamA" else if (teamBScore >= scoreToWin) "teamB" else null
-
-            newState = if (winner != null) {
-                scoredState.copy(
-                    gamePhase = GamePhase.GAME_OVER,
-                    winningTeam = winner,
-                    availableActions = listOf(GameAction.NewGame)
-                )
-            } else {
-                scoredState.copy(
-                    gamePhase = GamePhase.ROUND_OVER,
-                    availableActions = listOf(GameAction.Continue)
-                )
+        // --- LÓGICA DE FLUJO CORREGIDA ---
+        when (action) {
+            is GameAction.Continue -> {
+                startNewGame(_gameState.value) // Continúa la partida, mantiene el marcador
+                return
             }
-        }
+            is GameAction.NewGame -> {
+                startNewGame(null) // Reinicia la partida, resetea el marcador
+                return
+            }
+            else -> {
+                // Procesa una acción de juego normal
+                val currentState = _gameState.value
+                if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
 
-        _gameState.value = newState
+                val newState = gameLogic.processAction(currentState, action, playerId)
 
-        // If the game is still going, check for AI turn
-        if (newState.gamePhase != GamePhase.ROUND_OVER && newState.gamePhase != GamePhase.GAME_OVER) {
-            handleAiTurn()
+                if (newState.gamePhase == GamePhase.ROUND_OVER) {
+                    processEndOfRound(newState)
+                } else {
+                    _gameState.value = newState
+                    handleAiTurn()
+                }
+            }
         }
     }
 
@@ -170,87 +148,50 @@ class GameViewModel @Inject constructor(
         }
     }
 
-   /* private fun handleAiTurn() {
-        viewModelScope.launch {
-            // This small delay prevents state update races
-            delay(50)
-            val currentState = _gameState.value
-            val currentPlayer =
-                currentState.players.find { it.id == currentState.currentTurnPlayerId }
-
-            if (currentPlayer != null && currentPlayer.isAi) {
-                val aiAction = aiLogic.makeDecision(currentState, currentPlayer)
-
-                if (aiAction is GameAction.ConfirmDiscard) {
-                    val cardToDiscard = currentPlayer.hand.firstOrNull()
-                    if (cardToDiscard != null) {
-                        _gameState.value =
-                            currentState.copy(selectedCardsForDiscard = setOf(cardToDiscard))
-                    }
-                }
-
-                Log.d(
-                    "MusVistoTest",
-                    "AI ${currentPlayer.name} performs action: ${aiAction.displayText}"
-                )
-
-                delay(1500)
-                val stateBeforeAiAction = _gameState.value
-                val newState = gameLogic.processAction(
-                    stateBeforeAiAction, aiAction,
-                    currentPlayer.id
-                )
-
-                if (newState.gamePhase == GamePhase.ROUND_OVER) {
-                    processEndOfRound(newState)
-                } else {
-                    _gameState.value = newState
-                    handleAiTurn()
-                }
-            }
-        }
-    }*/
-
     private fun startNewGame(previousState: GameState?) {
-        // --- DEBUG LOGS START ---
-        Log.d("MusVistoDebug", "--- Calling startNewGame ---")
-        if (previousState != null) {
-            Log.d("MusVistoDebug", "Previous round's mano was: ${previousState.manoPlayerId}")
-        } else {
-            Log.d("MusVistoDebug", "This is the very first round.")
-        }
-        // --- DEBUG LOGS END ---
         val score = previousState?.score ?: mapOf("teamA" to 0, "teamB" to 0)
 
-        val players = previousState?.players ?: listOf(
+        // El orden de los jugadores en la lista es FIJO y representa su asiento en la mesa
+        val players = previousState?.players?.map { it.copy(hand = emptyList()) } ?: listOf(
             Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
             Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
             Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
             Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
         )
 
+        // Se calcula la nueva "mano" rotando desde la anterior
         val newManoId = previousState?.let {
-            val lastManoIndex = it.players.indexOfFirst { p -> p.id == it.manoPlayerId }.takeIf { it != -1 } ?: 0
+            val lastManoIndex = it.players.indexOfFirst { p -> p.id == it.manoPlayerId }.takeIf { it != -1 } ?: -1
             val nextManoIndex = (lastManoIndex + 1) % players.size
             players[nextManoIndex].id
-        } ?: players.first().id
+        } ?: players.first().id // Para la primera partida, la mano es p1
 
-        // --- DEBUG LOGS START ---
-        Log.d("MusVistoDebug", "The new calculated mano is: $newManoId")
-        // --- DEBUG LOGS END ---
+        Log.d("MusVistoDebug", "New round starting. Mano is: $newManoId")
 
         val initialDeck = gameLogic.createDeck()
         val shuffledDeck = gameLogic.shuffleDeck(initialDeck)
+
+        // Se reparten las cartas
         val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
 
+        // Se crea el nuevo estado del juego
         _gameState.value = GameState(
             players = updatedPlayers,
             deck = remainingDeck,
-            score = score, // Use the carried-over score
+            score = score,
+            manoPlayerId = newManoId,
+            currentTurnPlayerId = newManoId, // <-- La ronda EMPIEZA con la mano
             gamePhase = GamePhase.MUS_DECISION,
-            currentTurnPlayerId = updatedPlayers.first().id, // The new "mano" is the first in the rotated list
             availableActions = listOf(GameAction.Mus, GameAction.NoMus),
-            manoPlayerId = newManoId
+            lastAction = null,
+            playersWhoPassed = emptySet(),
+            currentBet = null,
+            agreedBets = emptyMap(),
+            isPuntoPhase = false,
+            discardCounts = emptyMap(),
+            selectedCardsForDiscard = emptySet()
         )
+        // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
+        handleAiTurn()
     }
 }
