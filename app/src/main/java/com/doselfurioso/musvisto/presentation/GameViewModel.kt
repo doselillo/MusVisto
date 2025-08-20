@@ -29,6 +29,7 @@ class GameViewModel @Inject constructor(
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
     // We removed the hardcoded humanPlayerId
+    val humanPlayerId = "p1"
 
     init {
         startNewGame()
@@ -77,32 +78,41 @@ class GameViewModel @Inject constructor(
 
     private fun handleAiTurn() {
         val currentState = _gameState.value
-        if (currentState.gamePhase == GamePhase.SCORING) return // Don't act if scoring
         val currentPlayerId = currentState.currentTurnPlayerId
         val currentPlayer = currentState.players.find { it.id == currentPlayerId }
 
-        // If the current player is an AI, it takes its turn
+        // First, check if it's an AI's turn
         if (currentPlayer != null && currentPlayer.isAi) {
-            // TODO: In the future, we will call our AILogic here.
-            // For now, let's make the AI always say "Mus" or "Paso"
-            val aiAction = if (currentState.gamePhase == GamePhase.MUS_DECISION) {
-                GameAction.Mus
-            } else {
-                GameAction.Paso
+
+            // THE KEY CHANGE IS HERE: The AI now chooses the correct action based on the phase
+            val aiAction = when (currentState.gamePhase) {
+                GamePhase.MUS_DECISION -> GameAction.Mus
+                GamePhase.DISCARD -> {
+                    // For now, the AI will always discard one card (we'll make this smarter later)
+                    // We need to set the selected card in the state before calling the action
+                    val cardToDiscard = currentPlayer.hand.first()
+                    _gameState.value = currentState.copy(selectedCardsForDiscard = setOf(cardToDiscard))
+                    GameAction.ConfirmDiscard
+                }
+                else -> GameAction.Paso // For Grande, Chica, etc., the AI will just pass for now
             }
 
             Log.d("MusVistoTest", "AI ${currentPlayer.name} performs action: ${aiAction.displayText}")
 
-            // We need a small delay to make it feel like the AI is "thinking"
             viewModelScope.launch {
                 delay(1500) // 1.5 second delay
-                val newState = logic.processAction(currentState, aiAction,
+
+                // We need to get the most current state, as it might have been modified
+                val stateBeforeAiAction = _gameState.value
+                val newState = logic.processAction(stateBeforeAiAction, aiAction,
                     currentPlayerId.toString()
                 )
                 _gameState.value = newState
 
                 // Check again in case the next player is also an AI
-                handleAiTurn()
+                if (newState.gamePhase != GamePhase.SCORING) {
+                    handleAiTurn()
+                }
             }
         }
     }
@@ -111,7 +121,7 @@ class GameViewModel @Inject constructor(
         val players = listOf(
             Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
             Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamB"),
-            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra, isAi = false, team = "teamA"), // Let's make player 3 human for now
+            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamA"), // Let's make player 3 human for now
             Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true,  team = "teamB")
         )
         val deck = logic.shuffleDeck(logic.createDeck())

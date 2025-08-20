@@ -74,6 +74,7 @@ fun GameCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     gamePhase: GamePhase,
+    isMyTurn: Boolean,
     modifier: Modifier = Modifier
 ) {
 
@@ -117,6 +118,7 @@ fun PlayerHandArc(
     cards: List<CardData>,
     selectedCards: Set<CardData>,
     gamePhase: GamePhase,
+    isMyTurn: Boolean,
     onCardClick: (CardData) -> Unit
 ) {
     // Usamos un Box normal como contenedor. No necesita altura fija.
@@ -140,6 +142,7 @@ fun PlayerHandArc(
                 card = card,
                 isSelected = isSelected,
                 gamePhase = gamePhase,
+                isMyTurn = isMyTurn,
                 onClick = { onCardClick(card) },
                 // Aplicamos todas las transformaciones en una única capa gráfica
                 modifier = Modifier
@@ -213,6 +216,7 @@ fun GameScreen(
             val rivalRight = players[3]
 
             // --- JUGADOR PRINCIPAL (AVATAR + MANO AGRUPADOS) ---
+            val sortedHand = player.hand.sortedByDescending { it.rank.value }
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -226,9 +230,10 @@ fun GameScreen(
                     modifier = Modifier.padding(bottom = 20.dp) // Lift avatar slightly
                 )
                 PlayerHandArc(
-                    cards = player.hand,
+                    cards = sortedHand,
                     selectedCards = gameState.selectedCardsForDiscard,
                     gamePhase = gameState.gamePhase,
+                    isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId,
                     // When a card is clicked, the UI tells the ViewModel about it
                     onCardClick = { card -> gameViewModel.onCardSelected(card) }
                 )
@@ -303,7 +308,9 @@ fun GameScreen(
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 240.dp, end = 16.dp),
                 // The buttons are enabled only if the current player is human
-                selectedCardCount = gameState.selectedCardsForDiscard.size
+                selectedCardCount = gameState.selectedCardsForDiscard.size,
+                isEnabled = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
+
             )
         }
     }
@@ -315,7 +322,8 @@ fun ActionButtons(
     actions: List<GameAction>,
     onActionClick: (GameAction) -> Unit,
     modifier: Modifier = Modifier,
-    selectedCardCount: Int
+    selectedCardCount: Int,
+    isEnabled: Boolean
 ) {
     Column(
         modifier = modifier,
@@ -334,8 +342,10 @@ fun ActionButtons(
             }
 
             val isButtonEnabled = when (action) {
-                is GameAction.ConfirmDiscard -> selectedCardCount > 0 // Only enabled if cards are selected
-                else -> true // All other buttons are always enabled
+                // The discard button is enabled only if it's the player's turn AND cards are selected
+                is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
+                // All other buttons are enabled only if it's the player's turn
+                else -> isEnabled
             }
 
             Button(

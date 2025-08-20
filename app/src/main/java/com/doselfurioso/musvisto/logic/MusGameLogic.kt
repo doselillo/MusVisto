@@ -446,7 +446,7 @@ class MusGameLogic @Inject constructor() {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
 
-        // Do nothing if no cards are selected
+        // In Mus, you must discard at least one card
         if (cardsToDiscard.isEmpty()) return currentState
 
         val newHand = player.hand.filterNot { it in cardsToDiscard }
@@ -458,11 +458,29 @@ class MusGameLogic @Inject constructor() {
         val updatedPlayer = player.copy(hand = newHand + newCards)
         val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
 
-        // After this player discards, pass the turn to the next
+        val newPassedSet = currentState.playersWhoPassed + playerId
+
+        // Check if everyone has discarded
+        if (newPassedSet.size == updatedPlayers.size) {
+            // If so, the discard phase is over. Go back to Mus Decision with the new hands.
+            Log.d("MusVistoTest", "All players have discarded. Returning to Mus decision.")
+            return currentState.copy(
+                players = updatedPlayers,
+                deck = remainingDeck,
+                gamePhase = GamePhase.MUS_DECISION,
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+                selectedCardsForDiscard = emptySet(),
+                playersWhoPassed = emptySet(),
+                currentTurnPlayerId = updatedPlayers.first().id // Turn returns to "mano"
+            )
+        }
+
+        // If not, pass the turn to the next player to discard
         return setNextPlayerTurn(currentState).copy(
             players = updatedPlayers,
             deck = remainingDeck,
-            selectedCardsForDiscard = emptySet() // Reset selection
+            selectedCardsForDiscard = emptySet(),
+            playersWhoPassed = newPassedSet
         )
     }
 
@@ -559,6 +577,7 @@ class MusGameLogic @Inject constructor() {
 
         return currentState.copy(score = finalScore)
     }
+
 
 
 }
