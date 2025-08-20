@@ -73,6 +73,7 @@ fun GameCard(
     card: CardData,
     isSelected: Boolean,
     onClick: () -> Unit,
+    gamePhase: GamePhase,
     modifier: Modifier = Modifier
 ) {
 
@@ -84,10 +85,11 @@ fun GameCard(
             .aspectRatio(0.7f)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer{clip = if (isSelected) false else true
-            translationY = if (isSelected) -20f else 0f}
-            .clickable { onClick() }
-
-
+            translationY = if (isSelected) -80f else 0f}
+            .clickable(
+                enabled = (gamePhase == GamePhase.DISCARD), // Only enabled in discard phase
+                onClick = { onClick() }
+            )
     )
 }
 
@@ -114,6 +116,7 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
 fun PlayerHandArc(
     cards: List<CardData>,
     selectedCards: Set<CardData>,
+    gamePhase: GamePhase,
     onCardClick: (CardData) -> Unit
 ) {
     // Usamos un Box normal como contenedor. No necesita altura fija.
@@ -136,6 +139,7 @@ fun PlayerHandArc(
             GameCard(
                 card = card,
                 isSelected = isSelected,
+                gamePhase = gamePhase,
                 onClick = { onCardClick(card) },
                 // Aplicamos todas las transformaciones en una única capa gráfica
                 modifier = Modifier
@@ -224,6 +228,7 @@ fun GameScreen(
                 PlayerHandArc(
                     cards = player.hand,
                     selectedCards = gameState.selectedCardsForDiscard,
+                    gamePhase = gameState.gamePhase,
                     // When a card is clicked, the UI tells the ViewModel about it
                     onCardClick = { card -> gameViewModel.onCardSelected(card) }
                 )
@@ -243,9 +248,6 @@ fun GameScreen(
                 )
                 PartnerHand()
             }
-
-            // --- RIVAL IZQUIERDO (AVATAR + MANO SEPARADOS PERO REPOSICIONADOS) ---
-
 
 
             // Rival Left Area (Center Start)
@@ -301,7 +303,7 @@ fun GameScreen(
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 240.dp, end = 16.dp),
                 // The buttons are enabled only if the current player is human
-                isEnabled = currentPlayer != null && !currentPlayer.isAi
+                selectedCardCount = gameState.selectedCardsForDiscard.size
             )
         }
     }
@@ -313,7 +315,7 @@ fun ActionButtons(
     actions: List<GameAction>,
     onActionClick: (GameAction) -> Unit,
     modifier: Modifier = Modifier,
-    isEnabled: Boolean
+    selectedCardCount: Int
 ) {
     Column(
         modifier = modifier,
@@ -331,10 +333,15 @@ fun ActionButtons(
                 ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Purple
             }
 
+            val isButtonEnabled = when (action) {
+                is GameAction.ConfirmDiscard -> selectedCardCount > 0 // Only enabled if cards are selected
+                else -> true // All other buttons are always enabled
+            }
+
             Button(
                 onClick = { onActionClick(action) },
                 colors = buttonColors, // Apply the determined colors
-                enabled = isEnabled,
+                enabled = isButtonEnabled,
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
                 //Add the icon to the button

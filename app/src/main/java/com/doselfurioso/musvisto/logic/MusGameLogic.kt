@@ -260,8 +260,7 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Quiero -> handleQuiero(currentState)
             is GameAction.NoQuiero -> handleNoQuiero(currentState)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
-            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId)
-
+            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId) // <-- AÑADE ESTO
             else -> currentState
         }
     }
@@ -349,7 +348,8 @@ class MusGameLogic @Inject constructor() {
             newState.copy(
                 gamePhase = GamePhase.DISCARD,
                 availableActions = listOf(GameAction.ConfirmDiscard),
-                playersWhoPassed = emptySet()
+                playersWhoPassed = emptySet(), // Reset for discard confirmation
+                currentTurnPlayerId = newState.players.first().id // Turn returns to "mano"
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
@@ -446,26 +446,23 @@ class MusGameLogic @Inject constructor() {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
 
-        // Remove discarded cards from player's hand
+        // Do nothing if no cards are selected
+        if (cardsToDiscard.isEmpty()) return currentState
+
         val newHand = player.hand.filterNot { it in cardsToDiscard }
 
-        // Take new cards from the top of the deck
         val cardsNeeded = cardsToDiscard.size
         val newCards = currentState.deck.take(cardsNeeded)
         val remainingDeck = currentState.deck.drop(cardsNeeded)
 
-        // Update the player with their new hand
         val updatedPlayer = player.copy(hand = newHand + newCards)
         val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
 
-        // After discarding, the Mus decision round starts again
-        return currentState.copy(
+        // After this player discards, pass the turn to the next
+        return setNextPlayerTurn(currentState).copy(
             players = updatedPlayers,
             deck = remainingDeck,
-            gamePhase = GamePhase.MUS_DECISION,
-            availableActions = listOf(GameAction.Mus, GameAction.NoMus),
-            selectedCardsForDiscard = emptySet(), // Reset selection
-            playersWhoPassed = emptySet() // Reset passed players for the new round
+            selectedCardsForDiscard = emptySet() // Reset selection
         )
     }
 
