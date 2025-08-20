@@ -294,7 +294,10 @@ class MusGameLogic @Inject constructor() {
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet(),
-            discardCounts = emptyMap()
+            discardCounts = emptyMap(),
+            currentBet = null,
+            currentTurnPlayerId = currentState.manoPlayerId
+
         )
     }
 
