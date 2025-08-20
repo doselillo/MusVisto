@@ -452,7 +452,6 @@ fun ActionButtons(
     val responseActions = actions.filter { it is GameAction.Quiero || it is GameAction.NoQuiero }
     val primaryActions = actions.filter { it !in responseActions }
 
-
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -461,10 +460,16 @@ fun ActionButtons(
         if (responseActions.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 responseActions.forEach { action ->
+                    // --- AÑADIMOS LA LÓGICA DE HABILITACIÓN AQUÍ ---
+                    val isButtonEnabled = when (action) {
+                        is GameAction.Continue, is GameAction.NewGame -> true
+                        is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
+                        else -> isEnabled
+                    }
                     GameActionButton(
                         action = action,
                         onClick = { onActionClick(action, currentPlayerId) },
-                        isEnabled = isEnabled
+                        isEnabled = isButtonEnabled // Usamos la nueva lógica
                     )
                 }
             }
@@ -472,14 +477,16 @@ fun ActionButtons(
         if (primaryActions.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 primaryActions.forEach { action ->
+                    // --- REEMPLAZAMOS LA LÓGICA DE HABILITACIÓN AQUÍ ---
                     val isButtonEnabled = when (action) {
+                        is GameAction.Continue, is GameAction.NewGame -> true
                         is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
                         else -> isEnabled
                     }
                     GameActionButton(
                         action = action,
                         onClick = { onActionClick(action, currentPlayerId) },
-                        isEnabled = isButtonEnabled
+                        isEnabled = isButtonEnabled // Usamos la nueva lógica
                     )
                 }
             }

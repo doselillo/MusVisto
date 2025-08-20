@@ -242,7 +242,7 @@ class MusGameLogic @Inject constructor() {
             currentBet = null,
             playersWhoPassed = emptySet(),
             agreedBets = newAgreedBets,
-            currentTurnPlayerId = currentState.players.first().id
+            currentTurnPlayerId = currentState.manoPlayerId
         )
     }
 
@@ -263,7 +263,7 @@ class MusGameLogic @Inject constructor() {
             currentBet = null,
             playersWhoPassed = emptySet(),
             score = newScore,
-            currentTurnPlayerId = currentState.players.first().id
+            currentTurnPlayerId = currentState.manoPlayerId
         )
     }
 
@@ -301,7 +301,7 @@ class MusGameLogic @Inject constructor() {
         if (newPassedSet.size == currentState.players.size) {
             return advanceToNextPhase(currentState).copy(
                 playersWhoPassed = emptySet(),
-                currentTurnPlayerId = currentState.players.first().id
+                currentTurnPlayerId =  currentState.manoPlayerId
             )
         }
         return setNextPlayerTurn(currentState).copy(
@@ -328,13 +328,18 @@ class MusGameLogic @Inject constructor() {
         }
 
         var updatedState = currentState.copy(gamePhase = nextPhase)
+
         if (nextPhase == GamePhase.ROUND_OVER) {
-            // LA CORRECCIÓN CLAVE ESTÁ AQUÍ
-            return updatedState.copy(
-                availableActions = emptyList(),
-                manoPlayerId = currentState.manoPlayerId // Aseguramos que se conserva la mano
-            )
+            return updatedState.copy(availableActions = emptyList())
         }
+
+        // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
+        // At the start of ANY new betting lance, the turn ALWAYS returns to the "mano".
+        updatedState = updatedState.copy(
+            currentTurnPlayerId = updatedState.manoPlayerId,
+            playersWhoPassed = emptySet(),
+            currentBet = null
+        )
 
         // Comprobación previa de Pares
         if (nextPhase == GamePhase.PARES) {
