@@ -5,6 +5,10 @@ enum class GamePhase {
     PRE_GAME, DEALING, MUS_DECISION, DISCARD, GRANDE, CHICA, PARES, JUEGO, ROUND_OVER, GAME_OVER
 }
 
+enum class GameEvent {
+    DISCARD_PILE_SHUFFLED
+}
+
 data class GameState(
     val players: List<Player> = emptyList(),
     val deck: List<Card> = emptyList(),
@@ -22,6 +26,6 @@ data class GameState(
     val selectedCardsForDiscard: Set<Card> = emptySet(),
     val winningTeam: String? = null,
     val manoPlayerId: String = "",
-    val lastAction: LastActionInfo? = null
-
+    val lastAction: LastActionInfo? = null,
+    val event: GameEvent? = null
 )

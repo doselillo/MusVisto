@@ -49,6 +49,7 @@ import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
+import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionInfo
@@ -395,6 +396,10 @@ fun GameScreen(
                     onNewGameClick = { gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId) }
                 )
             }
+
+            Box(modifier = Modifier.align(Alignment.Center)) {
+                GameEventNotification(event = gameState.event)
+            }
             // --- NEW: DEBUG BUTTON ---
             IconButton(
                 onClick = { gameViewModel.onToggleDebugMode() },
@@ -657,3 +662,40 @@ fun GameOverOverlay(winner: String, onNewGameClick: () -> Unit) {
     }
 }
 
+@Composable
+fun GameEventNotification(event: GameEvent?) {
+    // This state will be true only for a moment when a new event arrives
+    var visible by remember(event) { mutableStateOf(event != null) }
+
+    // After 3 seconds, we hide the notification
+    LaunchedEffect(event) {
+        if (event != null) {
+            delay(3000)
+            visible = false
+        }
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
+    ) {
+        val text = when (event) {
+            GameEvent.DISCARD_PILE_SHUFFLED -> "¡No quedan cartas! Barajando descartes..."
+            null -> ""
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)), // Morado
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+    }
+}

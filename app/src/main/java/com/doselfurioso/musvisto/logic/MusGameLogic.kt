@@ -423,42 +423,58 @@ class MusGameLogic @Inject constructor() {
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
-        if (cardsToDiscard.isEmpty() && currentState.gamePhase == GamePhase.DISCARD) return currentState
+        var event: GameEvent? = null
+
+        // Si un jugador humano pulsa "Descartar" sin seleccionar cartas, no hacemos nada.
+        if (cardsToDiscard.isEmpty() && !player.isAi) return currentState
+
+        var deck = currentState.deck
+        var discardPile = currentState.discardPile
+        val cardsNeeded = cardsToDiscard.size
+        var newCards: List<Card>
+
+        Log.d("MusVistoDebug", "--- Discarding for ${player.name} ---")
+        Log.d("MusVistoDebug", "Deck has ${deck.size} cards. Needs $cardsNeeded.")
+
+        // --- LÓGICA CORREGIDA Y SIMPLIFICADA ---
+        if (deck.size < cardsNeeded) {
+            Log.d("MusVistoTest", "Deck empty! Shuffling discard pile of ${discardPile.size} cards.")
+            event = GameEvent.DISCARD_PILE_SHUFFLED
+            val fromOldDeck = deck
+
+            // El nuevo mazo es la pila de descartes barajada.
+            deck = discardPile.shuffled()
+            // La pila de descartes se vacía.
+            discardPile = emptyList()
+
+            val neededFromNewDeck = cardsNeeded - fromOldDeck.size
+            newCards = fromOldDeck + deck.take(neededFromNewDeck)
+            deck = deck.drop(neededFromNewDeck) // Actualizamos el nuevo mazo
+        } else {
+            newCards = deck.take(cardsNeeded)
+            deck = deck.drop(cardsNeeded)
+        }
+
+        // Las cartas que acaba de tirar el jugador se añaden a la nueva pila de descartes.
+        discardPile += cardsToDiscard
+
+        val newHand = player.hand.filterNot { it in cardsToDiscard } + newCards
+        if (newHand.size != 4) {
+            Log.e("MusVistoDebug", "CRITICAL ERROR: Player ${player.name} ended up with ${newHand.size} cards!")
+        }
+
+        val updatedPlayer = player.copy(hand = newHand)
+        val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
 
         val newPassedSet = currentState.playersWhoPassed + playerId
         val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
 
-        var currentDeck = currentState.deck
-        var currentDiscardPile = currentState.discardPile + cardsToDiscard
-        val cardsNeeded = cardsToDiscard.size
-        var newCards: List<Card>
-
-        if (currentDeck.size < cardsNeeded) {
-            Log.d("MusVistoTest", "Deck empty! Shuffling discard pile.")
-            val remainingFromDeck = currentDeck
-            val shuffledDiscards = (currentDiscardPile - cardsToDiscard).shuffled()
-            currentDeck = shuffledDiscards
-            currentDiscardPile = emptyList()
-
-            val neededFromNewDeck = cardsNeeded - remainingFromDeck.size
-            newCards = remainingFromDeck + currentDeck.take(neededFromNewDeck)
-            currentDeck = currentDeck.drop(neededFromNewDeck)
-        } else {
-            newCards = currentDeck.take(cardsNeeded)
-            currentDeck = currentDeck.drop(cardsNeeded)
-        }
-
-        val newHand = player.hand.filterNot { it in cardsToDiscard } + newCards
-        val updatedPlayer = player.copy(hand = newHand)
-        val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
-
-        // --- LA CORRECCIÓN CLAVE ---
-        // Comprobamos si el jugador actual es el ÚLTIMO que faltaba por descartar
+        // Comprobamos si todos han descartado para romper el bucle
         if (newPassedSet.size == updatedPlayers.size) {
             return currentState.copy(
                 players = updatedPlayers,
-                deck = currentDeck,
-                discardPile = currentDiscardPile,
+                deck = deck,
+                discardPile = discardPile,
                 gamePhase = GamePhase.MUS_DECISION,
                 availableActions = listOf(GameAction.Mus, GameAction.NoMus),
                 selectedCardsForDiscard = emptySet(),
@@ -468,14 +484,16 @@ class MusGameLogic @Inject constructor() {
             )
         }
 
-        // Si no, pasa el turno al siguiente jugador para que descarte
+        // Si no, pasa el turno al siguiente jugador
         return setNextPlayerTurn(currentState).copy(
             players = updatedPlayers,
-            deck = currentDeck,
-            discardPile = currentDiscardPile,
+            deck = deck,
+            discardPile = discardPile,
             selectedCardsForDiscard = emptySet(),
             playersWhoPassed = newPassedSet,
-            discardCounts = newDiscardCounts
+            discardCounts = newDiscardCounts,
+            event = event
+
         )
     }
 

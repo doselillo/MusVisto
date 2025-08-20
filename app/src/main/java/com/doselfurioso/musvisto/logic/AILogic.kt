@@ -70,7 +70,8 @@ class AILogic @Inject constructor(// 1. INJECT MusGameLogic HERE
 
     private fun decideMus(strength: HandStrength): GameAction {
         // Si tiene buen Juego o buenos Pares, corta el Mus. Si no, pide Mus.
-        return if (strength.juego > 100 || strength.pares > 100) {
+        ///TODO reset numbers to 70 and 75
+        return if (strength.juego > 1000 || strength.pares > 1000) {
             GameAction.NoMus
         } else {
             GameAction.Mus

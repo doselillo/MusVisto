@@ -34,7 +34,7 @@ class GameViewModel @Inject constructor(
     }
 
     fun onAction(action: GameAction, playerId: String) {
-        // --- LÓGICA DE FLUJO CORREGIDA ---
+        val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
                 startNewGame(_gameState.value) // Continúa la partida, mantiene el marcador
@@ -46,7 +46,7 @@ class GameViewModel @Inject constructor(
             }
             else -> {
                 // Procesa una acción de juego normal
-                val currentState = _gameState.value
+
                 if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
 
                 val newState = gameLogic.processAction(currentState, action, playerId)
@@ -58,6 +58,24 @@ class GameViewModel @Inject constructor(
                     handleAiTurn()
                 }
             }
+        }
+        val newState = gameLogic.processAction(currentState, action, playerId)
+
+        updateStateAndCheckAiTurn(newState)
+    }
+
+    private fun handleGameEvent(event: GameEvent?) {
+        if (event == null) return
+
+        // Launch a separate coroutine to manage the event's lifecycle
+        viewModelScope.launch {
+            Log.d("MusVistoDebug", "Event received: $event. Displaying for 3 seconds.")
+            // The UI will show the event because it's in the state.
+            // We wait for its duration.
+            delay(3000)
+            // After the delay, we clear the event from the state.
+            _gameState.value = _gameState.value.copy(event = null)
+            Log.d("MusVistoDebug", "Event cleared.")
         }
     }
 
@@ -111,7 +129,7 @@ class GameViewModel @Inject constructor(
 
     private fun handleAiTurn() {
         viewModelScope.launch {
-            delay(100)
+            delay(200)
             val currentState = _gameState.value
             val currentPlayer = currentState.players.find { it.id == currentState.currentTurnPlayerId }
 
@@ -135,22 +153,25 @@ class GameViewModel @Inject constructor(
                 val stateBeforeAiAction = _gameState.value
                 val newState = gameLogic.processAction(stateBeforeAiAction, aiAction, currentPlayer.id)
 
-                _gameState.value = newState
-
-                if (newState.gamePhase == GamePhase.ROUND_OVER) {
-                    processEndOfRound(newState)
-                    return@launch
-                }
-                if (newState.gamePhase == GamePhase.GAME_OVER) {
-                    return@launch
-                }
-
-                val nextPlayerIsAi = newState.players.find { it.id == newState.currentTurnPlayerId }?.isAi ?: false
-                if (nextPlayerIsAi) {
-                    Log.d("MusVistoDebug", "Next player is also an AI, running handleAiTurn again...")
-                    handleAiTurn()
+                updateStateAndCheckAiTurn(newState)
                 }
             }
+        }
+    
+    private fun updateStateAndCheckAiTurn(newState: GameState) {
+        // Primero gestionamos el evento si lo hay
+        handleGameEvent(newState.event)
+
+        // "Protegemos" el evento para que no se borre
+        val finalState = newState.copy(event = newState.event ?: _gameState.value.event)
+        _gameState.value = finalState
+
+        // Comprobamos si la ronda ha terminado
+        if (finalState.gamePhase == GamePhase.ROUND_OVER) {
+            processEndOfRound(finalState)
+        } else {
+            // Si no, comprobamos si el siguiente jugador es una IA
+            handleAiTurn()
         }
     }
 
