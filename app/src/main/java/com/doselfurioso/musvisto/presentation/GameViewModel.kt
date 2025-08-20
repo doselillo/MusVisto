@@ -32,11 +32,20 @@ class GameViewModel @Inject constructor(
         startNewGame()
     }
 
-    // NEW: Function to handle user actions from the UI
     fun onAction(action: GameAction) {
-        Log.d("MusVistoTest", "Action received: ${action.displayText}")
-        // For now, we just log the action.
-        // In the next step, we'll connect this to MusGameLogic to update the state.
+        val currentState = _gameState.value
+        // We need to know which player is performing the action.
+        // In a real online game, this would be the authenticated user.
+        // For now, let's assume it's always the current player's turn.
+        val currentPlayerId = currentState.currentTurnPlayerId ?: return
+
+        Log.d("MusVistoTest", "Player $currentPlayerId performed action: ${action.displayText}")
+
+        // Call our central logic to get the new state
+        val newState = logic.processAction(currentState, action, currentPlayerId)
+
+        // Update the state for the UI to observe
+        _gameState.value = newState
     }
 
     private fun startNewGame() {
@@ -49,15 +58,12 @@ class GameViewModel @Inject constructor(
         val deck = logic.shuffleDeck(logic.createDeck())
         val (updatedPlayers, remainingDeck) = logic.dealCards(players, deck)
 
-        // MODIFIED: We set the initial available actions
         _gameState.value = GameState(
             players = updatedPlayers,
             deck = remainingDeck,
             gamePhase = GamePhase.MUS_DECISION,
-            // When the game starts, the player can either want Mus or not
-            ///TODO descomentar
-            //availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            currentTurnPlayerId = players.first().id, // The first player starts
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
-
     }
 }

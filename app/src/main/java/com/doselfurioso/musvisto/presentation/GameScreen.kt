@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -25,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
 import kotlin.math.cos
 import kotlin.math.sin
@@ -204,17 +207,37 @@ fun GameScreen(
 fun ActionButtons(
     actions: List<GameAction>,
     onActionClick: (GameAction) -> Unit,
-    modifier: Modifier = Modifier // The modifier is now applied directly to the Column
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier, // <-- Apply the modifier here
-        horizontalAlignment = Alignment.End
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        // NEW: Adds 8.dp of space between each button automatically
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         actions.forEach { action ->
+            // In ActionButtons composable
+            val buttonColors = when (action.colorType) {
+                ButtonColorType.NEUTRAL -> ButtonDefaults.buttonColors()
+                ButtonColorType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Green
+                ButtonColorType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Red
+                ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Purple
+            }
+
             Button(
                 onClick = { onActionClick(action) },
-                modifier = Modifier.padding(vertical = 4.dp)
+                colors = buttonColors, // Apply the determined colors
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
+                // NEW: Add the icon to the button
+                if (action.iconResId != null) {
+                    Icon(
+                        painter = painterResource(id = action.iconResId),
+                        contentDescription = null, // The text describes the action
+                        modifier = Modifier.size(ButtonDefaults.IconSize)
+                    )
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing)) // Space between icon and text
+                }
                 Text(text = action.displayText)
             }
         }

@@ -247,4 +247,41 @@ class MusGameLogic @Inject constructor() {
             playersAtPunto.maxByOrNull { it.second }?.first
         }
     }
+    fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
+        // First, ensure the action is valid for the current player and phase
+        if (currentState.currentTurnPlayerId != playerId || !currentState.availableActions.contains(action)) {
+            return currentState // If action is not valid, do nothing
+        }
+
+        return when (action) {
+            is GameAction.Mus, is GameAction.NoMus -> {
+                // Logic for the Mus decision phase will go here.
+                // For now, let's just move to the next phase as a placeholder.
+                val nextState = currentState.copy(
+                    gamePhase = GamePhase.GRANDE,
+                    availableActions = listOf(GameAction.Paso, GameAction.Envido, GameAction.Órdago)
+                )
+                // We need to determine the next player's turn
+                setNextPlayerTurn(nextState)
+            }
+            // We will add cases for other actions (Envido, Quiero, etc.) later
+            else -> currentState
+        }
+    }
+
+    private fun setNextPlayerTurn(currentState: GameState): GameState {
+        val currentPlayerId = currentState.currentTurnPlayerId ?: return currentState
+        val currentPlayerIndex = currentState.players.indexOfFirst { it.id == currentPlayerId }
+
+        if (currentPlayerIndex == -1) return currentState // Player not found
+
+        val nextPlayerIndex = (currentPlayerIndex + 1) % currentState.players.size
+        val nextPlayer = currentState.players[nextPlayerIndex]
+
+        return currentState.copy(
+            currentTurnPlayerId = nextPlayer.id
+            // We would also update availableActions for the next player here
+        )
+    }
+
 }
