@@ -5,7 +5,7 @@ import com.doselfurioso.musvisto.R // Importa tus recursos
 
 // Un enum para definir el tipo de color del botón
 enum class ButtonColorType {
-    NEUTRAL, CONFIRM, DENY, ULTIMATE
+    PASS, BET, CONFIRM, DENY, ULTIMATE
 }
 
 sealed class GameAction(
@@ -18,8 +18,8 @@ sealed class GameAction(
     object NoMus : GameAction("No Mus", ButtonColorType.DENY, R.drawable.ic_stop)
 
     // Betting Actions
-    object Paso : GameAction("Paso", ButtonColorType.NEUTRAL, R.drawable.ic_pass)
-    object Envido : GameAction("Envido", ButtonColorType.NEUTRAL, R.drawable.ic_bet)
+    object Paso : GameAction("Paso", ButtonColorType.PASS, R.drawable.ic_pass)
+    object Envido : GameAction("Envido", ButtonColorType.BET, R.drawable.ic_bet)
     object Quiero : GameAction("Quiero", ButtonColorType.CONFIRM, R.drawable.ic_check)
     object NoQuiero : GameAction("No Quiero", ButtonColorType.DENY, R.drawable.ic_close)
     object Órdago : GameAction("Órdago", ButtonColorType.ULTIMATE, R.drawable.ic_ordago)

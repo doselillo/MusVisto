@@ -269,7 +269,8 @@ fun ActionButtons(
         actions.forEach { action ->
             // In ActionButtons composable
             val buttonColors = when (action.colorType) {
-                ButtonColorType.NEUTRAL -> ButtonDefaults.buttonColors()
+                ButtonColorType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                ButtonColorType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFBE8E00))
                 ButtonColorType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Green
                 ButtonColorType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Red
                 ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Purple
