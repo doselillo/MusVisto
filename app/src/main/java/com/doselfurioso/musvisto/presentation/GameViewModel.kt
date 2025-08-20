@@ -1,8 +1,11 @@
 package com.doselfurioso.musvisto.presentation
 
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import com.doselfurioso.musvisto.logic.MusGameLogic
+import com.doselfurioso.musvisto.model.GameAction
+import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +32,13 @@ class GameViewModel @Inject constructor(
         startNewGame()
     }
 
+    // NEW: Function to handle user actions from the UI
+    fun onAction(action: GameAction) {
+        Log.d("MusVistoTest", "Action received: ${action.displayText}")
+        // For now, we just log the action.
+        // In the next step, we'll connect this to MusGameLogic to update the state.
+    }
+
     private fun startNewGame() {
         val players = listOf(
             Player(id = "p1", name = "Ana"),
@@ -39,9 +49,14 @@ class GameViewModel @Inject constructor(
         val deck = logic.shuffleDeck(logic.createDeck())
         val (updatedPlayers, remainingDeck) = logic.dealCards(players, deck)
 
+        // MODIFIED: We set the initial available actions
         _gameState.value = GameState(
             players = updatedPlayers,
-            deck = remainingDeck
+            deck = remainingDeck,
+            gamePhase = GamePhase.MUS_DECISION,
+            // When the game starts, the player can either want Mus or not
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
+
     }
 }

@@ -1,9 +1,12 @@
 package com.doselfurioso.musvisto.presentation
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,6 +25,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.model.GameAction
+import kotlin.math.cos
+import kotlin.math.sin
 import com.doselfurioso.musvisto.model.Card as CardData
 
 // Custom modifier for the bottom border (no changes here)
@@ -61,42 +67,54 @@ fun GameCard(card: CardData) {
 
 // MODIFIED: Composable for the back of a card without the Surface wrapper
 @Composable
-fun CardBack() {
+fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
     Image(
         painter = painterResource(id = R.drawable.card_back),
         contentDescription = "Card back",
-        modifier = Modifier
+        // Apply the passed-in modifier here, then add our specific ones
+        modifier = modifier
             .height(80.dp)
             .aspectRatio(0.7f)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
             .clip(RoundedCornerShape(4.dp))
+            .bottomBorder(1.dp, Color.Black.copy(alpha = 0.5f))
     )
 }
 
 
 // --- The rest of the file (PlayerHandFanned, OpponentHand, GameScreen) remains the same ---
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun PlayerHandFanned(cards: List<CardData>) {
-    Row(
+fun PlayerHandArc(cards: List<CardData>) {
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.Bottom
+            .height(200.dp), // Give the container a fixed height
+        contentAlignment = Alignment.BottomCenter
     ) {
         val cardCount = cards.size
+        // Parameters to tweak the look of the arc
+        val arcRadius = maxWidth.value * 1.5f
+        val angleBetweenCards = 5.0f
+
+        val totalAngle = (cardCount - 1) * angleBetweenCards
+        val startAngle = -totalAngle / 2f
+
         cards.forEachIndexed { index, card ->
-            val rotation = (index - cardCount / 2f) * 8f
-            val offsetY = (kotlin.math.abs(index - cardCount / 2f) * -12f).dp
-            val translationX = (index - cardCount / 2f) * 40f
+            val angle = startAngle + index * angleBetweenCards
+            val angleRad = Math.toRadians(angle.toDouble())
+
+            // We use trigonometry (sin and cos) to place cards in a perfect circle segment (an arc)
+            val offsetX = (arcRadius * sin(angleRad)).dp
+            val offsetY = (arcRadius * (1 - cos(angleRad))).dp
 
             Box(
                 modifier = Modifier
-                    .offset(y = offsetY)
+                    .align(Alignment.BottomCenter)
+                    .offset(x = offsetX, y = -offsetY) // Move the card to its position on the arc
                     .graphicsLayer {
-                        this.rotationZ = rotation
-                        this.translationX = translationX
+                        rotationZ = angle // Rotate the card to follow the curve
                     }
             ) {
                 GameCard(card = card)
@@ -106,13 +124,26 @@ fun PlayerHandFanned(cards: List<CardData>) {
 }
 
 @Composable
-fun TopOpponentHand() {
+fun PartnerHand() {
     Row { repeat(4) { CardBack() } }
 }
 
 @Composable
-fun SideOpponentHand() {
-    Column { repeat(4) { CardBack() } }
+fun SideOpponentHandStacked(cardCount: Int = 4) {
+    // We use a Box to allow for overlapping children
+    Box {
+        repeat(cardCount) { index ->
+            // We wrap each card in a Box to apply the offset
+            Box(
+                modifier = Modifier
+                    // Apply a vertical offset to each card
+                    .offset(y = (index * 60).dp)
+            ) {
+                // We still apply the rotation to each individual card
+                CardBack(modifier = Modifier.graphicsLayer { rotationZ = 90f })
+            }
+        }
+    }
 }
 
 @Composable
@@ -130,29 +161,61 @@ fun GameScreen(
         if (players.size == 4) {
             val player = players[0]
 
-            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-                PlayerHandFanned(cards = player.hand)
+            Box(modifier = Modifier
+                .padding(bottom = 32.dp)
+                .align(Alignment.BottomCenter)) {
+                PlayerHandArc(cards = player.hand)
             }
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 16.dp)
+                    .padding(top = 32.dp)
             ) {
-                TopOpponentHand()
+                PartnerHand()
             }
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 16.dp)
+                    .padding(start = 16.dp, bottom = 180.dp)
             ) {
-                SideOpponentHand()
+                SideOpponentHandStacked()
             }
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp)
+                    .padding(end = 16.dp, bottom = 180.dp)
             ) {
-                SideOpponentHand()
+                SideOpponentHandStacked()
+            }
+            ActionButtons(
+                actions = gameState.availableActions,
+                onActionClick = { action -> gameViewModel.onAction(action) },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    // Add padding to push the buttons up and away from the edge
+                    .padding(bottom = 180.dp, end = 16.dp)
+            )
+        }
+    }
+}
+
+// NEW: A Composable to display a list of action buttons
+@Composable
+fun ActionButtons(
+    actions: List<GameAction>,
+    onActionClick: (GameAction) -> Unit,
+    modifier: Modifier = Modifier // The modifier is now applied directly to the Column
+) {
+    Column(
+        modifier = modifier, // <-- Apply the modifier here
+        horizontalAlignment = Alignment.End
+    ) {
+        actions.forEach { action ->
+            Button(
+                onClick = { onActionClick(action) },
+                modifier = Modifier.padding(vertical = 4.dp)
+            ) {
+                Text(text = action.displayText)
             }
         }
     }
