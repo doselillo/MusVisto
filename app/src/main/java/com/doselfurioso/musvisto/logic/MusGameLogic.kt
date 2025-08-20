@@ -23,17 +23,18 @@ class MusGameLogic @Inject constructor() {
         return deck.shuffled()
     }
 
-    fun dealCards(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
-        if (players.size != 4) throw IllegalArgumentException("4 players are required.")
+    fun dealCards(players: List<Player>, deck: List<Card>, manoId: String): Pair<List<Player>, List<Card>> {
         var tempDeck = deck
-        val hands = (1..4).map {
+        val orderedPlayers = getTurnOrderedPlayers(players, manoId)
+        val hands = mutableMapOf<String, List<Card>>()
+
+        orderedPlayers.forEach {
             val hand = tempDeck.take(4)
             tempDeck = tempDeck.drop(4)
-            hand
+            hands[it.id] = hand
         }
-        val updatedPlayers = players.mapIndexed { index, player ->
-            player.copy(hand = hands[index])
-        }
+
+        val updatedPlayers = players.map { it.copy(hand = hands[it.id] ?: emptyList()) }
         return Pair(updatedPlayers, tempDeck)
     }
 
@@ -62,27 +63,12 @@ class MusGameLogic @Inject constructor() {
      * It considers the player order ("mano") to break ties.
      * The player who is "mano" (first in the list) wins any ties.
      */
-    fun getGrandeWinner(players: List<Player>): Player? {
-        if (players.isEmpty()) return null
-
-        // We use 'reduce' to compare each player against the current winner.
-        // The first player in the list is the initial winner.
-        return players.reduce { currentWinner, nextPlayer ->
-            val winnerCard = getHighestCard(currentWinner.hand)
-            val nextPlayerCard = getHighestCard(nextPlayer.hand)
-
-            // If the next player has no card, the current winner stays.
-            if (nextPlayerCard == null) return@reduce currentWinner
-            // If the current winner has no card, the next player wins.
-            if (winnerCard == null) return@reduce nextPlayer
-
-            // The core logic: the next player only wins if their card is STRICTLY better.
-            // In case of a tie (value is equal), the 'currentWinner' (who is "mano") keeps the lead.
-            if (nextPlayerCard.rank.value > winnerCard.rank.value) {
-                nextPlayer // The new winner
-            } else {
-                currentWinner // The current winner holds
-            }
+    fun getGrandeWinner(gameState: GameState): Player? {
+        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        return orderedPlayers.reduceOrNull { winner, challenger ->
+            val winnerCard = winner.hand.maxByOrNull { it.rank.value }
+            val challengerCard = challenger.hand.maxByOrNull { it.rank.value }
+            if ((challengerCard?.rank?.value ?: 0) > (winnerCard?.rank?.value ?: 0)) challenger else winner
         }
     }
 
@@ -90,26 +76,12 @@ class MusGameLogic @Inject constructor() {
      * Determines the winner of the "Chica" lance among all players.
      * It considers the player order ("mano") to break ties.
      */
-    fun getChicaWinner(players: List<Player>): Player? {
-        if (players.isEmpty()) return null
-
-        // The logic is the same as Grande, but we use getLowestCard and compare for a smaller value.
-        return players.reduce { currentWinner, nextPlayer ->
-            val winnerCard = getLowestCard(currentWinner.hand)
-            val nextPlayerCard = getLowestCard(nextPlayer.hand)
-
-            // If the next player has no card, the current winner stays.
-            if (nextPlayerCard == null) return@reduce currentWinner
-            // If the current winner has no card, the next player wins.
-            if (winnerCard == null) return@reduce nextPlayer
-
-            // The core logic: the next player only wins if their card is STRICTLY smaller.
-            // In case of a tie, the 'currentWinner' (who is "mano") keeps the lead.
-            if (nextPlayerCard.rank.value < winnerCard.rank.value) {
-                nextPlayer // The new winner
-            } else {
-                currentWinner // The current winner holds
-            }
+    fun getChicaWinner(gameState: GameState): Player? {
+        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        return orderedPlayers.reduceOrNull { winner, challenger ->
+            val winnerCard = winner.hand.minByOrNull { it.rank.value }
+            val challengerCard = challenger.hand.minByOrNull { it.rank.value }
+            if ((challengerCard?.rank?.value ?: 13) < (winnerCard?.rank?.value ?: 13)) challenger else winner
         }
     }
 
@@ -148,55 +120,34 @@ class MusGameLogic @Inject constructor() {
     /**
      * Determines the winner of the "Pares" lance among all players.
      */
-    fun getParesWinner(players: List<Player>): Player? {
-        // First, filter out players who don't have at least Pares.
-        val playersWithPares = players.filter { getHandPares(it.hand).strength > 0 }
+    fun getParesWinner(gameState: GameState): Player? {
+        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playersWithPares = orderedPlayers.map { it to getHandPares(it.hand) }
+            .filter { it.second.strength > 0 }
 
-        // If no one has Pares, there is no winner for this lance.
         if (playersWithPares.isEmpty()) return null
 
-        // Now, find the winner among those who do have Pares.
-        return playersWithPares.reduce { currentWinner, nextPlayer ->
-            val winnerPlay = getHandPares(currentWinner.hand)
-            val nextPlay = getHandPares(nextPlayer.hand)
+        return playersWithPares.reduce { winner, challenger ->
+            val winnerPlay = winner.second
+            val challengerPlay = challenger.second
 
-            // 1. Compare by the STRENGTH of the play first (Duples > Medias > Pares)
-            if (nextPlay.strength > winnerPlay.strength) {
-                return@reduce nextPlayer // The next player has a better type of play
-            }
-            if (winnerPlay.strength > nextPlay.strength) {
-                return@reduce currentWinner // The current winner has a better type of play
-            }
+            if (challengerPlay.strength > winnerPlay.strength) return@reduce challenger
+            if (challengerPlay.strength < winnerPlay.strength) return@reduce winner
 
-            // 2. If strength is equal, compare by the RANK of the cards.
-            // The 'when' statement handles each type of play.
-            val nextPlayerWinsTie = when (winnerPlay) {
+            // Si la fuerza es la misma, compara los rangos
+            val challengerIsBetter = when (winnerPlay) {
                 is ParesPlay.Duples -> {
-                    val nextDuples = nextPlay as ParesPlay.Duples
-                    // First, compare the high pair. If they are equal, compare the low pair.
-                    if (nextDuples.highPair.value > winnerPlay.highPair.value) true
-                    else if (nextDuples.highPair.value == winnerPlay.highPair.value) {
-                        nextDuples.lowPair.value > winnerPlay.lowPair.value
-                    } else false
+                    val c = challengerPlay as ParesPlay.Duples
+                    if (c.highPair.value > winnerPlay.highPair.value) true
+                    else c.highPair.value == winnerPlay.highPair.value && c.lowPair.value > winnerPlay.lowPair.value
                 }
-                is ParesPlay.Medias -> {
-                    val nextMedias = nextPlay as ParesPlay.Medias
-                    nextMedias.rank.value > winnerPlay.rank.value
-                }
-                is ParesPlay.Pares -> {
-                    val nextPares = nextPlay as ParesPlay.Pares
-                    nextPares.rank.value > winnerPlay.rank.value
-                }
-                is ParesPlay.NoPares -> false // Should not happen due to the filter above
+                is ParesPlay.Medias -> (challengerPlay as ParesPlay.Medias).rank.value > winnerPlay.rank.value
+                is ParesPlay.Pares -> (challengerPlay as ParesPlay.Pares).rank.value > winnerPlay.rank.value
+                else -> false
             }
 
-            if (nextPlayerWinsTie) {
-                nextPlayer
-            } else {
-                // 3. If everything is identical, the currentWinner holds (mano wins).
-                currentWinner
-            }
-        }
+            if (challengerIsBetter) challenger else winner
+        }.first
     }
 
     /**
@@ -215,32 +166,23 @@ class MusGameLogic @Inject constructor() {
     /**
      * Determines the winner of the "Juego" or "Punto" lance.
      */
-    fun getJuegoWinner(players: List<Player>): Player? {
-        if (players.isEmpty()) return null
+    fun getJuegoWinner(gameState: GameState): Player? {
+        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playerScores = orderedPlayers.map { it to getHandJuegoValue(it.hand) }
+        val (withJuego, atPunto) = playerScores.partition { it.second >= 31 }
 
-        // Calculate the score for each player just once to be efficient.
-        val playerScores = players.map { player ->
-            player to getHandJuegoValue(player.hand)
-        }
-
-        // Partition players into two groups: those with Juego and those without.
-        val (playersWithJuego, playersAtPunto) = playerScores.partition { it.second >= 31 }
-
-        return if (playersWithJuego.isNotEmpty()) {
-            // --- SCENARIO 1: At least one player has "Juego" ---
-            playersWithJuego.sortedWith(
-                // We need a custom comparator for Juego's special rules.
-                compareByDescending<Pair<Player, Int>> { (_, score) -> score == 31 } // 31 is the best
-                    .thenByDescending { (_, score) -> score == 32 } // 32 is second best
-                    .thenByDescending { (_, score) -> score } // For the rest, higher is better
-            ).firstOrNull()?.first // .first gives us the winning Pair, the second .first gives us the Player from the pair
-
+        val winnerPair = if (withJuego.isNotEmpty()) {
+            withJuego.sortedWith(
+                compareByDescending<Pair<Player, Int>> { (_, score) -> score == 31 }
+                    .thenByDescending { (_, score) -> score == 32 }
+                    .thenByDescending { (_, score) -> score }
+            ).firstOrNull()
         } else {
-            // --- SCENARIO 2: No one has "Juego", so we play for "Punto" ---
-            // The winner is the one with the highest score (closest to 30).
-            playersAtPunto.maxByOrNull { it.second }?.first
+            atPunto.maxByOrNull { it.second }
         }
+        return winnerPair?.first
     }
+
 
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
         if (currentState.currentTurnPlayerId != playerId) return currentState
@@ -385,12 +327,14 @@ class MusGameLogic @Inject constructor() {
             else -> GamePhase.ROUND_OVER
         }
 
-        // Si la siguiente fase es el final de la ronda, no hay acciones.
-        if (nextPhase == GamePhase.ROUND_OVER) {
-            return currentState.copy(gamePhase = nextPhase, availableActions = emptyList())
-        }
-
         var updatedState = currentState.copy(gamePhase = nextPhase)
+        if (nextPhase == GamePhase.ROUND_OVER) {
+            // LA CORRECCIÓN CLAVE ESTÁ AQUÍ
+            return updatedState.copy(
+                availableActions = emptyList(),
+                manoPlayerId = currentState.manoPlayerId // Aseguramos que se conserva la mano
+            )
+        }
 
         // Comprobación previa de Pares
         if (nextPhase == GamePhase.PARES) {
@@ -482,11 +426,12 @@ class MusGameLogic @Inject constructor() {
         }
         return null // Should not happen in a 2v2 game
     }
+
     fun scoreRound(currentState: GameState): GameState {
         var finalScore = currentState.score.toMutableMap()
 
         // 1. Score "Grande"
-        getGrandeWinner(currentState.players)?.let { winner ->
+        getGrandeWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.GRANDE] ?: 0
             if (points > 0) {
                 val currentScore = finalScore[winner.team] ?: 0
@@ -496,7 +441,7 @@ class MusGameLogic @Inject constructor() {
         }
 
         // 2. Score "Chica"
-        getChicaWinner(currentState.players)?.let { winner ->
+        getChicaWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.CHICA] ?: 0
             if (points > 0) {
                 val currentScore = finalScore[winner.team] ?: 0
@@ -506,7 +451,7 @@ class MusGameLogic @Inject constructor() {
         }
 
         // 3. Score "Pares" (Points for having the best pares, plus points for the bet)
-        getParesWinner(currentState.players)?.let { winner ->
+        getParesWinner(gameState = currentState)?.let { winner ->
             // Points for the bet
             val betPoints = currentState.agreedBets[GamePhase.PARES] ?: 0
             if (betPoints > 0) {
@@ -532,7 +477,7 @@ class MusGameLogic @Inject constructor() {
         }
 
         // 4. Score "Juego" (Similar to Pares)
-        getJuegoWinner(currentState.players)?.let { winner ->
+        getJuegoWinner(gameState = currentState)?.let { winner ->
             // Points for the bet
             val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
             if (betPoints > 0) {
@@ -562,9 +507,14 @@ class MusGameLogic @Inject constructor() {
         }
 
 
-        return currentState.copy(score = finalScore)
+        return currentState.copy(score = finalScore,
+            manoPlayerId = currentState.manoPlayerId )
     }
 
-
+    private fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
+        val manoIndex = players.indexOfFirst { it.id == manoId }
+        if (manoIndex == -1) return players
+        return players.drop(manoIndex) + players.take(manoIndex)
+    }
 
 }

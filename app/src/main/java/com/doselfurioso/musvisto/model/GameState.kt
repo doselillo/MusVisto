@@ -20,6 +20,7 @@ data class GameState(
     val discardCounts: Map<String, Int> = emptyMap(),
     val selectedCardsForDiscard: Set<Card> = emptySet(),
     val winningTeam: String? = null,
+    val manoPlayerId: String = "",
     val lastAction: LastActionInfo? = null
 
 )
