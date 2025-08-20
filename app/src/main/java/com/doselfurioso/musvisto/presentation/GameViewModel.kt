@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
+import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
@@ -100,5 +101,16 @@ class GameViewModel @Inject constructor(
             currentTurnPlayerId = players.first().id, // The first player starts
             availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
+    }
+
+    fun onCardSelected(card: Card) {
+        val currentSelection = _gameState.value.selectedCardsForDiscard
+        val newSelection = if (card in currentSelection) {
+            currentSelection - card // If already selected, deselect it
+        } else {
+            currentSelection + card // If not selected, select it
+        }
+        // Update the state with the new selection
+        _gameState.value = _gameState.value.copy(selectedCardsForDiscard = newSelection)
     }
 }

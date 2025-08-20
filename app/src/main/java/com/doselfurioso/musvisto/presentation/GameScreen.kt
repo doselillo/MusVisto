@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.BetInfo
@@ -39,6 +41,7 @@ import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.Player
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 import com.doselfurioso.musvisto.model.Card as CardData
@@ -66,16 +69,25 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
 
 // MODIFIED: Composable for a single card without the Surface wrapper
 @Composable
-fun GameCard(card: CardData) {
+fun GameCard(
+    card: CardData,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+
     Image(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
-        modifier = Modifier
+        modifier = modifier // <-- USAMOS EL MODIFIER QUE RECIBIMOS
             .width(80.dp)
             .aspectRatio(0.7f)
-            .padding(horizontal = 4.dp)
-            .shadow(elevation = 1.dp, shape = RoundedCornerShape(4.dp)) // Add shadow directly
-            .clip(RoundedCornerShape(4.dp)) // Clip the image to have rounded corners
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
+            .graphicsLayer{clip = if (isSelected) false else true
+            translationY = if (isSelected) -20f else 0f}
+            .clickable { onClick() }
+
+
     )
 }
 
@@ -91,7 +103,6 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
             .aspectRatio(0.7f)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
-            .clip(RoundedCornerShape(4.dp))
             .bottomBorder(1.dp, Color.Black.copy(alpha = 0.5f))
     )
 }
@@ -100,39 +111,43 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
 // --- The rest of the file (PlayerHandFanned, OpponentHand, GameScreen) remains the same ---
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun PlayerHandArc(cards: List<CardData>) {
-    BoxWithConstraints(
+fun PlayerHandArc(
+    cards: List<CardData>,
+    selectedCards: Set<CardData>,
+    onCardClick: (CardData) -> Unit
+) {
+    // Usamos un Box normal como contenedor. No necesita altura fija.
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp), // Give the container a fixed height
+            .padding(bottom = 32.dp), // Un margen inferior para toda la mano
         contentAlignment = Alignment.BottomCenter
     ) {
         val cardCount = cards.size
-        // Parameters to tweak the look of the arc
-        val arcRadius = maxWidth.value * 1.5f
-        val angleBetweenCards = 5.0f
-
-        val totalAngle = (cardCount - 1) * angleBetweenCards
-        val startAngle = -totalAngle / 2f
-
         cards.forEachIndexed { index, card ->
-            val angle = startAngle + index * angleBetweenCards
-            val angleRad = Math.toRadians(angle.toDouble())
+            val isSelected = card in selectedCards
 
-            // We use trigonometry (sin and cos) to place cards in a perfect circle segment (an arc)
-            val offsetX = (arcRadius * sin(angleRad)).dp
-            val offsetY = (arcRadius * (1 - cos(angleRad))).dp
+            // --- Cálculos de posición y rotación ---
+            val centerOffset = index - (cardCount - 1) / 2f
+            val rotation = centerOffset * 10f // Aumentamos un poco el ángulo
+            val translationY = abs(centerOffset) * -15f // Curva parabólica para el arco
+            val translationX = centerOffset * 150f // Espacio horizontal entre cartas
 
-            Box(
+            GameCard(
+                card = card,
+                isSelected = isSelected,
+                onClick = { onCardClick(card) },
+                // Aplicamos todas las transformaciones en una única capa gráfica
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(x = offsetX, y = -offsetY) // Move the card to its position on the arc
+                    .zIndex(if (isSelected) 1f else 0f)
                     .graphicsLayer {
-                        rotationZ = angle // Rotate the card to follow the curve
+                        this.rotationZ = rotation
+                        this.translationY = translationY
+                        this.translationX = translationX
+                        // LA CLAVE: Permitimos que la carta se dibuje fuera de sus límites
+                        this.clip = false
                     }
-            ) {
-                GameCard(card = card)
-            }
+            )
         }
     }
 }
@@ -206,7 +221,12 @@ fun GameScreen(
                     isCurrentTurn = gameState.currentTurnPlayerId == player.id,
                     modifier = Modifier.padding(bottom = 20.dp) // Lift avatar slightly
                 )
-                PlayerHandArc(cards = player.hand)
+                PlayerHandArc(
+                    cards = player.hand,
+                    selectedCards = gameState.selectedCardsForDiscard,
+                    // When a card is clicked, the UI tells the ViewModel about it
+                    onCardClick = { card -> gameViewModel.onCardSelected(card) }
+                )
             }
 
             // --- COMPAÑERO (AVATAR + MANO AGRUPADOS) ---
