@@ -39,6 +39,7 @@ import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.ButtonColorType
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
+import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.abs
@@ -289,7 +290,9 @@ fun GameScreen(
             }
 
             // INFO CENTRAL Y BOTONES
-            Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 180.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Scoreboard(score = gameState.score)
                 Spacer(modifier = Modifier.height(16.dp))
                 LanceInfo(gamePhase = gameState.gamePhase, currentBet = gameState.currentBet, players = players)
@@ -297,12 +300,13 @@ fun GameScreen(
 
             ActionButtons(
                 actions = gameState.availableActions,
-                onActionClick = { action -> gameViewModel.onAction(action, gameState.currentTurnPlayerId!!) },
+                onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                selectedCardCount = gameState.selectedCardsForDiscard.size,
+                isEnabled = isMyTurn,
+                currentPlayerId = gameViewModel.humanPlayerId,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 240.dp, end = 16.dp),
-                selectedCardCount = gameState.selectedCardsForDiscard.size,
-                isEnabled = isMyTurn
+                    .padding(bottom = 240.dp, end = 16.dp)
             )
 
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
@@ -331,52 +335,80 @@ fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
 
 //A Composable to display a list of action buttons
 @Composable
-fun ActionButtons(
-    actions: List<GameAction>,
-    onActionClick: (GameAction) -> Unit,
-    modifier: Modifier = Modifier,
-    selectedCardCount: Int,
+private fun GameActionButton(
+    action: GameAction,
+    onClick: () -> Unit,
     isEnabled: Boolean
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        //Adds 8.dp of space between each button automatically
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    val buttonColors = when (action.colorType) {
+        ButtonColorType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)) // Azul
+        ButtonColorType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEB3B)) // Amarillo
+        ButtonColorType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Verde
+        ButtonColorType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Rojo
+        ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Morado
+    }
+
+    Button(
+        onClick = onClick,
+        colors = buttonColors,
+        enabled = isEnabled,
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
     ) {
-        actions.forEach { action ->
-            // In ActionButtons composable
-            val buttonColors = when (action.colorType) {
-                ButtonColorType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
-                ButtonColorType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFBE8E00))
-                ButtonColorType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Green
-                ButtonColorType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Red
-                ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Purple
-            }
+        if (action.iconResId != null) {
+            Icon(
+                painter = painterResource(id = action.iconResId),
+                contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.IconSize)
+            )
+            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        }
+        Text(text = action.displayText)
+    }
+}
 
-            val isButtonEnabled = when (action) {
-                // The discard button is enabled only if it's the player's turn AND cards are selected
-                is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
-                // All other buttons are enabled only if it's the player's turn
-                else -> isEnabled
-            }
 
-            Button(
-                onClick = { onActionClick(action) },
-                colors = buttonColors, // Apply the determined colors
-                enabled = isButtonEnabled,
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-            ) {
-                //Add the icon to the button
-                if (action.iconResId != null) {
-                    Icon(
-                        painter = painterResource(id = action.iconResId),
-                        contentDescription = null, // The text describes the action
-                        modifier = Modifier.size(ButtonDefaults.IconSize)
+@Composable
+fun ActionButtons(
+    actions: List<GameAction>,
+    onActionClick: (GameAction, String) -> Unit,
+    modifier: Modifier = Modifier,
+    selectedCardCount: Int,
+    isEnabled: Boolean,
+    currentPlayerId: String
+) {
+    val responseActions = actions.filter { it is GameAction.Quiero || it is GameAction.NoQuiero }
+    val primaryActions = actions.filter { it !in responseActions }
+
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        if (responseActions.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                responseActions.forEach { action ->
+                    GameActionButton(
+                        action = action,
+                        onClick = { onActionClick(action, currentPlayerId) },
+                        isEnabled = isEnabled
                     )
-                    Spacer(Modifier.size(ButtonDefaults.IconSpacing)) // Space between icon and text
                 }
-                Text(text = action.displayText)
+            }
+        }
+        if (primaryActions.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                primaryActions.forEach { action ->
+                    val isButtonEnabled = when (action) {
+                        is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
+                        else -> isEnabled
+                    }
+                    GameActionButton(
+                        action = action,
+                        onClick = { onActionClick(action, currentPlayerId) },
+                        isEnabled = isButtonEnabled
+                    )
+                }
             }
         }
     }
