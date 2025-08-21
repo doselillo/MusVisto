@@ -4,9 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
-import com.example.mus.ai.AILogic
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +21,8 @@ class GameViewModel @Inject constructor(
     private val aiLogic: AILogic
 ) : ViewModel() {
 
+    private val manualDealingEnabled = true
+
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
@@ -31,6 +33,44 @@ class GameViewModel @Inject constructor(
 
     init {
         startNewGame(null)
+    }
+
+    private fun dealManualHands(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
+        // Define aquí las manos que quieres probar
+        val manualHands = mapOf(
+            "p1" to listOf( // Mano del Jugador Humano
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.REY),
+                Card(Suit.BASTOS, Rank.AS),
+                Card(Suit.COPAS, Rank.AS)
+            ),
+            "p2" to listOf( // Mano del Rival Izquierdo
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.TRES),
+                Card(Suit.BASTOS, Rank.REY),
+                Card(Suit.COPAS, Rank.DOS)
+            ),
+            "p3" to listOf( // Mano del Compañero
+                Card(Suit.OROS, Rank.DOS),
+                Card(Suit.ESPADAS, Rank.SIETE),
+                Card(Suit.BASTOS, Rank.SEIS),
+                Card(Suit.COPAS, Rank.CINCO)
+            ),
+            "p4" to listOf( // Mano del Rival Derecho
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.BASTOS, Rank.SOTA),
+                Card(Suit.COPAS, Rank.CUATRO)
+            )
+        )
+
+        val updatedPlayers = players.map { it.copy(hand = manualHands[it.id] ?: emptyList()) }
+
+        // Eliminamos las cartas repartidas del mazo para que no haya duplicados
+        val dealtCards = manualHands.values.flatten().toSet()
+        val remainingDeck = deck.filter { it !in dealtCards }
+
+        return Pair(updatedPlayers, remainingDeck)
     }
 
     fun onAction(action: GameAction, playerId: String) {
@@ -201,8 +241,12 @@ class GameViewModel @Inject constructor(
         val shuffledDeck = gameLogic.shuffleDeck(initialDeck)
 
         // Se reparten las cartas
-        val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
-
+        val (updatedPlayers, remainingDeck) = if (manualDealingEnabled) {
+            Log.d("MusVistoDebug", "--- REPARTO MANUAL ACTIVADO ---")
+            dealManualHands(players, initialDeck)
+        } else {
+            gameLogic.dealCards(players, shuffledDeck, newManoId)
+        }
         // Se crea el nuevo estado del juego
         _gameState.value = GameState(
             players = updatedPlayers,

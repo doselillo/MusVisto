@@ -89,15 +89,30 @@ class MusGameLogic @Inject constructor() {
      * Analyzes a hand and returns the corresponding ParesPlay.
      */
     fun getHandPares(hand: List<Card>): ParesPlay {
+
+        fun getPairingRank(card: Card): Rank {
+            return when (card.rank) {
+                Rank.TRES -> Rank.REY // Los treses cuentan como reyes
+                Rank.DOS -> Rank.AS   // Los doses cuentan como ases
+                else -> card.rank
+            }
+        }
         // Group cards by their rank and count them.
         // Example: {REY=3, AS=1}
-        val counts = hand.groupingBy { it.rank }.eachCount()
+        val counts = hand.groupingBy { getPairingRank(it) }.eachCount()
 
         // Filter for ranks that appear 2 or more times.
         val pairsOrBetter = counts.filter { it.value >= 2 }
 
         if (pairsOrBetter.isEmpty()) {
             return ParesPlay.NoPares
+        }
+
+        val fourOfAKind = pairsOrBetter.filter { it.value == 4 }
+        if (fourOfAKind.isNotEmpty()) {
+            // Esto se considera Duples de la pareja más alta y la más baja de esa figura
+            val rank = fourOfAKind.keys.first()
+            return ParesPlay.Duples(rank, rank)
         }
 
         // Check for Medias (three of a kind)
@@ -158,6 +173,8 @@ class MusGameLogic @Inject constructor() {
         return hand.sumOf { card ->
             when (card.rank) {
                 Rank.SOTA, Rank.CABALLO, Rank.REY -> 10
+                Rank.TRES -> 10
+                Rank.DOS -> 1
                 else -> card.rank.value
             }
         }

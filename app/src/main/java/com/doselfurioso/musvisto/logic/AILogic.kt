@@ -1,4 +1,4 @@
-package com.example.mus.ai
+package com.doselfurioso.musvisto.logic
 
 import com.doselfurioso.musvisto.logic.AILogger
 import com.doselfurioso.musvisto.logic.DecisionLog
@@ -148,7 +148,7 @@ class AILogic @Inject constructor(
         decisionId: String
     ): GameAction {
         val hand = aiPlayer.hand.toMutableList()
-        val isMano = aiPlayer.isMano ?: false
+        val isMano = (aiPlayer.id == gameState.manoPlayerId)
         val juegoValue = gameLogic.getHandJuegoValue(hand)
 
         // Protección absoluta: si tienes 31, no descartes nada
@@ -298,9 +298,9 @@ class AILogic @Inject constructor(
         // PARES: reutiliza lógica de gameLogic si existe
         val paresPlay = gameLogic.getHandPares(hand)
         val paresStrength = when (paresPlay) {
-            is ParesPlay.Duples -> 90 + paresPlay.highPair.value
-            is ParesPlay.Medias -> 60 + paresPlay.rank.value
-            is ParesPlay.Pares -> 20 + paresPlay.rank.value
+            is ParesPlay.Duples -> 100 // Duples es la mejor jugada, siempre debería cortar Mus.
+            is ParesPlay.Medias -> (75 + paresPlay.rank.value).coerceAtMost(95) // Muy fuerte, siempre corta.
+            is ParesPlay.Pares -> (35 + (paresPlay.rank.value * 2)).coerceAtMost(70) // Puntuación más matizada.
             is ParesPlay.NoPares -> {
                 val rankCounts = hand.groupingBy { it.rank.value }.eachCount()
                 rankCounts.entries.maxOfOrNull { (rank, cnt) ->
@@ -309,7 +309,6 @@ class AILogic @Inject constructor(
                     else 0
                 } ?: 0
             }
-            else -> 0
         }
 
         // JUEGO
