@@ -77,33 +77,26 @@ class GameViewModel @Inject constructor(
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
-                startNewGame(_gameState.value) // Continúa la partida, mantiene el marcador
+                startNewGame(_gameState.value)
                 return
             }
             is GameAction.NewGame -> {
-                startNewGame(null) // Reinicia la partida, resetea el marcador
+                startNewGame(null)
                 return
             }
             else -> {
-                // Procesa una acción de juego normal
-
                 if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
-
-                val newState = gameLogic.processAction(currentState, action, playerId)
-
-                if (newState.gamePhase == GamePhase.ROUND_OVER) {
-                    processEndOfRound(newState)
-                }
-                ///TODO he borrado esto porque duplica turnos, si no falla nada listo
-                /*else {
-                    _gameState.value = newState
-                    handleAiTurn()
-                }*/
             }
         }
+
+        // Procesar la acción una sola vez
         val newState = gameLogic.processAction(currentState, action, playerId)
 
-        updateStateAndCheckAiTurn(newState)
+        if (newState.gamePhase == GamePhase.ROUND_OVER) {
+            processEndOfRound(newState)
+        } else {
+            updateStateAndCheckAiTurn(newState)
+        }
     }
 
     private fun handleGameEvent(event: GameEvent?) {

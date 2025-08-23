@@ -1,9 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
-import com.doselfurioso.musvisto.logic.AILogger
-import com.doselfurioso.musvisto.logic.DecisionLog
 import java.util.UUID
-import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.doselfurioso.musvisto.model.Card
@@ -12,8 +9,6 @@ import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.ParesPlay
 import com.doselfurioso.musvisto.model.Player
-import com.doselfurioso.musvisto.logic.MusGameLogic
-import dagger.hilt.android.lifecycle.HiltViewModel
 
 /**
  * Clase AILogic limpia y sin reflexión.
@@ -28,7 +23,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 @Singleton
 class AILogic @Inject constructor(
     private val gameLogic: MusGameLogic,
-    private val logger: AILogger // inyecta la implementación que desees
+    private val logger: AILogger,
+    /** Inyectable para tests; por defecto Random.Default */
+    private val rng: kotlin.random.Random = kotlin.random.Random.Default
 ) {
 
     private data class HandStrength(
@@ -98,7 +95,7 @@ class AILogic @Inject constructor(
         val action = when {
             strengthScore > 85 -> GameAction.Envido(2)
             strengthScore > 60 -> GameAction.Quiero
-            strengthScore > 45 && Random.nextInt(100) < 20 -> GameAction.Quiero
+            strengthScore > 45 && rng.nextInt(100) < 20 -> GameAction.Quiero
             else -> GameAction.NoQuiero
         }
 
@@ -182,7 +179,7 @@ class AILogic @Inject constructor(
             paresPlay !is ParesPlay.NoPares -> 0
             strength.juego >= 60 || strength.pares >= 60 -> 0
             strength.juego >= 40 || strength.pares >= 40 -> 1
-            else -> (2 + Random.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
+            else -> (2 + rng.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
         }.coerceIn(0, maxDiscard)
 
         if (discardCount == 0) {
@@ -260,7 +257,7 @@ class AILogic @Inject constructor(
     ): GameAction {
         val action = when {
             strengthScore > 80 -> GameAction.Envido(2)
-            strengthScore > 55 && Random.nextInt(100) < 18 -> GameAction.Envido(2)
+            strengthScore > 55 && rng.nextInt(100) < 18 -> GameAction.Envido(2)
             else -> GameAction.Paso
         }
 
@@ -315,7 +312,7 @@ class AILogic @Inject constructor(
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         val juegoStrength = when {
             juegoValue == 31 -> 100
-            juegoValue == 32 -> Random.nextInt(93, 97)
+            juegoValue == 32 -> rng.nextInt(93, 97)
             juegoValue >= 33 -> (80 + ((juegoValue - 33) * 2)).coerceAtMost(98)
             juegoValue >= 28 -> 70 + ((juegoValue - 28) * 5)
             else -> 0

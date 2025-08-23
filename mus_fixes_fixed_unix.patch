@@ -1,0 +1,112 @@
+--- /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/presentation/GameViewModel.kt
++++ /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/presentation/GameViewModel.kt.modified
+@@ -88,22 +88,17 @@
+                 // Procesa una acción de juego normal
+ 
+                 if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
+-
+-                val newState = gameLogic.processAction(currentState, action, playerId)
+-
+-                if (newState.gamePhase == GamePhase.ROUND_OVER) {
+-                    processEndOfRound(newState)
+-                }
+-                ///TODO he borrado esto porque duplica turnos, si no falla nada listo
+-                /*else {
+-                    _gameState.value = newState
+-                    handleAiTurn()
+-                }*/
+-            }
+-        }
++            }
++        }
++
++        // Procesar la acción una sola vez y manejar el resultado
+         val newState = gameLogic.processAction(currentState, action, playerId)
+ 
+-        updateStateAndCheckAiTurn(newState)
++        if (newState.gamePhase == GamePhase.ROUND_OVER) {
++            processEndOfRound(newState)
++        } else {
++            updateStateAndCheckAiTurn(newState)
++        }
+     }
+ 
+     private fun handleGameEvent(event: GameEvent?) {
+--- /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/logic/AILogic.kt
++++ /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/logic/AILogic.kt.modified
+@@ -3,7 +3,6 @@
+ import com.doselfurioso.musvisto.logic.AILogger
+ import com.doselfurioso.musvisto.logic.DecisionLog
+ import java.util.UUID
+-import kotlin.random.Random
+ import javax.inject.Inject
+ import javax.inject.Singleton
+ import com.doselfurioso.musvisto.model.Card
+@@ -13,7 +12,6 @@
+ import com.doselfurioso.musvisto.model.ParesPlay
+ import com.doselfurioso.musvisto.model.Player
+ import com.doselfurioso.musvisto.logic.MusGameLogic
+-import dagger.hilt.android.lifecycle.HiltViewModel
+ 
+ /**
+  * Clase AILogic limpia y sin reflexión.
+@@ -28,7 +26,8 @@
+ @Singleton
+ class AILogic @Inject constructor(
+     private val gameLogic: MusGameLogic,
+-    private val logger: AILogger // inyecta la implementación que desees
++    private val logger: AILogger, // inyecta la implementación que desees
++    private val rng: kotlin.random.Random = kotlin.random.Random.Default
+ ) {
+ 
+     private data class HandStrength(
+@@ -98,7 +97,7 @@
+         val action = when {
+             strengthScore > 85 -> GameAction.Envido(2)
+             strengthScore > 60 -> GameAction.Quiero
+-            strengthScore > 45 && Random.nextInt(100) < 20 -> GameAction.Quiero
++            strengthScore > 45 && rng.nextInt(100) < 20 -> GameAction.Quiero
+             else -> GameAction.NoQuiero
+         }
+ 
+@@ -182,7 +181,7 @@
+             paresPlay !is ParesPlay.NoPares -> 0
+             strength.juego >= 60 || strength.pares >= 60 -> 0
+             strength.juego >= 40 || strength.pares >= 40 -> 1
+-            else -> (2 + Random.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
++            else -> (2 + rng.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
+         }.coerceIn(0, maxDiscard)
+ 
+         if (discardCount == 0) {
+@@ -260,7 +259,7 @@
+     ): GameAction {
+         val action = when {
+             strengthScore > 80 -> GameAction.Envido(2)
+-            strengthScore > 55 && Random.nextInt(100) < 18 -> GameAction.Envido(2)
++            strengthScore > 55 && rng.nextInt(100) < 18 -> GameAction.Envido(2)
+             else -> GameAction.Paso
+         }
+ 
+@@ -315,7 +314,7 @@
+         val juegoValue = gameLogic.getHandJuegoValue(hand)
+         val juegoStrength = when {
+             juegoValue == 31 -> 100
+-            juegoValue == 32 -> Random.nextInt(93, 97)
++            juegoValue == 32 -> rng.nextInt(93, 97)
+             juegoValue >= 33 -> (80 + ((juegoValue - 33) * 2)).coerceAtMost(98)
+             juegoValue >= 28 -> 70 + ((juegoValue - 28) * 5)
+             else -> 0
+--- /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/logic/AILoggerModule.kt
++++ /mnt/data/app_src_fixed/src/main/java/com/doselfurioso/musvisto/logic/AILoggerModule.kt.modified
+@@ -26,4 +26,11 @@
+ // Si prefieres solo Logcat para desarrollo, usa:
+ // return ConsoleAILogger()
+     }
++
++
++    @Provides
++    @Singleton
++    fun provideRandom(): kotlin.random.Random {
++        return kotlin.random.Random.Default
++    }
+ }
