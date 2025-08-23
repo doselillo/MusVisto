@@ -47,7 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
-import com.doselfurioso.musvisto.model.ButtonColorType
+import com.doselfurioso.musvisto.model.ActionType
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
@@ -79,7 +79,7 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
     }
 )
 
-// MODIFIED: Composable for a single card without the Surface wrapper
+//Composable for a single card without the Surface wrapper
 @Composable
 fun GameCard(
     card: CardData,
@@ -106,7 +106,7 @@ fun GameCard(
     )
 }
 
-// MODIFIED: Composable for the back of a card without the Surface wrapper
+//Composable for the back of a card without the Surface wrapper
 @Composable
 fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
     Image(
@@ -122,8 +122,6 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
     )
 }
 
-
-// --- The rest of the file (PlayerHandFanned, OpponentHand, GameScreen) remains the same ---
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun PlayerHandArc(
@@ -133,22 +131,21 @@ fun PlayerHandArc(
     isMyTurn: Boolean,
     onCardClick: (CardData) -> Unit
 ) {
-    // Usamos un Box normal como contenedor. No necesita altura fija.
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp), // Un margen inferior para toda la mano
+            .padding(bottom = 32.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         val cardCount = cards.size
         cards.forEachIndexed { index, card ->
             val isSelected = card in selectedCards
 
-            // --- Cálculos de posición y rotación ---
             val centerOffset = index - (cardCount - 1) / 2f
-            val rotation = centerOffset * 10f // Aumentamos un poco el ángulo
-            val translationY = abs(centerOffset) * -15f // Curva parabólica para el arco
-            val translationX = centerOffset * 150f // Espacio horizontal entre cartas
+            val rotation = centerOffset * 5f
+            val translationY = abs(centerOffset) * -15f
+            val translationX = centerOffset * 150f
 
             GameCard(
                 card = card,
@@ -156,11 +153,11 @@ fun PlayerHandArc(
                 gamePhase = gamePhase,
                 isMyTurn = isMyTurn,
                 onClick = { onCardClick(card) },
-                // Aplicamos todas las transformaciones en una única capa gráfica
+
                 modifier = Modifier
                     .zIndex(if (isSelected) 1f else 0f)
                     .graphicsLayer {
-                        // THE KEY CHANGE IS HERE:
+
                         this.rotationZ = if (isSelected) 0f else rotation
                         this.translationY = translationY
                         this.translationX = translationX
@@ -180,30 +177,28 @@ fun PartnerHand(
     Row(modifier = modifier) {
         cards.forEach { card ->
             if (isDebugMode) {
-                // If debug is on, show the real card
+
                 GameCard(
                     card = card,
                     isSelected = false,
-                    gamePhase = GamePhase.PRE_GAME, // These don't matter for display
+                    gamePhase = GamePhase.PRE_GAME,
                     isMyTurn = false,
                     onClick = {}
                 )
             } else {
-                // If debug is off, show the back
+
                 CardBack()
             }
         }
     }
 }
 
-
-
 @Composable
 fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean) {
     Box {
         repeat(cards.size) { index ->
             Box(
-                modifier = Modifier.offset(y = (index * 30).dp)
+                modifier = Modifier.offset(y = (index * 50).dp)
             ) {
                 if (isDebugMode) {
                     GameCard(
@@ -387,7 +382,7 @@ fun GameScreen(
                 currentPlayerId = gameViewModel.humanPlayerId,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 240.dp, end = 16.dp)
+                    .padding(bottom = 200.dp, end = 16.dp)
             )
 
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
@@ -437,11 +432,11 @@ private fun GameActionButton(
     isEnabled: Boolean
 ) {
     val buttonColors = when (action.colorType) {
-        ButtonColorType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)) // Azul
-        ButtonColorType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEB3B)) // Amarillo
-        ButtonColorType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Verde
-        ButtonColorType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Rojo
-        ButtonColorType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Morado
+        ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)) // Azul
+        ActionType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEB3B)) // Amarillo
+        ActionType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Verde
+        ActionType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Rojo
+        ActionType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Morado
     }
 
     Button(
@@ -565,39 +560,70 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
 }
 @Composable
 fun LanceInfo(
-    gameState: GameState, // Pass the whole state for more context
+    gameState: GameState,
     players: List<Player>,
     modifier: Modifier = Modifier
 ) {
-    // Determine the text based on the game phase
+    // Total envidado en la fase actual
+    val totalEnvidado = gameState.currentBet?.amount ?: 0
+
     val displayText = when (gameState.gamePhase) {
         GamePhase.GAME_OVER -> {
             if (gameState.winningTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
         }
+
         GamePhase.ROUND_OVER -> "FIN DE LA RONDA"
+        GamePhase.MUS_DECISION -> "¿MUS?"
         else -> {
-            var text = gameState.gamePhase.name.replace('_', ' ')
-            gameState.currentBet?.let {
-                val playerName = players.find { p -> p.id == it.bettingPlayerId }?.name ?: ""
-                text += "\nEnvite de ${it.amount} por $playerName"
+            var text = "${gameState.gamePhase} vale: $totalEnvidado\n"
+
+            // Mostrar la última acción
+            gameState.lastAction?.let { action ->
+                val playerName = players.find { p -> p.id == action.playerId }?.name ?: ""
+
+                text += when (action.action) {
+
+                    GameAction.Paso -> "\n$playerName pasa"
+                    GameAction.Quiero -> "\n$playerName quiere"
+                    GameAction.NoQuiero -> "\n$playerName no quiere"
+                    GameAction.Órdago -> "\n$playerName echa órdago a ${gameState.gamePhase}"
+                    GameAction.Mus -> ""
+                    GameAction.ConfirmDiscard -> ""
+                    GameAction.NoMus -> ""
+                    GameAction.Continue -> ""
+                    GameAction.NewGame -> ""
+                    else -> {
+                        "\n$playerName: ${gameState.lastAction.action.displayText}"
+                    }
+                }
+            } ?: run {
+                // Si no hay lastAction, usar currentBet como fallback
+                gameState.currentBet?.let { bet ->
+                    val playerName = players.find { p -> p.id == bet.bettingPlayerId }?.name ?: ""
+                    text += if (bet.amount > 0) {
+                        "\nEnvite de ${bet.amount} por $playerName"
+                    } else {
+                        "\n$playerName pasa"
+                    }
+                }
             }
-            text
+
+            Card(
+                modifier = modifier,
+                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
+            ) {
+                Text(
+                    text = text,
+                    color = Color.Yellow,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
+                )
+            }
         }
     }
-
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
-    ) {
-        Text(
-            text = displayText,
-            color = Color.Yellow,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
-        )
-    }
 }
+
 @Composable
 fun ActionAnnouncement(
     lastAction: LastActionInfo?,

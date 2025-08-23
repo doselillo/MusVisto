@@ -5,6 +5,7 @@ import com.doselfurioso.musvisto.model.ParesPlay
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
+import com.doselfurioso.musvisto.logic.MusGameLogic.*
 import org.junit.Assert.*
 import org.junit.Test
 

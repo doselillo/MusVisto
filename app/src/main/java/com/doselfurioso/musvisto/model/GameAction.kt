@@ -1,31 +1,30 @@
 package com.doselfurioso.musvisto.model
 
-import androidx.compose.ui.graphics.vector.ImageVector
 import com.doselfurioso.musvisto.R // Importa tus recursos
 
 // Un enum para definir el tipo de color del botón
-enum class ButtonColorType {
+enum class ActionType {
     PASS, BET, CONFIRM, DENY, ULTIMATE
 }
 
 sealed class GameAction(
     val displayText: String,
-    val colorType: ButtonColorType,
+    val colorType: ActionType,
     val iconResId: Int?
 ) {
     // Mus Phase Actions
-    object Mus : GameAction("Mus", ButtonColorType.CONFIRM, R.drawable.ic_cycle)
-    object NoMus : GameAction("No Mus", ButtonColorType.DENY, R.drawable.ic_stop)
-    object ConfirmDiscard : GameAction("Descartar", ButtonColorType.CONFIRM, R.drawable.ic_check)
-    object Continue : GameAction("Continuar", ButtonColorType.CONFIRM, R.drawable.ic_continue)
-    object NewGame : GameAction("Jugar de Nuevo", ButtonColorType.CONFIRM, R.drawable.ic_newgame)
+    object Mus : GameAction("Mus", ActionType.CONFIRM, R.drawable.ic_cycle)
+    object NoMus : GameAction("No Mus", ActionType.DENY, R.drawable.ic_stop)
+    object ConfirmDiscard : GameAction("Descartar", ActionType.CONFIRM, R.drawable.ic_check)
+    object Continue : GameAction("Continuar", ActionType.CONFIRM, R.drawable.ic_continue)
+    object NewGame : GameAction("Jugar de Nuevo", ActionType.CONFIRM, R.drawable.ic_newgame)
 
 
 
     // Betting Actions
-    object Paso : GameAction("Paso", ButtonColorType.PASS, R.drawable.ic_pass)
-    data class Envido(val amount: Int) : GameAction("Envido $amount", ButtonColorType.BET, R.drawable.ic_bet)
-    object Quiero : GameAction("Quiero", ButtonColorType.CONFIRM, R.drawable.ic_check)
-    object NoQuiero : GameAction("No Quiero", ButtonColorType.DENY, R.drawable.ic_close)
-    object Órdago : GameAction("Órdago", ButtonColorType.ULTIMATE, R.drawable.ic_ordago)
+    object Paso : GameAction("Paso", ActionType.PASS, R.drawable.ic_pass)
+    data class Envido(val amount: Int) : GameAction("Envido $amount", ActionType.BET, R.drawable.ic_bet)
+    object Quiero : GameAction("Quiero", ActionType.CONFIRM, R.drawable.ic_check)
+    object NoQuiero : GameAction("No Quiero", ActionType.DENY, R.drawable.ic_close)
+    object Órdago : GameAction("Órdago", ActionType.ULTIMATE, R.drawable.ic_ordago)
 }
