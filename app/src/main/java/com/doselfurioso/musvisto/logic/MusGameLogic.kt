@@ -4,7 +4,6 @@ import android.util.Log
 import com.doselfurioso.musvisto.model.*
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.random.Random
 
 @Singleton
 class MusGameLogic @Inject constructor() {
