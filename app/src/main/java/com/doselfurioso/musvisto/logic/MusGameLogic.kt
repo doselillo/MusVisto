@@ -446,7 +446,7 @@ class MusGameLogic @Inject constructor() {
 
         // Find the next eligible player in the original turn order
         for (i in 1 until currentState.players.size) {
-            val nextPlayer = currentState.players[(currentIndex + i) % currentState.players.size]
+            val nextPlayer = currentState.players[(currentIndex - i + currentState.players.size) % currentState.players.size]
             if (nextPlayer in eligiblePlayers) {
                 return currentState.copy(currentTurnPlayerId = nextPlayer.id)
             }
@@ -629,7 +629,7 @@ class MusGameLogic @Inject constructor() {
             manoPlayerId = currentState.manoPlayerId )
     }
 
-    private fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
+     private fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
         val manoIndex = players.indexOfFirst { it.id == manoId }
         if (manoIndex == -1) return players
         return players.drop(manoIndex) + players.take(manoIndex)

@@ -38,8 +38,7 @@ class AILogic @Inject constructor(
     // ---------------- Public entry point ----------------
     fun makeDecision(gameState: GameState, aiPlayer: Player): GameAction {
         val decisionId = UUID.randomUUID().toString()
-        val strength = evaluateHand(aiPlayer.hand)
-
+        val strength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
         // Log: evaluación inicial
         logger.log(
             DecisionLog(
@@ -279,7 +278,7 @@ class AILogic @Inject constructor(
     }
 
     // ---------------- Evaluación de mano ----------------
-    private fun evaluateHand(hand: List<Card>): HandStrength {
+    private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): HandStrength {
         // GRANDE: preferimos 3 y Rey
         val maxVal = hand.maxOf { it.rank.value }
         var grandeStrength = (maxVal / 12.0 * 50).toInt()
@@ -309,12 +308,20 @@ class AILogic @Inject constructor(
         }
 
         // JUEGO
+        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playerPosition = orderedPlayers.indexOfFirst { it.id == player.id }.takeIf { it != -1 } ?: 0 // 0=mano, 3=postre
+
         val juegoValue = gameLogic.getHandJuegoValue(hand)
-        val juegoStrength = when {
-            juegoValue == 31 -> 100
-            juegoValue == 32 -> rng.nextInt(93, 97)
-            juegoValue >= 33 -> (80 + ((juegoValue - 33) * 2)).coerceAtMost(98)
-            juegoValue >= 28 -> 70 + ((juegoValue - 28) * 5)
+        val juegoStrength = when (juegoValue) {
+            31 -> 100 // 31 es siempre la mejor jugada
+            32 -> if (playerPosition <= 1) 88 else 45 // Fuerte si eres de los dos primeros, débil si no
+            33 -> 82 + ((3 - playerPosition) * 3) // Bonus por ser mano/segundo
+            34 -> 84 + ((3 - playerPosition) * 3)
+            35 -> 86 + ((3 - playerPosition) * 3)
+            36 -> 88 + ((3 - playerPosition) * 3)
+            37 -> 90 + ((3 - playerPosition) * 3)
+            40 -> 92 + ((3 - playerPosition) * 3)
+            in 28..30 -> 60 + (juegoValue - 28) * 5 // Punto se evalúa igual
             else -> 0
         }
 

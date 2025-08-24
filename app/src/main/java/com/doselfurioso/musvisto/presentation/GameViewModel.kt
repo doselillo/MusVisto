@@ -224,7 +224,7 @@ class GameViewModel @Inject constructor(
         // Se calcula la nueva "mano" rotando desde la anterior
         val newManoId = previousState?.let {
             val lastManoIndex = it.players.indexOfFirst { p -> p.id == it.manoPlayerId }.takeIf { it != -1 } ?: -1
-            val nextManoIndex = (lastManoIndex + 1) % players.size
+            val nextManoIndex = (lastManoIndex - 1 + players.size) % players.size
             players[nextManoIndex].id
         } ?: players.first().id // Para la primera partida, la mano es p1
 
