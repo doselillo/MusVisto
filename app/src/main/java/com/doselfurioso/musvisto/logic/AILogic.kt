@@ -118,7 +118,7 @@ class AILogic @Inject constructor(
 
     // ---------------- Mus / NoMus ----------------
     private fun decideMus(strength: HandStrength, decisionId: String, aiPlayer: Player): GameAction {
-        val action = if (strength.juego >= 95 || strength.pares >= 65 || (strength.juego + strength.pares) >= 130 || strength.grande >= 95 || strength.chica >= 95) GameAction.NoMus else GameAction.Mus
+        val action = if (strength.juego >= 95 || strength.pares >= 65 || (strength.juego + strength.pares) >= 140 || strength.grande >= 95 || strength.chica >= 95) GameAction.NoMus else GameAction.Mus
 
         logger.log(
             DecisionLog(
@@ -288,8 +288,8 @@ class AILogic @Inject constructor(
 
         // CHICA: preferimos 2 y As
         val minVal = hand.minOf { it.rank.value }
-        var chicaStrength = ((12 - minVal) / 11.0 * 70).toInt()
-        if (hand.any { isSecondRank(it) }) chicaStrength += 15
+        var chicaStrength = ((12 - minVal) / 11.0 * 30).toInt()
+        if (hand.any { isSecondRank(it) }) chicaStrength += 30
        // if (hand.any { isTopRank(it) }) chicaStrength += 8
 
         // PARES: reutiliza lógica de gameLogic si existe

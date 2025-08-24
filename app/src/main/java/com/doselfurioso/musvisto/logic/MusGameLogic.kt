@@ -239,33 +239,35 @@ class MusGameLogic @Inject constructor() {
 
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
+        val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
-        // Find the next player from the opposing team to respond
-        val respondingPlayer = findNextOpponent(currentState, bettingPlayer) ?: return currentState
+        // Determinamos qué oponentes deben responder, en su orden de turno natural
+        val orderedOpponents = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
+            .filter { it.team == opponentTeam }
+            .map { it.id }
 
-        // Check if this is a raise (re-envite)
         val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
 
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            respondingPlayerId = respondingPlayer.id
+            respondingPlayerId = orderedOpponents.first() // El primer oponente en orden de turno
         )
 
-        val nextState = currentState.copy(
+        return currentState.copy(
             currentBet = newBet,
-            // Las acciones para el que responde son siempre estas
+            currentTurnPlayerId = orderedOpponents.first(), // El turno pasa al primer oponente
+            betInitiatorTeam = bettingPlayer.team,
+            playersPendingResponse = orderedOpponents, // Guardamos la lista de oponentes que deben hablar
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
-            currentTurnPlayerId = respondingPlayer.id,
-            playersWhoPassed = emptySet()
+            playersWhoPassed = emptySet() // Limpiamos los pases del lance anterior
         )
-        // No llamamos a setNextPlayerTurn aquí porque el turno se asigna al que responde.
-        return nextState
     }
 
 
     private fun handleQuiero(currentState: GameState): GameState {
-        return endLanceAndAdvance(currentState) {
+        val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
+        return endLanceAndAdvance(resolvedState) {
             val bet = this.currentBet ?: return@endLanceAndAdvance this
             val newAgreedBets = this.agreedBets + (this.gamePhase to bet.amount)
             Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${this.gamePhase}.")
@@ -274,9 +276,11 @@ class MusGameLogic @Inject constructor() {
     }
 
     private fun handleNoQuiero(currentState: GameState): GameState {
-        return endLanceAndAdvance(currentState) {
+        val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
+        return endLanceAndAdvance(resolvedState) {
             val bet = this.currentBet ?: return@endLanceAndAdvance this
             val bettingPlayer = this.players.find { it.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
+            // Si no hay apuesta previa, se suma 1 punto. Si es un re-envite, se suma lo ya querido.
             val pointsWon = this.agreedBets[this.gamePhase] ?: 1
             val currentScore = this.score[bettingPlayer.team] ?: 0
             val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
@@ -318,8 +322,24 @@ class MusGameLogic @Inject constructor() {
     }
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
-        val newPassedSet = currentState.playersWhoPassed + playerId
+        // Escenario 1: Hay una apuesta activa y el jugador está en la lista de respuesta
+        if (currentState.currentBet != null && playerId in currentState.playersPendingResponse) {
+            val remainingResponders = currentState.playersPendingResponse.filter { it != playerId }
 
+            // Si era el último oponente en hablar, el "no quiero" es definitivo
+            if (remainingResponders.isEmpty()) {
+                return handleNoQuiero(currentState) // El equipo entero ha pasado, es un "no quiero"
+            }
+
+            // Si no, el turno pasa al siguiente oponente de la lista
+            return currentState.copy(
+                playersPendingResponse = remainingResponders,
+                currentTurnPlayerId = remainingResponders.first()
+            )
+        }
+
+        // Escenario 2: No hay apuesta activa (comportamiento original)
+        val newPassedSet = currentState.playersWhoPassed + playerId
         val eligiblePlayers = currentState.players.filter { player ->
             when (currentState.gamePhase) {
                 GamePhase.PARES -> getHandPares(player.hand).strength > 0

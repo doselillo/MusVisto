@@ -27,5 +27,7 @@ data class GameState(
     val winningTeam: String? = null,
     val manoPlayerId: String = "",
     val lastAction: LastActionInfo? = null,
-    val event: GameEvent? = null
+    val event: GameEvent? = null,
+    val betInitiatorTeam: String? = null,
+    val playersPendingResponse: List<String> = emptyList()
 )
