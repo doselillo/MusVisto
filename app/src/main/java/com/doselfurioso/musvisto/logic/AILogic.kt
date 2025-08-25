@@ -300,10 +300,10 @@ class AILogic @Inject constructor(
     // ---------------- Evaluación de mano ----------------
     private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): HandStrength {
         // GRANDE: preferimos 3 y Rey
-        val topCardsCount = hand.count { it.rank.value == 12 } // Reyes, Caballos, Sotas
+        val topCardsCount = hand.count { it.rank.value == 12 } // Reyes
         var grandeStrength = when (topCardsCount) {
-            0 -> hand.maxOf { it.rank.value } * 4 // Si no hay figuras, puntúa bajo
-            1 -> 50 + hand.maxOf { it.rank.value } // Con una figura, es decente
+            0 -> hand.maxOf { it.rank.value } * 4 // Si no hay reyes, puntúa bajo
+            1 -> 50 + hand.maxOf { it.rank.value } // Con un rey, es decente
             2 -> 75 + hand.maxOf { it.rank.value } // Con dos, es fuerte
             3 -> 90 // Con tres, es muy fuerte
             4 -> 95 // Con cuatro, es casi seguro ganar
@@ -311,7 +311,7 @@ class AILogic @Inject constructor(
         }
 
         // CHICA: Lógica mejorada que valora múltiples cartas bajas
-        val lowCardsCount = hand.count { it.rank.value <= 2 } // Ases y Doses
+        val lowCardsCount = hand.count { it.rank.value == 1 } // Ases y Doses
         var chicaStrength = when (lowCardsCount) {
             0 -> (12 - hand.minOf { it.rank.value }) * 4 // Sin Ases/Doses, puntúa bajo
             1 -> 60 + (5 - hand.minOf { it.rank.value }) // Con una, es decente
