@@ -241,26 +241,33 @@ class MusGameLogic @Inject constructor() {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
-        // Determinamos qué oponentes deben responder, en su orden de turno natural
-        val orderedOpponents = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
-            .filter { it.team == opponentTeam }
+        // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
+        val eligiblePlayers = getEligiblePlayersForLance(currentState)
+
+        // 2. De esa lista, filtramos a los oponentes en su orden de turno natural
+        val eligibleOpponents = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
+            .filter { it.team == opponentTeam && it in eligiblePlayers }
             .map { it.id }
 
-        val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
+        // Si no hay oponentes aptos, la acción no es válida (no se puede envidar a nadie)
+        if (eligibleOpponents.isEmpty()) {
+            return currentState
+        }
 
+        val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            respondingPlayerId = orderedOpponents.first() // El primer oponente en orden de turno
+            respondingPlayerId = eligibleOpponents.first() // El primer oponente apto responde
         )
 
         return currentState.copy(
             currentBet = newBet,
-            currentTurnPlayerId = orderedOpponents.first(), // El turno pasa al primer oponente
+            currentTurnPlayerId = eligibleOpponents.first(),
             betInitiatorTeam = bettingPlayer.team,
-            playersPendingResponse = orderedOpponents, // Guardamos la lista de oponentes que deben hablar
+            playersPendingResponse = eligibleOpponents, // La lista ahora solo contiene oponentes aptos
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
-            playersWhoPassed = emptySet() // Limpiamos los pases del lance anterior
+            playersWhoPassed = emptySet()
         )
     }
 
@@ -469,8 +476,6 @@ class MusGameLogic @Inject constructor() {
         val cardsNeeded = cardsToDiscard.size
         var newCards: List<Card>
 
-        Log.d("MusVistoDebug", "--- Discarding for ${player.name} ---")
-        Log.d("MusVistoDebug", "Deck has ${deck.size} cards. Needs $cardsNeeded.")
 
         // --- LÓGICA CORREGIDA Y SIMPLIFICADA ---
         if (deck.size < cardsNeeded) {
@@ -495,9 +500,6 @@ class MusGameLogic @Inject constructor() {
         discardPile += cardsToDiscard
 
         val newHand = player.hand.filterNot { it in cardsToDiscard } + newCards
-        if (newHand.size != 4) {
-            Log.e("MusVistoDebug", "CRITICAL ERROR: Player ${player.name} ended up with ${newHand.size} cards!")
-        }
 
         val updatedPlayer = player.copy(hand = newHand)
         val updatedPlayers = currentState.players.map { if (it.id == playerId) updatedPlayer else it }
@@ -629,7 +631,7 @@ class MusGameLogic @Inject constructor() {
             manoPlayerId = currentState.manoPlayerId )
     }
 
-     private fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
+     internal fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
         val manoIndex = players.indexOfFirst { it.id == manoId }
         if (manoIndex == -1) return players
         return players.drop(manoIndex) + players.take(manoIndex)
@@ -664,5 +666,13 @@ class MusGameLogic @Inject constructor() {
         return currentState.copy(score = tempScore)
     }
 
-
+    private fun getEligiblePlayersForLance(currentState: GameState): List<Player> {
+        return currentState.players.filter { player ->
+            when (currentState.gamePhase) {
+                GamePhase.PARES -> getHandPares(player.hand).strength > 0
+                GamePhase.JUEGO -> if (currentState.isPuntoPhase) true else getHandJuegoValue(player.hand) >= 31
+                else -> true // Todos los jugadores son aptos para Grande y Chica
+            }
+        }
+    }
 }

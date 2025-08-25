@@ -172,11 +172,12 @@ fun PlayerHandArc(
 fun PartnerHand(
     modifier: Modifier = Modifier,
     cards: List<CardData>,
-    isDebugMode: Boolean
+    isDebugMode: Boolean,
+    revealHand: Boolean
 ) {
     Row(modifier = modifier) {
         cards.forEach { card ->
-            if (isDebugMode) {
+            if (isDebugMode || revealHand) {
 
                 GameCard(
                     card = card,
@@ -194,13 +195,13 @@ fun PartnerHand(
 }
 
 @Composable
-fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean) {
+fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean) {
     Box {
         repeat(cards.size) { index ->
             Box(
                 modifier = Modifier.offset(y = (index * 50).dp)
             ) {
-                if (isDebugMode) {
+                if (isDebugMode || revealHand) {
                     GameCard(
                         card = cards[index],
                         isSelected = false,
@@ -315,7 +316,8 @@ fun GameScreen(
                     discardCount = gameState.discardCounts[partner.id],
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
-                        isDebugMode = isDebugMode) }
+                        isDebugMode = isDebugMode,
+                        revealHand = gameState.revealAllHands) }
                 )
             }
 
@@ -329,7 +331,8 @@ fun GameScreen(
                         modifier = Modifier.padding(16.dp)
                             .graphicsLayer { rotationX = 90f },
                         cards = rivalLeft.hand.sortedByDescending { it.rank.value },
-                        isDebugMode = isDebugMode) }
+                        isDebugMode = isDebugMode,
+                        revealHand = gameState.revealAllHands) }
                 )
             }
 
@@ -343,7 +346,8 @@ fun GameScreen(
                         modifier = Modifier
                             .graphicsLayer { rotationZ = 180f },
                         cards = rivalRight.hand.sortedBy { it.rank.value },
-                        isDebugMode = isDebugMode) }
+                        isDebugMode = isDebugMode,
+                        revealHand = gameState.revealAllHands) }
                 )
             }
 

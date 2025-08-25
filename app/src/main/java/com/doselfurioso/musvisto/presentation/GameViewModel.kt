@@ -104,13 +104,11 @@ class GameViewModel @Inject constructor(
 
         // Launch a separate coroutine to manage the event's lifecycle
         viewModelScope.launch {
-            Log.d("MusVistoDebug", "Event received: $event. Displaying for 3 seconds.")
             // The UI will show the event because it's in the state.
             // We wait for its duration.
             delay(3000)
             // After the delay, we clear the event from the state.
             _gameState.value = _gameState.value.copy(event = null)
-            Log.d("MusVistoDebug", "Event cleared.")
         }
     }
 
@@ -118,7 +116,6 @@ class GameViewModel @Inject constructor(
         Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")
 
         val manoOfFinishedRound = roundEndState.manoPlayerId
-        Log.d("MusVistoDebug", "processEndOfRound: The mano from the round that just ended was: $manoOfFinishedRound")
 
         val scoredState = gameLogic.scoreRound(roundEndState)
         Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
@@ -132,15 +129,16 @@ class GameViewModel @Inject constructor(
             _gameState.value = scoredState.copy(
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
-                availableActions = listOf(GameAction.NewGame)
+                availableActions = listOf(GameAction.NewGame),
+                revealAllHands = true
             )
         } else {
             _gameState.value = scoredState.copy(
                 gamePhase = GamePhase.ROUND_OVER,
-                availableActions = listOf(GameAction.Continue)
+                availableActions = listOf(GameAction.Continue),
+                revealAllHands = true
             )
         }
-        Log.d("MusVistoDebug", "processEndOfRound: The final state before 'Continue' now has mano: ${_gameState.value.manoPlayerId}")
 
     }
 
@@ -169,10 +167,8 @@ class GameViewModel @Inject constructor(
             val currentPlayer = currentState.players.find { it.id == currentState.currentTurnPlayerId }
 
             if (currentPlayer != null && currentPlayer.isAi) {
-                Log.d("MusVistoDebug", "AI's turn detected for: ${currentPlayer.name}")
 
                 val aiAction = aiLogic.makeDecision(currentState, currentPlayer)
-                Log.d("MusVistoDebug", "AI (${currentPlayer.name}) decided to: ${aiAction.displayText}")
 
                 if (aiAction is GameAction.ConfirmDiscard) {
                     // La IA decidirá qué cartas tirar (por ahora, la primera que no sea un Rey)
@@ -216,9 +212,9 @@ class GameViewModel @Inject constructor(
         // El orden de los jugadores en la lista es FIJO y representa su asiento en la mesa
         val players = previousState?.players?.map { it.copy(hand = emptyList()) } ?: listOf(
             Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-            Player(id = "p2", name = "Luis", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+            Player(id = "p4", name = "Luis", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
             Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-            Player(id = "p4", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
+            Player(id = "p2", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
         )
 
         // Se calcula la nueva "mano" rotando desde la anterior
@@ -228,14 +224,12 @@ class GameViewModel @Inject constructor(
             players[nextManoIndex].id
         } ?: players.first().id // Para la primera partida, la mano es p1
 
-        Log.d("MusVistoDebug", "New round starting. Mano is: $newManoId")
 
         val initialDeck = gameLogic.createDeck()
         val shuffledDeck = gameLogic.shuffleDeck(initialDeck)
 
         // Se reparten las cartas
         val (updatedPlayers, remainingDeck) = if (manualDealingEnabled) {
-            Log.d("MusVistoDebug", "--- REPARTO MANUAL ACTIVADO ---")
             dealManualHands(players, initialDeck)
         } else {
             gameLogic.dealCards(players, shuffledDeck, newManoId)
@@ -255,7 +249,8 @@ class GameViewModel @Inject constructor(
             agreedBets = emptyMap(),
             isPuntoPhase = false,
             discardCounts = emptyMap(),
-            selectedCardsForDiscard = emptySet()
+            selectedCardsForDiscard = emptySet(),
+            revealAllHands = false
         )
         // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
         handleAiTurn()
