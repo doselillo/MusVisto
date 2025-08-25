@@ -9,6 +9,10 @@ import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.ParesPlay
 import com.doselfurioso.musvisto.model.Player
+import com.doselfurioso.musvisto.model.Rank
+
+
+data class AIDecision(val action: GameAction, val cardsToDiscard: Set<Card> = emptySet())
 
 /**
  * Clase AILogic limpia y sin reflexión.
@@ -36,7 +40,7 @@ class AILogic @Inject constructor(
     )
 
     // ---------------- Public entry point ----------------
-    fun makeDecision(gameState: GameState, aiPlayer: Player): GameAction {
+    fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision {
         val decisionId = UUID.randomUUID().toString()
         val strength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
         // Log: evaluación inicial
@@ -61,18 +65,18 @@ class AILogic @Inject constructor(
 
         // Si hay apuesta activa, responder acorde
         gameState.currentBet?.let {
-            return decideResponse(strength, gameState, decisionId, aiPlayer)
+            return AIDecision(decideResponse(strength, gameState, decisionId, aiPlayer))
         }
 
         // Si no hay apuesta, decidir según la fase
         return when (gameState.gamePhase) {
-            GamePhase.MUS_DECISION -> decideMus(strength, decisionId, aiPlayer)
-            GamePhase.DISCARD -> decideDiscard(aiPlayer, gameState, strength, decisionId)
-            GamePhase.GRANDE -> decideInitialBet(strength.grande, decisionId, aiPlayer, GamePhase.GRANDE)
-            GamePhase.CHICA -> decideInitialBet(strength.chica, decisionId, aiPlayer, GamePhase.CHICA)
-            GamePhase.PARES -> decideInitialBet(strength.pares, decisionId, aiPlayer, GamePhase.PARES)
-            GamePhase.JUEGO -> decideInitialBet(strength.juego, decisionId, aiPlayer, GamePhase.JUEGO)
-            else -> GameAction.Paso
+            GamePhase.MUS_DECISION -> AIDecision(decideMus(strength, decisionId, aiPlayer))
+            GamePhase.DISCARD ->(decideDiscard(aiPlayer, decisionId))
+            GamePhase.GRANDE -> AIDecision(decideInitialBet(strength.grande, decisionId, aiPlayer, GamePhase.GRANDE))
+            GamePhase.CHICA -> AIDecision(decideInitialBet(strength.chica, decisionId, aiPlayer, GamePhase.CHICA))
+            GamePhase.PARES -> AIDecision(decideInitialBet(strength.pares, decisionId, aiPlayer, GamePhase.PARES))
+            GamePhase.JUEGO -> AIDecision(decideInitialBet(strength.juego, decisionId, aiPlayer, GamePhase.JUEGO))
+            else -> return AIDecision(GameAction.Paso)
         }
     }
 
@@ -146,123 +150,51 @@ class AILogic @Inject constructor(
     // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
     private fun decideDiscard(
         aiPlayer: Player,
-        gameState: GameState,
-        strength: HandStrength,
         decisionId: String
-    ): GameAction {
-        val hand = aiPlayer.hand.toMutableList()
-        val isMano = (aiPlayer.id == gameState.manoPlayerId)
+    ): AIDecision {
+        val hand = aiPlayer.hand
         val juegoValue = gameLogic.getHandJuegoValue(hand)
-
-        // Protección absoluta: si tienes 31, no descartes nada
-        if (juegoValue == 31) {
-            logger.log(
-                DecisionLog(
-                    decisionId = decisionId,
-                    timestamp = System.currentTimeMillis(),
-                    playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                    phase = "DISCARD",
-                    hand = hand.map { cardToShortString(it) },
-                    strengths = mapOf("juego" to juegoValue),
-                    chosenAction = "NO_DISCARD",
-                    reason = "Protección: JUEGO == 31",
-                    details = mapOf("juegoValue" to juegoValue)
-                )
-            )
-            return GameAction.ConfirmDiscard
-        }
-
-        val paresPlay = gameLogic.getHandPares(hand)
-
-        // Prioridad de conservación (mayor = mejor)
-        val priorities = hand.mapIndexed { idx, card ->
-            idx to cardKeepPriority(card, hand, isMano)
-        }.toMutableList()
-
-        // Heurística para cuántas cartas descartar
-        val maxDiscard = 4
-        /*
-        val discardCount = when {
-            paresPlay !is ParesPlay.NoPares -> 0
-            strength.juego >= 60 || strength.pares >= 60 -> 0
-            strength.juego >= 40 || strength.pares >= 40 -> 1
-            else -> (2 + rng.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
-        }.coerceIn(0, maxDiscard)
-        */
-
-        // BLOQUE NUEVO Y MEJORADO
-        val discardCount = when {
-            strength.pares >= 75 -> 0 // No se descartan Medias o Duples
-            juegoValue >= 31 -> 0 // No se descarta si se tiene juego
-            strength.grande >= 85 || strength.chica >= 85 -> 1 // Si tenemos buena grande/chica, descartamos 1 para buscar pares o juego
-            strength.pares >= 40 -> 2 // Si tenemos una pareja simple, descartamos las otras 2
-            else -> 4 // Si la mano es mala, se descartan todas
-        }.coerceIn(0, maxDiscard)
-
-        if (discardCount == 0) {
-            logger.log(
-                DecisionLog(
-                    decisionId = decisionId,
-                    timestamp = System.currentTimeMillis(),
-                    playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                    phase = "DISCARD",
-                    hand = hand.map { cardToShortString(it) },
-                    strengths = mapOf("grande" to strength.grande, "pares" to strength.pares, "juego" to strength.juego),
-                    chosenAction = "NO_DISCARD",
-                    reason = "Heurística decidió 0 descartes",
-                    details = mapOf("discardCount" to 0)
-                )
-            )
-            return GameAction.ConfirmDiscard
-        }
-
-        // Ordenamos por prioridad ascendente (las más bajas son candidatas a descartar)
-        priorities.sortBy { it.second }
-        val candidateToDiscard = priorities.take(discardCount).map { it.first }.toMutableList()
-
-        // Evitar descartar TopRanks (3 o Rey) salvo condiciones restrictivas
-        val hasTopSelected = candidateToDiscard.any { isTopRank(hand[it]) }
-        if (hasTopSelected && !allowDiscardTopRank(hand, isMano)) {
-            // Reemplazar cada top seleccionado por el siguiente peor no-top si existe
-            for (i in candidateToDiscard.indices) {
-                val idx = candidateToDiscard[i]
-                if (isTopRank(hand[idx])) {
-                    val replacement = priorities.firstOrNull {
-                        !candidateToDiscard.contains(it.first) && !isTopRank(hand[it.first])
-                    }?.first
-                    if (replacement != null) candidateToDiscard[i] = replacement
-                }
-            }
-        }
-
-        // Protección adicional: evita romper posibles combos de juego (heurística simple)
-        val finalDiscard = candidateToDiscard.filter { idx ->
-            val remaining = hand.filterIndexed { i, _ -> i !in candidateToDiscard }
-            val newJuego = gameLogic.getHandJuegoValue(remaining)
-            // si descartando se destruye un 31 existente, lo evitamos (ya filtrado) — en general evitamos bajar de 31 a <31
-            !(juegoValue == 31 && newJuego < 31)
-        }
-
-        val reason = "Requested $discardCount, final ${finalDiscard.size}. Priorities: ${
-            priorities.joinToString { "(${cardToShortString(hand[it.first])}=${it.second})" }
-        }"
 
         logger.log(
             DecisionLog(
                 decisionId = decisionId,
                 timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
+                playerId = aiPlayer.id,
                 phase = "DISCARD",
                 hand = hand.map { cardToShortString(it) },
-                strengths = mapOf("grande" to strength.grande, "pares" to strength.pares, "juego" to strength.juego),
-                chosenAction = "DISCARD",
-                reason = reason,
-                details = mapOf("discardIndices" to finalDiscard, "requestedDiscardCount" to discardCount)
+                chosenAction = "EVALUATING_DISCARD",
+                reason = "Applying 'Grande' discard strategy."
             )
         )
 
-        // Devuelve la acción de descarte (adapta si tu GameAction no usa este constructor)
-        return GameAction.ConfirmDiscard
+        // Estrategia Principal:
+        // 1. Si se tiene 31 de juego, es una jugada perfecta. No se descarta nada.
+        if (juegoValue == 31) {
+            // Aunque tenga 31, si hubo Mus, está obligado a descartar.
+            // Descartará la carta con el valor más bajo para el juego (un As o un Dos).
+            val cardToDiscard = hand.minByOrNull { card ->
+                when (card.rank) {
+                    Rank.REY, Rank.TRES -> 12
+                    else -> card.rank.value
+                }
+            }
+            return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard!!))
+        }
+
+        // 2. Estrategia "a la grande": conservar solo Reyes y Treses.
+        var cardsToDiscard = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }.toSet()
+
+        // 3. REGLA OBLIGATORIA: Si después de aplicar la estrategia no se descarta nada,
+        //    forzamos el descarte de la carta menos valiosa de la mano.
+        if (cardsToDiscard.isEmpty()) {
+            // La mano solo contiene Reyes y Treses. La "peor" es un Tres (valor de rango 3 vs 12 del Rey).
+            val worstCard = hand.minByOrNull { it.rank.value }
+            if (worstCard != null) {
+                cardsToDiscard = setOf(worstCard)
+            }
+        }
+
+        return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
     }
 
     // ---------------- Apuesta inicial (instrumentado) ----------------

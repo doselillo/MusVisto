@@ -469,8 +469,11 @@ class MusGameLogic @Inject constructor() {
         val cardsToDiscard = currentState.selectedCardsForDiscard
         var event: GameEvent? = null
 
-        // Si un jugador humano pulsa "Descartar" sin seleccionar cartas, no hacemos nada.
-        if (cardsToDiscard.isEmpty() && !player.isAi) return currentState
+        if (currentState.gamePhase == GamePhase.DISCARD && currentState.selectedCardsForDiscard.isEmpty()) {
+            Log.e("MusGameLogic", "Error: Intento de descarte vacío en fase de Mus por el jugador $playerId.")
+            return currentState // Devuelve el estado sin cambios.
+        }
+
 
         var deck = currentState.deck
         var discardPile = currentState.discardPile

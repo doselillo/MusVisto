@@ -45,16 +45,16 @@ class GameViewModel @Inject constructor(
                 Card(Suit.COPAS, Rank.SIETE)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
-                Card(Suit.OROS, Rank.CUATRO),
-                Card(Suit.ESPADAS, Rank.CINCO),
-                Card(Suit.BASTOS, Rank.SEIS),
-                Card(Suit.COPAS, Rank.SIETE)
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.BASTOS, Rank.SOTA),
+                Card(Suit.COPAS, Rank.CUATRO)
             ),
             "p3" to listOf( // Mano del Compañero
-                Card(Suit.OROS, Rank.DOS),
-                Card(Suit.ESPADAS, Rank.SIETE),
-                Card(Suit.BASTOS, Rank.SEIS),
-                Card(Suit.COPAS, Rank.CINCO)
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.BASTOS, Rank.SOTA),
+                Card(Suit.COPAS, Rank.CUATRO)
             ),
             "p4" to listOf( // Mano del Rival Derecho
                 Card(Suit.OROS, Rank.REY),
@@ -164,30 +164,39 @@ class GameViewModel @Inject constructor(
         viewModelScope.launch {
             delay(200)
             val currentState = _gameState.value
-            val currentPlayer = currentState.players.find { it.id == currentState.currentTurnPlayerId }
+            val currentPlayer =
+                currentState.players.find { it.id == currentState.currentTurnPlayerId }
 
             if (currentPlayer != null && currentPlayer.isAi) {
+                Log.d("MusVistoDebug", "AI's turn detected for: ${currentPlayer.name}")
 
-                val aiAction = aiLogic.makeDecision(currentState, currentPlayer)
+                // Obtenemos la decisión completa de la IA (acción + cartas)
+                val aiDecision = aiLogic.makeDecision(currentState, currentPlayer)
+                Log.d(
+                    "MusVistoDebug",
+                    "AI (${currentPlayer.name}) decided to: ${aiDecision.action.displayText}"
+                )
 
-                if (aiAction is GameAction.ConfirmDiscard) {
-                    // La IA decidirá qué cartas tirar (por ahora, la primera que no sea un Rey)
-                    val cardToDiscard = currentPlayer.hand.firstOrNull { it.rank != Rank.REY } ?: currentPlayer.hand.firstOrNull()
-                    if (cardToDiscard != null) {
-                        // Actualizamos el estado INMEDIATAMENTE para que la lógica lo vea
-                        _gameState.value = _gameState.value.copy(selectedCardsForDiscard = setOf(cardToDiscard))
-                    }
+                // Si la acción es descartar, aplicamos la selección de cartas de la IA al estado
+                if (aiDecision.action is GameAction.ConfirmDiscard) {
+                    _gameState.value =
+                        _gameState.value.copy(selectedCardsForDiscard = aiDecision.cardsToDiscard)
                 }
 
                 delay(500)
 
                 val stateBeforeAiAction = _gameState.value
-                val newState = gameLogic.processAction(stateBeforeAiAction, aiAction, currentPlayer.id)
+                // Usamos la acción de la decisión para procesarla en la lógica del juego
+                val newState = gameLogic.processAction(
+                    stateBeforeAiAction,
+                    aiDecision.action,
+                    currentPlayer.id
+                )
 
                 updateStateAndCheckAiTurn(newState)
-                }
             }
         }
+    }
     
     private fun updateStateAndCheckAiTurn(newState: GameState) {
         // Primero gestionamos el evento si lo hay
