@@ -250,7 +250,7 @@ class GameViewModel @Inject constructor(
             score = score,
             manoPlayerId = newManoId,
             currentTurnPlayerId = newManoId, // <-- La ronda EMPIEZA con la mano
-            gamePhase = GamePhase.MUS_DECISION,
+            gamePhase = GamePhase.MUS,
             availableActions = listOf(GameAction.Mus, GameAction.NoMus),
             lastAction = null,
             playersWhoPassed = emptySet(),
@@ -259,7 +259,9 @@ class GameViewModel @Inject constructor(
             isPuntoPhase = false,
             discardCounts = emptyMap(),
             selectedCardsForDiscard = emptySet(),
-            revealAllHands = false
+            revealAllHands = false,
+            roundHistory = emptyList(), // <-- AÑADE ESTA LÍNEA
+            actionLog = emptyList()
         )
         // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
         handleAiTurn()

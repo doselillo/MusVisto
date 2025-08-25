@@ -17,7 +17,9 @@ class MusGameLogicTest {
     @Before
     fun setUp() {
         // Esto se ejecuta antes de cada test
-        gameLogic = MusGameLogic()
+        gameLogic = MusGameLogic(
+            random = TODO()
+        )
         players = listOf(
             Player(id = "p1", name = "Ana", team = "teamA", avatarResId = 0),
             Player(id = "p2", name = "Luis", team = "teamB", avatarResId = 0),

@@ -27,4 +27,9 @@ sealed class GameAction(
     object Quiero : GameAction("Quiero", ActionType.CONFIRM, R.drawable.ic_check)
     object NoQuiero : GameAction("No Quiero", ActionType.DENY, R.drawable.ic_close)
     object Órdago : GameAction("Órdago", ActionType.ULTIMATE, R.drawable.ic_ordago)
+
+
+    data class LogAction(val text: String) : GameAction(text, ActionType.PASS, null)
+
+
 }

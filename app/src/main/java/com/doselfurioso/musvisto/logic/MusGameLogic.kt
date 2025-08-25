@@ -214,8 +214,16 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         // 3. Lógica específica del lance
         when (currentState.gamePhase) {
-            GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(currentState, playerId)
-            GamePhase.JUEGO -> if (!currentState.isPuntoPhase && getHandJuegoValue(player.hand) < 31) return handlePaso(currentState, playerId)
+            GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(
+                currentState,
+                playerId
+            )
+
+            GamePhase.JUEGO -> if (!currentState.isPuntoPhase && getHandJuegoValue(player.hand) < 31) return handlePaso(
+                currentState,
+                playerId
+            )
+
             else -> {} // No special logic for other phases
         }
 
@@ -230,10 +238,24 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             is GameAction.NoQuiero -> handleNoQuiero(currentState, playerId)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
             is GameAction.Continue, is GameAction.NewGame -> currentState
+            else -> return currentState
         }
-
         return if (nextState != currentState) {
-            nextState.copy(lastAction = LastActionInfo(playerId, action))
+            val newActionInfo = LastActionInfo(playerId, action)
+            var finalLog = nextState.actionLog
+
+            // LA CLAVE: Solo añadimos al log si el lance NO ha cambiado.
+            // Si la fase ha cambiado, significa que endLanceAndAdvance ya ha limpiado el log.
+            if (nextState.gamePhase == currentState.gamePhase) {
+                finalLog = (nextState.actionLog + newActionInfo).takeLast(4)
+            }
+
+            // El log de descarte es un caso especial que se gestiona dentro de handleDiscard.
+            if (action is GameAction.ConfirmDiscard) {
+                finalLog = nextState.actionLog
+            }
+
+            nextState.copy(lastAction = newActionInfo, actionLog = finalLog)
         } else {
             nextState
         }
@@ -334,7 +356,9 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
                 gamePhase = GamePhase.DISCARD,
                 availableActions = listOf(GameAction.ConfirmDiscard),
                 playersWhoPassed = emptySet(), // Reset for discard confirmation
-                currentTurnPlayerId = newState.manoPlayerId // Turn returns to "mano"
+                currentTurnPlayerId = newState.manoPlayerId,
+                actionLog = emptyList(),
+                lastAction = LastActionInfo("", GameAction.Mus)// Turn returns to "mano"
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
@@ -349,7 +373,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             playersWhoPassed = emptySet(),
             discardCounts = emptyMap(),
             currentBet = null,
-            currentTurnPlayerId = currentState.manoPlayerId
+            currentTurnPlayerId = currentState.manoPlayerId,
+            actionLog = emptyList()
 
         )
     }
@@ -366,7 +391,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         // Si todos los jugadores aptos ya han pasado, el lance termina sin apuestas.
         if (newPassedSet.containsAll(eligiblePlayers.map { it.id })) {
-            return endLanceAndAdvance(currentState) { this }
+            val updatedState = currentState.copy(actionLog = emptyList())
+            return endLanceAndAdvance(updatedState) { this }
         }
 
         // Si no, pasa el turno al siguiente jugador apto.
@@ -443,17 +469,32 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     }
 
     private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
-        val updatedState = currentState.updates()
-        var nextPhase = advanceToNextPhase(updatedState.gamePhase)
+        Log.d("LogDebug", "-> Entrando en endLanceAndAdvance para el lance: ${currentState.gamePhase}")
 
+        var updatedState = currentState.updates()
+
+        // --- LÓGICA DE HISTORIAL DE RONDA (sin cambios) ---
+        val lanceResult = when {
+            updatedState.currentBet != null && updatedState.agreedBets.containsKey(updatedState.gamePhase) ->
+                LanceResult(updatedState.gamePhase, "Querido", updatedState.currentBet.amount)
+            updatedState.currentBet != null ->
+                LanceResult(updatedState.gamePhase, "No Querido", updatedState.agreedBets[updatedState.gamePhase] ?: 1)
+            else -> LanceResult(updatedState.gamePhase, "Paso")
+        }
+        val newHistory = updatedState.roundHistory + lanceResult
+        updatedState = updatedState.copy(roundHistory = newHistory, actionLog = emptyList())
+        // ------------------------------------------------
+
+        val nextPhase = advanceToNextPhase(updatedState.gamePhase)
+
+        // --- LÓGICA DE TRANSICIÓN DE FASE (AQUÍ ESTÁ LA CORRECCIÓN) ---
         var finalState = updatedState.copy(
             gamePhase = nextPhase,
             currentTurnPlayerId = updatedState.manoPlayerId,
             playersWhoPassed = emptySet(),
-            currentBet = null
+            currentBet = null,
+            actionLog = emptyList()// <-- ESTA ES LA LÍNEA CLAVE Y DEFINITIVA
         )
-
-        // --- LÓGICA DE SALTO DE LANCE MEJORADA ---
 
         // Comprobación de Pares
         if (nextPhase == GamePhase.PARES) {
@@ -488,9 +529,12 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
                 }
             }
         }
+        Log.d("LogDebug", "Limpiando actionLog. Pasando al siguiente lance: $nextPhase")
 
         return finalState.copy(
-            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
+            actionLog = emptyList(),
+            lastAction = null
         )
     }
 
@@ -519,7 +563,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         }
 
         if (eligiblePlayers.isEmpty()) {
-            return endLanceAndAdvance(currentState) { this }
+            val updatedState = currentState.copy(actionLog = emptyList())
+            return endLanceAndAdvance(updatedState) { this }
         }
 
         // Find the next eligible player in the original turn order
@@ -569,6 +614,14 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             newCards = deck.take(cardsNeeded)
             deck = deck.drop(cardsNeeded)
         }
+        val cardCount = cardsToDiscard.size
+        val customActionText = if (cardCount == 1) "Descarta 1 carta" else "Descarta $cardCount cartas"
+
+        // Creamos una acción "falsa" solo para el log, con el texto personalizado
+        val customLogAction = GameAction.LogAction(customActionText)
+
+        val newActionInfo = LastActionInfo(playerId, customLogAction)
+        val newLog = (currentState.actionLog + newActionInfo).takeLast(4)
 
         // Las cartas que acaba de tirar el jugador se añaden a la nueva pila de descartes.
         discardPile += cardsToDiscard
@@ -587,12 +640,13 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
                 players = updatedPlayers,
                 deck = deck,
                 discardPile = discardPile,
-                gamePhase = GamePhase.MUS_DECISION,
+                gamePhase = GamePhase.MUS,
                 availableActions = listOf(GameAction.Mus, GameAction.NoMus),
                 selectedCardsForDiscard = emptySet(),
                 playersWhoPassed = emptySet(),
                 discardCounts = newDiscardCounts,
-                currentTurnPlayerId = currentState.manoPlayerId
+                currentTurnPlayerId = currentState.manoPlayerId,
+                actionLog = emptyList()
             )
         }
 
@@ -604,7 +658,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             selectedCardsForDiscard = emptySet(),
             playersWhoPassed = newPassedSet,
             discardCounts = newDiscardCounts,
-            event = event
+            event = event,
+            actionLog = newLog
 
         )
     }

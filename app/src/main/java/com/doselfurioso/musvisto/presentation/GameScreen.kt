@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +53,7 @@ import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.LanceResult
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
 import kotlinx.coroutines.delay
@@ -315,7 +317,7 @@ fun GameScreen(
                 HorizontalPlayerArea(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
-                    isMano = gameState.currentTurnPlayerId == partner.id,
+                    isMano = gameState.manoPlayerId == partner.id,
                     discardCount = gameState.discardCounts[partner.id],
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
@@ -329,7 +331,7 @@ fun GameScreen(
                 VerticalPlayerArea(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                    isMano = gameState.currentTurnPlayerId == rivalLeft.id,
+                    isMano = gameState.manoPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier.padding(16.dp)
@@ -345,7 +347,7 @@ fun GameScreen(
                 VerticalPlayerArea(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                    isMano = gameState.currentTurnPlayerId == rivalRight.id,
+                    isMano = gameState.manoPlayerId == rivalRight.id,
                     discardCount = gameState.discardCounts[rivalRight.id],
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
@@ -361,7 +363,7 @@ fun GameScreen(
                 HorizontalPlayerArea(
                     player = player,
                     isCurrentTurn = isMyTurn,
-                    isMano = gameState.currentTurnPlayerId == player.id,
+                    isMano = gameState.manoPlayerId == player.id,
                     discardCount = gameState.discardCounts[player.id],
                     handContent = {
                         PlayerHandArc(
@@ -378,10 +380,10 @@ fun GameScreen(
             // INFO CENTRAL Y BOTONES
             Column(modifier = Modifier
                 .align(Alignment.Center)
-                .padding(bottom = 180.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                .padding(bottom = 180.dp, start = 120.dp, end = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Scoreboard(score = gameState.score)
                 Spacer(modifier = Modifier.height(16.dp))
-                LanceInfo(gameState, players = players)
+                ActionLogDisplay(log = gameState.actionLog, players = players, gameState.gamePhase)
             }
 
             ActionButtons(
@@ -585,67 +587,51 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
         }
     }
 }
+// --- REEMPLAZA EL ANTIGUO LanceInfo POR ESTE ---
 @Composable
-fun LanceInfo(
-    gameState: GameState,
+fun ActionLogDisplay(
+    log: List<LastActionInfo>,
     players: List<Player>,
+    gamePhase: GamePhase, // <-- AÑADE ESTE PARÁMETRO
     modifier: Modifier = Modifier
 ) {
-    // Total envidado en la fase actual
-    val totalEnvidado = gameState.currentBet?.amount ?: 0
+    Card(
+        modifier = modifier.defaultMinSize(minHeight = 110.dp), // Aumentamos un poco el tamaño
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp), // Espacio entre elementos
+        ) {
+            // Título del Lance
+            Text(
+                text = gamePhase.name.replace('_', ' '),
+                color = Color.Yellow,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
 
-    val displayText = when (gameState.gamePhase) {
-        GamePhase.GAME_OVER -> {
-            if (gameState.winningTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
-        }
+            // Divisor
+            Box(
+                modifier = Modifier
+                    .height(1.dp)
+                    .fillMaxWidth(0.8f)
+                    .background(Color.Gray)
+            )
 
-        GamePhase.ROUND_OVER -> "FIN DE LA RONDA"
-        GamePhase.MUS_DECISION -> "¿MUS?"
-        else -> {
-            var text = "${gameState.gamePhase} vale: $totalEnvidado\n"
-
-            // Mostrar la última acción
-            gameState.lastAction?.let { action ->
-                val playerName = players.find { p -> p.id == action.playerId }?.name ?: ""
-
-                text += when (action.action) {
-
-                    GameAction.Paso -> "\n$playerName pasa"
-                    GameAction.Quiero -> "\n$playerName quiere"
-                    GameAction.NoQuiero -> "\n$playerName no quiere"
-                    GameAction.Órdago -> "\n$playerName echa órdago a ${gameState.gamePhase}"
-                    GameAction.Mus -> ""
-                    GameAction.ConfirmDiscard -> ""
-                    GameAction.NoMus -> ""
-                    GameAction.Continue -> ""
-                    GameAction.NewGame -> ""
-                    else -> {
-                        "\n$playerName: ${gameState.lastAction.action.displayText}"
-                    }
+            // Log de acciones
+            if (log.isEmpty()) {
+                Text("Esperando acción...", color = Color.Gray, fontSize = 14.sp)
+            } else {
+                log.forEach { actionInfo ->
+                    val playerName = players.find { it.id == actionInfo.playerId }?.name ?: ""
+                    Text(
+                        text = "$playerName: ${actionInfo.action.displayText}",
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
                 }
-            } ?: run {
-                // Si no hay lastAction, usar currentBet como fallback
-                gameState.currentBet?.let { bet ->
-                    val playerName = players.find { p -> p.id == bet.bettingPlayerId }?.name ?: ""
-                    text += if (bet.amount > 0) {
-                        "\nEnvite de ${bet.amount} por $playerName"
-                    } else {
-                        "\n$playerName pasa"
-                    }
-                }
-            }
-
-            Card(
-                modifier = modifier,
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
-            ) {
-                Text(
-                    text = text,
-                    color = Color.Yellow,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
-                )
             }
         }
     }
@@ -751,4 +737,33 @@ fun GameEventNotification(event: GameEvent?) {
             )
         }
     }
+    // --- AÑADE ESTE COMPOSABLE ENTERO ---
+    @Composable
+    fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+        ) {
+            history.forEach { result ->
+                val text = when (result.outcome) {
+                    "Paso" -> result.lance.name.take(2) // GR, CH, PA, JU
+                    "Querido" -> "${result.lance.name.take(2)} ✓" // Añade un check si se quiso
+                    "No Querido" -> "${result.lance.name.take(2)} X" // Añade una X si no
+                    else -> ""
+                }
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+
 }

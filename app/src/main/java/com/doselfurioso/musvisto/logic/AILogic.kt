@@ -71,7 +71,7 @@ class AILogic @Inject constructor(
 
         // Si no hay apuesta, decidir según la fase
         return when (gameState.gamePhase) {
-            GamePhase.MUS_DECISION -> AIDecision(decideMus(strength, decisionId, aiPlayer))
+            GamePhase.MUS -> AIDecision(decideMus(strength, decisionId, aiPlayer))
             GamePhase.DISCARD ->(decideDiscard(aiPlayer, decisionId))
             GamePhase.GRANDE -> AIDecision(decideInitialBet(strength.grande, decisionId, aiPlayer, GamePhase.GRANDE))
             GamePhase.CHICA -> AIDecision(decideInitialBet(strength.chica, decisionId, aiPlayer, GamePhase.CHICA))
@@ -145,7 +145,7 @@ class AILogic @Inject constructor(
                 decisionId = decisionId,
                 timestamp = System.currentTimeMillis(),
                 playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                phase = "MUS_DECISION",
+                phase = "MUS",
                 hand = aiPlayer.hand.map { cardToShortString(it) },
                 strengths = mapOf("juego" to strength.juego, "pares" to strength.pares),
                 chosenAction = action.toString(),
