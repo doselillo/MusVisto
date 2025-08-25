@@ -222,6 +222,7 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
 fun VerticalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
+    isMano: Boolean,
     discardCount: Int?,
     handContent: @Composable () -> Unit
 ) {
@@ -229,7 +230,7 @@ fun VerticalPlayerArea(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
         handContent()
         DiscardCountIndicator(count = discardCount ?: 0)
     }
@@ -239,6 +240,7 @@ fun VerticalPlayerArea(
 fun HorizontalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
+    isMano: Boolean,
     discardCount: Int?,
     handContent: @Composable () -> Unit
 ) {
@@ -246,7 +248,7 @@ fun HorizontalPlayerArea(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
         Box(contentAlignment = Alignment.Center) {
             handContent()
             DiscardCountIndicator(count = discardCount ?: 0)
@@ -313,6 +315,7 @@ fun GameScreen(
                 HorizontalPlayerArea(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
+                    isMano = gameState.currentTurnPlayerId == partner.id,
                     discardCount = gameState.discardCounts[partner.id],
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
@@ -326,6 +329,7 @@ fun GameScreen(
                 VerticalPlayerArea(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
+                    isMano = gameState.currentTurnPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier.padding(16.dp)
@@ -341,6 +345,7 @@ fun GameScreen(
                 VerticalPlayerArea(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
+                    isMano = gameState.currentTurnPlayerId == rivalRight.id,
                     discardCount = gameState.discardCounts[rivalRight.id],
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
@@ -356,6 +361,7 @@ fun GameScreen(
                 HorizontalPlayerArea(
                     player = player,
                     isCurrentTurn = isMyTurn,
+                    isMano = gameState.currentTurnPlayerId == player.id,
                     discardCount = gameState.discardCounts[player.id],
                     handContent = {
                         PlayerHandArc(
@@ -520,22 +526,39 @@ fun ActionButtons(
 fun PlayerAvatar(
     player: Player,
     isCurrentTurn: Boolean, // This will control the glow
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isMano: Boolean
 ) {
-    val borderColor = if (isCurrentTurn) {
-        Color.Yellow // The color of the glow when it's their turn
-    } else {
-        Color.Transparent // No border when it's not their turn
-    }
+    val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
 
-    Image(
-        painter = painterResource(id = player.avatarResId),
-        contentDescription = "Avatar of ${player.name}",
-        modifier = modifier
-            .size(80.dp)
-            .clip(CircleShape) // Make the avatar circular
-            .border(4.dp, borderColor, CircleShape) // Apply the glowing border
-    )
+
+    Box(
+        modifier = modifier.size(80.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = player.avatarResId),
+            contentDescription = "Avatar of ${player.name}",
+            modifier = Modifier
+                .fillMaxSize() // El avatar ocupa todo el Box
+                .clip(CircleShape)
+                .border(4.dp, borderColor, CircleShape)
+        )
+
+        // Si el jugador es "mano", mostramos el icono superpuesto.
+        if (isMano) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_mano),
+                contentDescription = "Indicador de Mano",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd) // Lo colocamos en la esquina inferior derecha.
+                    .size(24.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .padding(4.dp)
+            )
+        }
+    }
 }
 
 @Composable
