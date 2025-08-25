@@ -91,6 +91,12 @@ class AILogic @Inject constructor(
             else -> 0
         }
 
+        val currentBetAmount = gameState.currentBet?.amount ?: 0
+        if (currentBetAmount >= 4 && strengthScore < 95) {
+            // Si la apuesta ya es alta y no tenemos una jugada ganadora, solo aceptamos o rechazamos
+            return if (strengthScore-currentBetAmount > 70) GameAction.Quiero else GameAction.NoQuiero
+        }
+
         val action = when {
             strengthScore > 85 -> GameAction.Envido(2)
             strengthScore > 60 -> GameAction.Quiero
@@ -117,7 +123,8 @@ class AILogic @Inject constructor(
 
     // ---------------- Mus / NoMus ----------------
     private fun decideMus(strength: HandStrength, decisionId: String, aiPlayer: Player): GameAction {
-        val action = if (strength.juego >= 95 || strength.pares >= 65 || (strength.juego + strength.pares) >= 140 || strength.grande >= 95 || strength.chica >= 95) GameAction.NoMus else GameAction.Mus
+        //val action = if (strength.juego >= 95 || strength.pares >= 65 || (strength.juego + strength.pares) >= 140 || strength.grande >= 95 || strength.chica >= 95) GameAction.NoMus else GameAction.Mus
+        val action  = if (strength.juego >= 70 || strength.pares >= 65 || strength.grande >= 85 || strength.chica >= 85) GameAction.NoMus else GameAction.Mus
 
         logger.log(
             DecisionLog(
@@ -174,11 +181,22 @@ class AILogic @Inject constructor(
 
         // Heurística para cuántas cartas descartar
         val maxDiscard = 4
+        /*
         val discardCount = when {
             paresPlay !is ParesPlay.NoPares -> 0
             strength.juego >= 60 || strength.pares >= 60 -> 0
             strength.juego >= 40 || strength.pares >= 40 -> 1
             else -> (2 + rng.nextInt(0, 3)).coerceAtMost(maxDiscard) // 2..4
+        }.coerceIn(0, maxDiscard)
+        */
+
+        // BLOQUE NUEVO Y MEJORADO
+        val discardCount = when {
+            strength.pares >= 75 -> 0 // No se descartan Medias o Duples
+            juegoValue >= 31 -> 0 // No se descarta si se tiene juego
+            strength.grande >= 85 || strength.chica >= 85 -> 1 // Si tenemos buena grande/chica, descartamos 1 para buscar pares o juego
+            strength.pares >= 40 -> 2 // Si tenemos una pareja simple, descartamos las otras 2
+            else -> 4 // Si la mano es mala, se descartan todas
         }.coerceIn(0, maxDiscard)
 
         if (discardCount == 0) {
@@ -255,8 +273,10 @@ class AILogic @Inject constructor(
         phase: GamePhase
     ): GameAction {
         val action = when {
-            strengthScore > 80 -> GameAction.Envido(2)
-            strengthScore > 55 && rng.nextInt(100) < 18 -> GameAction.Envido(2)
+            // Umbral subido de 80 a 85
+            strengthScore > 85 -> GameAction.Envido(2)
+            // Umbral subido de 55 a 60 y probabilidad bajada
+            strengthScore > 60 && rng.nextInt(100) < 15 -> GameAction.Envido(2)
             else -> GameAction.Paso
         }
 
@@ -270,7 +290,7 @@ class AILogic @Inject constructor(
                 strengths = mapOf("phaseScore" to strengthScore),
                 chosenAction = action.toString(),
                 reason = "Initial bet evaluated",
-                details = mapOf("phaseScore" to strengthScore)
+                details = mapOf("phaseScore" to strengthScore, "phaseLimit:" to ">85 o >60+15%random")
             )
         )
 
@@ -280,17 +300,26 @@ class AILogic @Inject constructor(
     // ---------------- Evaluación de mano ----------------
     private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): HandStrength {
         // GRANDE: preferimos 3 y Rey
-        val maxVal = hand.maxOf { it.rank.value }
-        var grandeStrength = (maxVal / 12.0 * 50).toInt()
-        if (hand.any { isTopRank(it) }) grandeStrength += 15
-       // if (hand.any { isSecondRank(it) }) grandeStrength += 8
+        val topCardsCount = hand.count { it.rank.value == 12 } // Reyes
+        var grandeStrength = when (topCardsCount) {
+            0 -> hand.maxOf { it.rank.value } * 4 // Si no hay reyes, puntúa bajo
+            1 -> 50 + hand.maxOf { it.rank.value } // Con un rey, es decente
+            2 -> 75 + hand.maxOf { it.rank.value } // Con dos, es fuerte
+            3 -> 90 // Con tres, es muy fuerte
+            4 -> 95 // Con cuatro, es casi seguro ganar
+            else -> 0
+        }
 
-        // CHICA: preferimos 2 y As
-        val minVal = hand.minOf { it.rank.value }
-        var chicaStrength = ((12 - minVal) / 11.0 * 30).toInt()
-        if (hand.any { isSecondRank(it) }) chicaStrength += 30
-       // if (hand.any { isTopRank(it) }) chicaStrength += 8
-
+        // CHICA: Lógica mejorada que valora múltiples cartas bajas
+        val lowCardsCount = hand.count { it.rank.value == 1 } // Ases y Doses
+        var chicaStrength = when (lowCardsCount) {
+            0 -> (12 - hand.minOf { it.rank.value }) * 4 // Sin Ases/Doses, puntúa bajo
+            1 -> 60 + (5 - hand.minOf { it.rank.value }) // Con una, es decente
+            2 -> 80 // Con dos, es fuerte
+            3 -> 95 // Con tres, es muy fuerte
+            4 -> 100 // Con cuatro, es imbatible
+            else -> 0
+        }
         // PARES: reutiliza lógica de gameLogic si existe
         val paresPlay = gameLogic.getHandPares(hand)
         val paresStrength = when (paresPlay) {
