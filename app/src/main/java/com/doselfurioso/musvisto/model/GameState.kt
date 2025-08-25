@@ -32,5 +32,6 @@ data class GameState(
     val revealAllHands: Boolean = false,
     val roundHistory: List<LanceResult> = emptyList(),
     val actionLog: List<LastActionInfo> = emptyList(),
-    val noMusPlayer: String? = null
+    val noMusPlayer: String? = null,
+    val isNewLance: Boolean = true
 )
