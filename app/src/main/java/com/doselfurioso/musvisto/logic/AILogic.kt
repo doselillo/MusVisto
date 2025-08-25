@@ -341,18 +341,26 @@ class AILogic @Inject constructor(
         val playerPosition = orderedPlayers.indexOfFirst { it.id == player.id }.takeIf { it != -1 } ?: 0 // 0=mano, 3=postre
 
         val juegoValue = gameLogic.getHandJuegoValue(hand)
-        val juegoStrength = when (juegoValue) {
-            31 -> 100 // 31 es siempre la mejor jugada
-            32 -> if (playerPosition <= 1) 88 else 45 // Fuerte si eres de los dos primeros, débil si no
-            33 -> 82 + ((3 - playerPosition) * 3) // Bonus por ser mano/segundo
-            34 -> 84 + ((3 - playerPosition) * 3)
-            35 -> 86 + ((3 - playerPosition) * 3)
-            36 -> 88 + ((3 - playerPosition) * 3)
-            37 -> 90 + ((3 - playerPosition) * 3)
-            40 -> 92 + ((3 - playerPosition) * 3)
-            in 28..30 -> 60 + (juegoValue - 28) * 5 // Punto se evalúa igual
+        val baseStrength = when (juegoValue) {
+            31 -> 97
+            32 -> 70
+            40 -> 69
+            39 -> 67
+            38 -> 65
+            37 -> 60
+            36 -> 55
+            35 -> 50
+            34 -> 40
+            33 -> 30
+            30 -> 60
+            29 -> 55
+            28 -> 50
             else -> 0
         }
+
+// Ajuste por posición: mano = +3, 2º = +2, 3º = +1, postre = +0
+        val juegoStrength = baseStrength + (3 - playerPosition).coerceIn(0, 3)
+
 
         return HandStrength(
             grandeStrength.coerceIn(0, 100),

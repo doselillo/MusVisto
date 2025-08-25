@@ -225,7 +225,7 @@ class MusGameLogic @Inject constructor() {
             is GameAction.Paso -> handlePaso(currentState, playerId)
             is GameAction.Envido -> handleEnvido(currentState, playerId, action.amount)
             is GameAction.Quiero -> handleQuiero(currentState)
-            is GameAction.NoQuiero -> handleNoQuiero(currentState)
+            is GameAction.NoQuiero -> handleNoQuiero(currentState, playerId)
             is GameAction.Órdago -> handleOrdago(currentState, playerId)
             is GameAction.Continue, is GameAction.NewGame -> currentState
         }
@@ -282,17 +282,35 @@ class MusGameLogic @Inject constructor() {
         }
     }
 
-    private fun handleNoQuiero(currentState: GameState): GameState {
-        val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
-        return endLanceAndAdvance(resolvedState) {
-            val bet = this.currentBet ?: return@endLanceAndAdvance this
-            val bettingPlayer = this.players.find { it.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
-            // Si no hay apuesta previa, se suma 1 punto. Si es un re-envite, se suma lo ya querido.
-            val pointsWon = this.agreedBets[this.gamePhase] ?: 1
-            val currentScore = this.score[bettingPlayer.team] ?: 0
-            val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
-            Log.d("MusVistoTest", "Bet REJECTED. Team ${bettingPlayer.team} wins $pointsWon point(s).")
-            this.copy(score = newScore)
+    private fun handleNoQuiero(currentState: GameState, playerId: String): GameState {
+        // Si no hay una apuesta activa, la acción no es válida.
+        if (currentState.currentBet == null || playerId !in currentState.playersPendingResponse) {
+            return currentState
+        }
+
+        // Eliminamos al jugador actual de la lista de los que faltan por responder.
+        val remainingResponders = currentState.playersPendingResponse.filter { it != playerId }
+
+        // Si ya no quedan miembros del equipo por responder, el rechazo es definitivo.
+        if (remainingResponders.isEmpty()) {
+            Log.d("MusVistoTest", "El equipo entero ha rechazado la apuesta.")
+            val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
+            return endLanceAndAdvance(resolvedState) {
+                val bet = this.currentBet ?: return@endLanceAndAdvance this
+                val bettingPlayer = this.players.find { p -> p.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
+                val pointsWon = this.agreedBets[this.gamePhase] ?: 1
+                val currentScore = this.score[bettingPlayer.team] ?: 0
+                val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
+                Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s).")
+                this.copy(score = newScore)
+            }
+        } else {
+            // Si aún queda un compañero por hablar, le pasamos el turno a él.
+            Log.d("MusVistoTest", "Jugador $playerId rechaza, pero pasa el turno a su compañero.")
+            return currentState.copy(
+                playersPendingResponse = remainingResponders,
+                currentTurnPlayerId = remainingResponders.first()
+            )
         }
     }
 
@@ -329,38 +347,21 @@ class MusGameLogic @Inject constructor() {
     }
 
     private fun handlePaso(currentState: GameState, playerId: String): GameState {
-        // Escenario 1: Hay una apuesta activa y el jugador está en la lista de respuesta
-        if (currentState.currentBet != null && playerId in currentState.playersPendingResponse) {
-            val remainingResponders = currentState.playersPendingResponse.filter { it != playerId }
+        // El "Paso" solo se gestiona si NO hay una apuesta activa.
+        // El bloque que manejaba el caso de una apuesta activa se ha eliminado
+        // porque es un estado de juego que no debería ser posible.
 
-            // Si era el último oponente en hablar, el "no quiero" es definitivo
-            if (remainingResponders.isEmpty()) {
-                return handleNoQuiero(currentState) // El equipo entero ha pasado, es un "no quiero"
-            }
-
-            // Si no, el turno pasa al siguiente oponente de la lista
-            return currentState.copy(
-                playersPendingResponse = remainingResponders,
-                currentTurnPlayerId = remainingResponders.first()
-            )
-        }
-
-        // Escenario 2: No hay apuesta activa (comportamiento original)
         val newPassedSet = currentState.playersWhoPassed + playerId
-        val eligiblePlayers = currentState.players.filter { player ->
-            when (currentState.gamePhase) {
-                GamePhase.PARES -> getHandPares(player.hand).strength > 0
-                GamePhase.JUEGO -> if (currentState.isPuntoPhase) true else getHandJuegoValue(player.hand) >= 31
-                else -> true
-            }
-        }
 
-        // Si todos los jugadores aptos han pasado, el lance termina
+        // Usamos nuestra función auxiliar para obtener los jugadores aptos para el lance
+        val eligiblePlayers = getEligiblePlayersForLance(currentState)
+
+        // Si todos los jugadores aptos ya han pasado, el lance termina sin apuestas.
         if (newPassedSet.containsAll(eligiblePlayers.map { it.id })) {
             return endLanceAndAdvance(currentState) { this }
         }
 
-        // Si no, pasa el turno al siguiente jugador apto
+        // Si no, pasa el turno al siguiente jugador apto.
         return setNextPlayerTurn(currentState).copy(playersWhoPassed = newPassedSet)
     }
 
