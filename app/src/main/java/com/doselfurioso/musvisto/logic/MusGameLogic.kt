@@ -308,7 +308,7 @@ class MusGameLogic @Inject constructor() {
                 gamePhase = GamePhase.DISCARD,
                 availableActions = listOf(GameAction.ConfirmDiscard),
                 playersWhoPassed = emptySet(), // Reset for discard confirmation
-                currentTurnPlayerId = newState.players.first().id // Turn returns to "mano"
+                currentTurnPlayerId = newState.manoPlayerId // Turn returns to "mano"
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
