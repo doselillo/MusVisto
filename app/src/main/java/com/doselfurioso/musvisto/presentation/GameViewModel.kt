@@ -39,10 +39,10 @@ class GameViewModel @Inject constructor(
         // Define aquí las manos que quieres probar
         val manualHands = mapOf(
             "p1" to listOf( // Mano del Jugador Humano
-                Card(Suit.OROS, Rank.CUATRO),
-                Card(Suit.ESPADAS, Rank.CINCO),
-                Card(Suit.BASTOS, Rank.SEIS),
-                Card(Suit.COPAS, Rank.SIETE)
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.BASTOS, Rank.SOTA),
+                Card(Suit.COPAS, Rank.CUATRO)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.OROS, Rank.REY),
@@ -239,7 +239,7 @@ class GameViewModel @Inject constructor(
 
         // Se reparten las cartas
         val (updatedPlayers, remainingDeck) = if (manualDealingEnabled) {
-            dealManualHands(players, initialDeck)
+            dealManualHands(players, shuffledDeck)
         } else {
             gameLogic.dealCards(players, shuffledDeck, newManoId)
         }

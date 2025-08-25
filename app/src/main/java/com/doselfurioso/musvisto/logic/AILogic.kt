@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
+import android.util.Log
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -93,6 +94,15 @@ class AILogic @Inject constructor(
             GamePhase.PARES -> strength.pares
             GamePhase.JUEGO -> strength.juego
             else -> 0
+        }
+
+        if (gameState.currentBet?.isOrdago == true) {
+            Log.d("AILogic", "AI (${aiPlayer.name}) está respondiendo a un ÓRDAGO con una fuerza de $strengthScore.")
+            return if (strengthScore >= 95) { // Umbral de certeza muy alto
+                GameAction.Quiero
+            } else {
+                GameAction.NoQuiero
+            }
         }
 
         val currentBetAmount = gameState.currentBet?.amount ?: 0
@@ -236,7 +246,7 @@ class AILogic @Inject constructor(
         var grandeStrength = when (topCardsCount) {
             0 -> hand.maxOf { it.rank.value } * 4 // Si no hay reyes, puntúa bajo
             1 -> 50 + hand.maxOf { it.rank.value } // Con un rey, es decente
-            2 -> 75 + hand.maxOf { it.rank.value } // Con dos, es fuerte
+            2 -> 70 + hand.maxOf { it.rank.value } // Con dos, es fuerte
             3 -> 90 // Con tres, es muy fuerte
             4 -> 95 // Con cuatro, es casi seguro ganar
             else -> 0

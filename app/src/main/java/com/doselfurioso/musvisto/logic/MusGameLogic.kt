@@ -4,9 +4,11 @@ import android.util.Log
 import com.doselfurioso.musvisto.model.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 
 @Singleton
-class MusGameLogic @Inject constructor() {
+class MusGameLogic @Inject constructor(private val random: javax.inject.Provider<Random>){
+
 
     // Creates a standard 40-card Spanish deck.
     fun createDeck(): List<Card> {
@@ -19,7 +21,7 @@ class MusGameLogic @Inject constructor() {
 
     // Shuffles the deck randomly.
     fun shuffleDeck(deck: List<Card>): List<Card> {
-        return deck.shuffled()
+        return deck.shuffled(random.get())
     }
 
     fun dealCards(players: List<Player>, deck: List<Card>, manoId: String): Pair<List<Player>, List<Card>> {
@@ -273,6 +275,12 @@ class MusGameLogic @Inject constructor() {
 
 
     private fun handleQuiero(currentState: GameState): GameState {
+        // Si la apuesta actual es un órdago, se resuelve la partida inmediatamente.
+        if (currentState.currentBet?.isOrdago == true) {
+            return resolveOrdagoShowdown(currentState)
+        }
+
+        // Si no, es un envite normal.
         val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
         return endLanceAndAdvance(resolvedState) {
             val bet = this.currentBet ?: return@endLanceAndAdvance this
@@ -367,9 +375,71 @@ class MusGameLogic @Inject constructor() {
 
 
     private fun handleOrdago(currentState: GameState, playerId: String): GameState {
-        Log.d("MusVistoTest", "ÓRDAGO!!!")
-        // Placeholder logic for now
-        return currentState
+        val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
+        val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
+
+        val eligibleOpponents = getEligiblePlayersForLance(currentState)
+            .filter { it.team == opponentTeam }
+            .map { it.id }
+
+        if (eligibleOpponents.isEmpty()) {
+            return currentState // No se puede cantar órdago si no hay oponentes aptos
+        }
+
+        // El órdago se juega los 40 puntos del juego.
+        val newBet = BetInfo(
+            amount = 40,
+            bettingPlayerId = playerId,
+            respondingPlayerId = eligibleOpponents.first(),
+            isOrdago = true // Marcamos la apuesta como un órdago
+        )
+
+        return currentState.copy(
+            currentBet = newBet,
+            currentTurnPlayerId = eligibleOpponents.first(),
+            betInitiatorTeam = bettingPlayer.team,
+            playersPendingResponse = eligibleOpponents,
+            // Al órdago solo se puede responder con "Quiero" o "No Quiero".
+            availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero),
+            playersWhoPassed = emptySet()
+        )
+    }
+
+    private fun resolveOrdagoShowdown(currentState: GameState): GameState {
+        Log.d("MusVistoTest", "¡ÓRDAGO ACEPTADO! Resolviendo la partida...")
+
+        // Determinamos quién habría ganado el lance actual
+        val lanceWinner: Player? = when (currentState.gamePhase) {
+            GamePhase.GRANDE -> getGrandeWinner(currentState)
+            GamePhase.CHICA -> getChicaWinner(currentState)
+            GamePhase.PARES -> getParesWinner(currentState)
+            GamePhase.JUEGO -> getJuegoWinner(currentState)
+            else -> null
+        }
+
+        if (lanceWinner == null) {
+            // Esto no debería ocurrir, pero como salvaguarda, gana el equipo que lo cantó.
+            val bettingPlayer = currentState.players.find { it.id == currentState.currentBet?.bettingPlayerId }
+            val finalScore = currentState.score.toMutableMap()
+            if (bettingPlayer != null) {
+                finalScore[bettingPlayer.team] = 40
+            }
+            return currentState.copy(score = finalScore, gamePhase = GamePhase.GAME_OVER)
+        }
+
+        val winningTeam = lanceWinner.team
+        val finalScore = currentState.score.toMutableMap()
+        finalScore[winningTeam] = 40 // El equipo ganador se lleva los 40 puntos
+
+        Log.d("MusVistoTest", "El ganador del lance es ${lanceWinner.name}. ¡El equipo $winningTeam gana la partida!")
+
+        return currentState.copy(
+            score = finalScore,
+            gamePhase = GamePhase.GAME_OVER,
+            winningTeam = winningTeam,
+            availableActions = listOf(GameAction.NewGame),
+            revealAllHands = true
+        )
     }
 
     private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
@@ -488,7 +558,7 @@ class MusGameLogic @Inject constructor() {
             val fromOldDeck = deck
 
             // El nuevo mazo es la pila de descartes barajada.
-            deck = discardPile.shuffled()
+            deck = discardPile.shuffled(random.get())
             // La pila de descartes se vacía.
             discardPile = emptyList()
 

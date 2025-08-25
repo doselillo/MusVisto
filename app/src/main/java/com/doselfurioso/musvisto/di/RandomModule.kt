@@ -12,5 +12,8 @@ import kotlin.random.Random
 object RandomModule {
     @Provides
     @Singleton
-    fun provideRandom(): Random = Random.Default
+    fun provideRandom(): Random {
+        // Proporciona una instancia de Random verdaderamente aleatoria
+        return Random(System.currentTimeMillis())
+    }
 }
