@@ -162,7 +162,7 @@ class GameViewModel @Inject constructor(
 
     private fun handleAiTurn() {
         viewModelScope.launch {
-            delay(200)
+            delay(500)
             val currentState = _gameState.value
             val currentPlayer =
                 currentState.players.find { it.id == currentState.currentTurnPlayerId }
@@ -183,7 +183,7 @@ class GameViewModel @Inject constructor(
                         _gameState.value.copy(selectedCardsForDiscard = aiDecision.cardsToDiscard)
                 }
 
-                delay(500)
+                delay(1000)
 
                 val stateBeforeAiAction = _gameState.value
                 // Usamos la acción de la decisión para procesarla en la lógica del juego
