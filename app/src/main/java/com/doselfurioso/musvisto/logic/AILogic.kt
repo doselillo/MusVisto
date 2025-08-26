@@ -106,7 +106,7 @@ class AILogic @Inject constructor(
         }
 
         val currentBetAmount = gameState.currentBet?.amount ?: 0
-        if (currentBetAmount >= 4 && strengthScore < 95) {
+        if (currentBetAmount >= (6 + rng.nextInt(5)) && strengthScore < 85) {
             // Si la apuesta ya es alta y no tenemos una jugada ganadora, solo aceptamos o rechazamos
             return if (strengthScore-currentBetAmount > 70) GameAction.Quiero else GameAction.NoQuiero
         }

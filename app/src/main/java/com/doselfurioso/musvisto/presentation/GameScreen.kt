@@ -19,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,8 +100,10 @@ fun GameCard(
             .width(80.dp)
             .aspectRatio(0.7f)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
-            .graphicsLayer{clip = if (isSelected) false else true
-            translationY = if (isSelected) -80f else 0f}
+            .graphicsLayer {
+                clip = if (isSelected) false else true
+                translationY = if (isSelected) -80f else 0f
+            }
             .clickable(
                 enabled = (gamePhase == GamePhase.DISCARD && isMyTurn), // Only enabled in discard phase
                 onClick = { onClick() }
@@ -299,21 +302,31 @@ fun GameScreen(
                 }
             }
             // --- ANUNCIOS DE ACCIÓN ---
-            Box(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 198.dp)) {
+            Box(Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 12.dp, top = 198.dp)) {
                 ActionAnnouncement(gameState.lastAction, rivalLeft)
             }
-            Box(Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 198.dp)) {
+            Box(Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 12.dp, top = 198.dp)) {
                 ActionAnnouncement(gameState.lastAction, rivalRight)
             }
-            Box(Modifier.align(Alignment.TopStart).padding(start = 50.dp, top = 100.dp)) {
+            Box(Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 50.dp, top = 100.dp)) {
                 ActionAnnouncement(gameState.lastAction, partner)
             }
-            Box(Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 140.dp)) {
+            Box(Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 36.dp, bottom = 140.dp)) {
                 ActionAnnouncement(gameState.lastAction, player)
             }
 
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
-            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
+            Box(modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp)) {
                 HorizontalPlayerArea(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
@@ -327,14 +340,17 @@ fun GameScreen(
             }
 
             // ÁREA DEL RIVAL IZQUIERDO - Horizontal
-            Box(modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp, bottom = 240.dp)) {
+            Box(modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 16.dp, bottom = 240.dp)) {
                 VerticalPlayerArea(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     isMano = gameState.manoPlayerId == rivalLeft.id,
                     discardCount = gameState.discardCounts[rivalLeft.id],
                     handContent = { SideOpponentHandStacked(
-                        modifier = Modifier.padding(16.dp)
+                        modifier = Modifier
+                            .padding(16.dp)
                             .graphicsLayer { rotationX = 90f },
                         cards = rivalLeft.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode,
@@ -343,7 +359,9 @@ fun GameScreen(
             }
 
             // ÁREA DEL RIVAL DERECHO - Horizontal
-            Box(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 240.dp)) {
+            Box(modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp, bottom = 240.dp)) {
                 VerticalPlayerArea(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
@@ -359,7 +377,9 @@ fun GameScreen(
             }
 
             // ÁREA DEL JUGADOR PRINCIPAL (ABAJO) - Vertical
-            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp, start = 32.dp)) {
+            Box(modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp, start = 32.dp)) {
                 HorizontalPlayerArea(
                     player = player,
                     isCurrentTurn = isMyTurn,
@@ -410,7 +430,9 @@ fun GameScreen(
             // --- NEW: DEBUG BUTTON ---
             IconButton(
                 onClick = { gameViewModel.onToggleDebugMode() },
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_debug),
@@ -451,6 +473,8 @@ private fun GameActionButton(
         ActionType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Morado
     }
 
+    val secondaryColor = Color.Black
+
     Button(
         onClick = onClick,
         colors = buttonColors,
@@ -458,14 +482,21 @@ private fun GameActionButton(
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
     ) {
         if (action.iconResId != null) {
-            Icon(
+
+            if (action.colorType == ActionType.BET) Icon(
                 painter = painterResource(id = action.iconResId),
                 contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.IconSize)
-            )
+                modifier = Modifier.size(ButtonDefaults.IconSize),
+                tint = secondaryColor
+            ) else Icon(
+                painter = painterResource(id = action.iconResId),
+                contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.IconSize))
+
             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         }
-        Text(text = action.displayText)
+
+        if (action.colorType == ActionType.BET) Text(text = action.displayText, color = secondaryColor) else Text(text = action.displayText)
     }
 }
 
@@ -600,7 +631,9 @@ fun ActionLogDisplay(
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp), // Espacio entre elementos
         ) {
