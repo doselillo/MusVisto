@@ -330,7 +330,7 @@ fun GameScreen(
             // ÁREA DEL RIVAL IZQUIERDO - Horizontal
             Box(modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 16.dp, bottom = 240.dp)) {
+                .padding(start = 16.dp, bottom = 280.dp)) {
                 VerticalPlayerArea(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
@@ -350,7 +350,7 @@ fun GameScreen(
             // ÁREA DEL RIVAL DERECHO - Horizontal
             Box(modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 16.dp, bottom = 240.dp)) {
+                .padding(end = 16.dp, bottom = 280.dp)) {
                 VerticalPlayerArea(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
@@ -388,12 +388,17 @@ fun GameScreen(
             }
 
             // INFO CENTRAL Y BOTONES
-            Column(modifier = Modifier
-                .align(Alignment.Center)
-                .padding(bottom = 180.dp, start = 120.dp, end = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Dentro del Column central en GameScreen
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(bottom = 200.dp, start = 120.dp, end = 120.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Scoreboard(score = gameState.score)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 ActionLogDisplay(log = gameState.actionLog, players = players, gameState.gamePhase)
+                RoundHistoryDisplay(history = gameState.roundHistory)
             }
 
             ActionButtons(
@@ -623,7 +628,7 @@ fun ActionLogDisplay(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.defaultMinSize(minHeight = 110.dp), // Aumentamos un poco el tamaño
+        modifier = modifier.defaultMinSize(minHeight = 120.dp), // Aumentamos un poco el tamaño
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
     ) {
         Column(
@@ -772,37 +777,35 @@ fun GameEventNotification(event: GameEvent?) {
             )
         }
     }
-    // --- AÑADE ESTE COMPOSABLE ENTERO ---
-    @Composable
-    fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
-        // Usamos una Columna para que cada resultado de lance tenga su propia línea.
-        Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            history.forEach { result ->
-                // Creamos el texto descriptivo basado en el resultado del lance
-                val lanceName = result.lance.name.replace('_', ' ')
-                val outcomeText = when (result.outcome) {
-                    "Paso" -> "$lanceName: en Paso"
-                    "Querido" -> "$lanceName: Querido en ${result.amount}"
-                    "No Querido" -> "$lanceName: No Querido"
-                    else -> ""
-                }
-                Text(
-                    text = outcomeText,
-                    color = Color.White.copy(alpha = 0.8f), // Un poco más tenue que el log actual
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+}
+@Composable
+fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
+    // Usamos una Columna para que cada resultado de lance tenga su propia línea.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        history.forEach { result ->
+            // Creamos el texto descriptivo basado en el resultado del lance
+            val lanceName = result.lance.name.replace('_', ' ')
+            val outcomeText = when (result.outcome) {
+                "Paso" -> "$lanceName: en Paso"
+                "Querido" -> "$lanceName: vale ${result.amount}"
+                "No Querido" -> "$lanceName: No Querida"
+                else -> ""
             }
+            Text(
+                text = outcomeText,
+                color = Color.White.copy(alpha = 0.8f),
+                fontWeight = FontWeight.Normal,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            )
         }
     }
-
 }
