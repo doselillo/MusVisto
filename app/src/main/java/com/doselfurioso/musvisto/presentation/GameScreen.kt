@@ -1,6 +1,7 @@
 package com.doselfurioso.musvisto.presentation
 
 import android.annotation.SuppressLint
+import android.graphics.Paint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -56,6 +57,7 @@ import com.doselfurioso.musvisto.model.LanceResult
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
 import kotlinx.coroutines.delay
+import java.util.Collections.rotate
 import kotlin.math.abs
 import com.doselfurioso.musvisto.model.Card as CardData
 
@@ -95,7 +97,7 @@ fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier // <-- USAMOS EL MODIFIER QUE RECIBIMOS
-            .width(80.dp)
+            .width(70.dp)
             .aspectRatio(0.7f)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
@@ -221,24 +223,19 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
     }
 }
 
+
 @Composable
 fun VerticalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit,
-    gameState: GameState
+    handContent: @Composable () -> Unit
 
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(Modifier
-            .padding(start = 36.dp, bottom = 14.dp)) {
-
-        }
-        ActionAnnouncement(gameState.lastAction, player, gameState)
         PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
         handContent()
     }
@@ -249,28 +246,18 @@ fun HorizontalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit,
-    gameState: GameState
+    handContent: @Composable () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (player == gameState.players[0])
-            Column {
-                ActionAnnouncement(gameState.lastAction, player, gameState)
-                PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
-        } else if (player == gameState.players[2]) {
-            Column {
-                PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
-                ActionAnnouncement(gameState.lastAction, player, gameState)
-            }
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
+        Box(contentAlignment = Alignment.Center) {
+            handContent()
         }
-        handContent()
     }
 }
-
-
 
 @Composable
 fun GameScreen(
@@ -311,15 +298,49 @@ fun GameScreen(
                 }
             }
 
+            IconButton(
+                onClick = { gameViewModel.onToggleDebugMode() },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 32.dp, end = 16.dp)
+                    .zIndex(3f)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_debug),
+                    contentDescription = "Toggle Debug Mode",
+                    tint = Color.White.copy(alpha = 0.7f),
+                )
+            }
+
+            // --- ANUNCIOS DE ACCIÓN ---
+            Box(Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 12.dp, top = 150.dp)) {
+                ActionAnnouncement(gameState.lastAction, rivalLeft, gameState)
+            }
+            Box(Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 12.dp, top = 150.dp)) {
+                ActionAnnouncement(gameState.lastAction, rivalRight, gameState)
+            }
+            Box(Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 50.dp, top = 110.dp)) {
+                ActionAnnouncement(gameState.lastAction, partner, gameState)
+            }
+            Box(Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 36.dp, bottom = 140.dp)) {
+                ActionAnnouncement(gameState.lastAction, player, gameState)
+            }
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 16.dp)) {
+                .padding(top = 32.dp)) {
                 HorizontalPlayerArea(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     isMano = gameState.manoPlayerId == partner.id,
-                    gameState = gameState,
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode,
@@ -335,7 +356,6 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     isMano = gameState.manoPlayerId == rivalLeft.id,
-                    gameState = gameState,
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .padding(16.dp)
@@ -355,7 +375,6 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     isMano = gameState.manoPlayerId == rivalRight.id,
-                    gameState = gameState,
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .graphicsLayer { rotationZ = 180f },
@@ -369,12 +388,11 @@ fun GameScreen(
             // ÁREA DEL JUGADOR PRINCIPAL (ABAJO) - Vertical
             Box(modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp, start = 32.dp)) {
+                .padding(bottom = 32.dp, start = 32.dp)) {
                 HorizontalPlayerArea(
                     player = player,
                     isCurrentTurn = isMyTurn,
                     isMano = gameState.manoPlayerId == player.id,
-                    gameState = gameState,
                     handContent = {
                         PlayerHandArc(
                             cards = player.hand.sortedByDescending { it.rank.value },
@@ -421,19 +439,6 @@ fun GameScreen(
 
             Box(modifier = Modifier.align(Alignment.Center)) {
                 GameEventNotification(event = gameState.event)
-            }
-            // --- NEW: DEBUG BUTTON ---
-            IconButton(
-                onClick = { gameViewModel.onToggleDebugMode() },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_debug),
-                    contentDescription = "Toggle Debug Mode",
-                    tint = Color.White.copy(alpha = 0.7f)
-                )
             }
         }
     }
@@ -675,7 +680,7 @@ fun ActionLogDisplay(
 fun ActionAnnouncement(
     lastAction: LastActionInfo?,
     player: Player,
-    gameState: GameState
+    gameState: GameState// <--- AÑADE ESTE PARÁMETRO
 ) {
     // This controls the visibility of the announcement
     var visible by remember(lastAction) { mutableStateOf(false) }

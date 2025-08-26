@@ -630,7 +630,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             deck = deck.drop(cardsNeeded)
         }
         val cardCount = cardsToDiscard.size
-        val customActionText = if (cardCount == 1) "Descarta 1 carta" else "Descarta $cardCount cartas"
+        val customActionText ="Descarta $cardCount"
 
         // Creamos una acción "falsa" solo para el log, con el texto personalizado
         val customLogAction = GameAction.LogAction(customActionText)
