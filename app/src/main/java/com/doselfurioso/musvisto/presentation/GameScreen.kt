@@ -19,7 +19,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,7 +39,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,7 +117,7 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .height(80.dp)
+            .height(70.dp)
             .aspectRatio(0.7f)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
@@ -200,7 +198,7 @@ fun PartnerHand(
 }
 
 @Composable
-fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean) {
+fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean, rotate: Boolean = false) {
     Box {
         repeat(cards.size) { index ->
             Box(
@@ -213,7 +211,7 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
                         gamePhase = GamePhase.PRE_GAME,
                         isMyTurn = false,
                         onClick = {},
-                        modifier = Modifier.graphicsLayer { rotationZ = 90f }
+                        modifier = Modifier.graphicsLayer { if (rotate) rotationZ = 90f else rotationZ = 270f }
                     )
                 } else {
                     CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f })
@@ -228,16 +226,21 @@ fun VerticalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    discardCount: Int?,
-    handContent: @Composable () -> Unit
+    handContent: @Composable () -> Unit,
+    gameState: GameState
+
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Box(Modifier
+            .padding(start = 36.dp, bottom = 14.dp)) {
+
+        }
+        ActionAnnouncement(gameState.lastAction, player, gameState)
         PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
         handContent()
-        DiscardCountIndicator(count = discardCount ?: 0)
     }
 }
 
@@ -246,18 +249,24 @@ fun HorizontalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    discardCount: Int?,
-    handContent: @Composable () -> Unit
+    handContent: @Composable () -> Unit,
+    gameState: GameState
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
-        Box(contentAlignment = Alignment.Center) {
-            handContent()
-            DiscardCountIndicator(count = discardCount ?: 0)
+        if (player == gameState.players[0])
+            Column {
+                ActionAnnouncement(gameState.lastAction, player, gameState)
+                PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
+        } else if (player == gameState.players[2]) {
+            Column {
+                PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
+                ActionAnnouncement(gameState.lastAction, player, gameState)
+            }
         }
+        handContent()
     }
 }
 
@@ -301,27 +310,6 @@ fun GameScreen(
                     else -> gameState.availableActions
                 }
             }
-            // --- ANUNCIOS DE ACCIÓN ---
-            Box(Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 12.dp, top = 198.dp)) {
-                ActionAnnouncement(gameState.lastAction, rivalLeft)
-            }
-            Box(Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 12.dp, top = 198.dp)) {
-                ActionAnnouncement(gameState.lastAction, rivalRight)
-            }
-            Box(Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 50.dp, top = 100.dp)) {
-                ActionAnnouncement(gameState.lastAction, partner)
-            }
-            Box(Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 36.dp, bottom = 140.dp)) {
-                ActionAnnouncement(gameState.lastAction, player)
-            }
 
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(modifier = Modifier
@@ -331,7 +319,7 @@ fun GameScreen(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     isMano = gameState.manoPlayerId == partner.id,
-                    discardCount = gameState.discardCounts[partner.id],
+                    gameState = gameState,
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode,
@@ -347,14 +335,15 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     isMano = gameState.manoPlayerId == rivalLeft.id,
-                    discardCount = gameState.discardCounts[rivalLeft.id],
+                    gameState = gameState,
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .padding(16.dp)
                             .graphicsLayer { rotationX = 90f },
                         cards = rivalLeft.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode,
-                        revealHand = gameState.revealAllHands) }
+                        revealHand = gameState.revealAllHands,
+                        rotate = true) }
                 )
             }
 
@@ -366,13 +355,14 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     isMano = gameState.manoPlayerId == rivalRight.id,
-                    discardCount = gameState.discardCounts[rivalRight.id],
+                    gameState = gameState,
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .graphicsLayer { rotationZ = 180f },
                         cards = rivalRight.hand.sortedBy { it.rank.value },
                         isDebugMode = isDebugMode,
-                        revealHand = gameState.revealAllHands) }
+                        revealHand = gameState.revealAllHands,
+                        rotate = false) }
                 )
             }
 
@@ -384,7 +374,7 @@ fun GameScreen(
                     player = player,
                     isCurrentTurn = isMyTurn,
                     isMano = gameState.manoPlayerId == player.id,
-                    discardCount = gameState.discardCounts[player.id],
+                    gameState = gameState,
                     handContent = {
                         PlayerHandArc(
                             cards = player.hand.sortedByDescending { it.rank.value },
@@ -465,12 +455,12 @@ private fun GameActionButton(
     onClick: () -> Unit,
     isEnabled: Boolean
 ) {
-    val buttonColors = when (action.colorType) {
-        ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)) // Azul
-        ActionType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEB3B)) // Amarillo
-        ActionType.CONFIRM -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Verde
-        ActionType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Rojo
-        ActionType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)) // Morado
+    val buttonColors = when (action.actionType) {
+        ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+        ActionType.BET -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEB3B))
+        ActionType.CONFIRM, ActionType.DISCARD  -> ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+        ActionType.DENY -> ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
+        ActionType.ULTIMATE -> ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
     }
 
     val secondaryColor = Color.Black
@@ -483,7 +473,7 @@ private fun GameActionButton(
     ) {
         if (action.iconResId != null) {
 
-            if (action.colorType == ActionType.BET) Icon(
+            if (action.actionType == ActionType.BET && isEnabled) Icon(
                 painter = painterResource(id = action.iconResId),
                 contentDescription = null,
                 modifier = Modifier.size(ButtonDefaults.IconSize),
@@ -496,7 +486,13 @@ private fun GameActionButton(
             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         }
 
-        if (action.colorType == ActionType.BET) Text(text = action.displayText, color = secondaryColor) else Text(text = action.displayText)
+        if (action.actionType == ActionType.BET && isEnabled) {
+            Text(text = action.displayText, color = secondaryColor)
+        } else if (action.actionType == ActionType.DISCARD) {
+            Text(text = "Descartar")
+        } else {
+            Text(text = action.displayText)
+        }
     }
 }
 
@@ -639,7 +635,7 @@ fun ActionLogDisplay(
         ) {
             // Título del Lance
             Text(
-                text = gamePhase.name.replace('_', ' '),
+                if (gamePhase == GamePhase.DISCARD) "DESCARTAR" else gamePhase.name.replace('_', ' '),
                 color = Color.Yellow,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
@@ -673,7 +669,8 @@ fun ActionLogDisplay(
 @Composable
 fun ActionAnnouncement(
     lastAction: LastActionInfo?,
-    player: Player
+    player: Player,
+    gameState: GameState
 ) {
     // This controls the visibility of the announcement
     var visible by remember(lastAction) { mutableStateOf(false) }
@@ -700,7 +697,12 @@ fun ActionAnnouncement(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
             modifier = Modifier.padding(8.dp)
         ) {
-            Text(
+            if (lastAction?.action?.actionType == GameAction.ConfirmDiscard.actionType) Text(
+                text = ("Dame: ${gameState.discardCounts[player.id]}"),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) else Text(
                 text = lastAction?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
@@ -773,23 +775,27 @@ fun GameEventNotification(event: GameEvent?) {
     // --- AÑADE ESTE COMPOSABLE ENTERO ---
     @Composable
     fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
-        Row(
+        // Usamos una Columna para que cada resultado de lance tenga su propia línea.
+        Column(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             history.forEach { result ->
-                val text = when (result.outcome) {
-                    "Paso" -> result.lance.name.take(2) // GR, CH, PA, JU
-                    "Querido" -> "${result.lance.name.take(2)} ✓" // Añade un check si se quiso
-                    "No Querido" -> "${result.lance.name.take(2)} X" // Añade una X si no
+                // Creamos el texto descriptivo basado en el resultado del lance
+                val lanceName = result.lance.name.replace('_', ' ')
+                val outcomeText = when (result.outcome) {
+                    "Paso" -> "$lanceName: en Paso"
+                    "Querido" -> "$lanceName: Querido en ${result.amount}"
+                    "No Querido" -> "$lanceName: No Querido"
                     else -> ""
                 }
                 Text(
-                    text = text,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
+                    text = outcomeText,
+                    color = Color.White.copy(alpha = 0.8f), // Un poco más tenue que el log actual
+                    fontWeight = FontWeight.Normal,
                     fontSize = 14.sp,
                     modifier = Modifier
                         .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))

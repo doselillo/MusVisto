@@ -4,18 +4,18 @@ import com.doselfurioso.musvisto.R // Importa tus recursos
 
 // Un enum para definir el tipo de color del botón
 enum class ActionType {
-    PASS, BET, CONFIRM, DENY, ULTIMATE
+    PASS, BET, CONFIRM, DENY, ULTIMATE, DISCARD
 }
 
 sealed class GameAction(
     val displayText: String,
-    val colorType: ActionType,
-    val iconResId: Int?
+    val actionType: ActionType,
+    val iconResId: Int?,
 ) {
     // Mus Phase Actions
     object Mus : GameAction("Mus", ActionType.CONFIRM, R.drawable.ic_cycle)
     object NoMus : GameAction("No Mus", ActionType.DENY, R.drawable.ic_stop)
-    object ConfirmDiscard : GameAction("Descartar", ActionType.CONFIRM, R.drawable.ic_check)
+    object ConfirmDiscard : GameAction("Descartar", ActionType.DISCARD, R.drawable.ic_check)
     object Continue : GameAction("Continuar", ActionType.CONFIRM, R.drawable.ic_continue)
     object NewGame : GameAction("Jugar de Nuevo", ActionType.CONFIRM, R.drawable.ic_newgame)
 

@@ -482,7 +482,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             currentTurnPlayerId = updatedState.manoPlayerId,
             playersWhoPassed = emptySet(),
             currentBet = null,
-            isNewLance = true
+            isNewLance = true,
+            actionLog = emptyList()
         )
 
         // Comprobación de Pares
