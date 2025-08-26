@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -421,14 +422,16 @@ fun GameScreen(
 
             ActionButtons(
                 actions = gameState.availableActions,
+                gamePhase = gameState.gamePhase, // <-- Pasa la fase del juego
                 onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
                 selectedCardCount = gameState.selectedCardsForDiscard.size,
                 isEnabled = isMyTurn,
                 currentPlayerId = gameViewModel.humanPlayerId,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 200.dp, end = 16.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 180.dp, start = 32.dp, end = 32.dp) // Añadimos padding lateral
             )
+
 
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
                 GameOverOverlay(
@@ -510,52 +513,119 @@ private fun GameActionButton(
 @Composable
 fun ActionButtons(
     actions: List<GameAction>,
+    gamePhase: GamePhase, // <-- Necesitamos saber la fase actual
     onActionClick: (GameAction, String) -> Unit,
-    modifier: Modifier = Modifier,
     selectedCardCount: Int,
     isEnabled: Boolean,
-    currentPlayerId: String
+    currentPlayerId: String,
+    modifier: Modifier = Modifier
 ) {
-    val responseActions = actions.filter { it is GameAction.Quiero || it is GameAction.NoQuiero }
-    val primaryActions = actions.filter { it !in responseActions }
+    val availableActionsMap = actions.associateBy {
+        if (it is GameAction.Envido) GameAction.Envido::class else it::class
+    }
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        if (responseActions.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                responseActions.forEach { action ->
-                    // --- AÑADIMOS LA LÓGICA DE HABILITACIÓN AQUÍ ---
-                    val isButtonEnabled = when (action) {
-                        is GameAction.Continue, is GameAction.NewGame -> true
-                        is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
-                        else -> isEnabled
-                    }
+    // --- Manejo para fin de ronda/partida ---
+    val roundEndActions = actions.filter { it is GameAction.Continue || it is GameAction.NewGame }
+    if (roundEndActions.isNotEmpty()) {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            roundEndActions.forEach { action ->
+                GameActionButton(action = action, onClick = { onActionClick(action, currentPlayerId) }, isEnabled = true)
+            }
+        }
+        return
+    }
+
+    // --- Layout principal que cambia según la fase del juego ---
+    Box(modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterEnd) {
+        when (gamePhase) {
+            GamePhase.MUS -> {
+                // FASE MUS: Solo se muestran los botones de Mus
+                Row(
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     GameActionButton(
-                        action = action,
-                        onClick = { onActionClick(action, currentPlayerId) },
-                        isEnabled = isButtonEnabled // Usamos la nueva lógica
+                        action = GameAction.Mus,
+                        onClick = { onActionClick(GameAction.Mus, currentPlayerId) },
+                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Mus::class)
+                    )
+                    GameActionButton(
+                        action = GameAction.NoMus,
+                        onClick = { onActionClick(GameAction.NoMus, currentPlayerId) },
+                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.NoMus::class)
                     )
                 }
             }
-        }
-        if (primaryActions.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                primaryActions.forEach { action ->
-                    // --- REEMPLAZAMOS LA LÓGICA DE HABILITACIÓN AQUÍ ---
-                    val isButtonEnabled = when (action) {
-                        is GameAction.Continue, is GameAction.NewGame -> true
-                        is GameAction.ConfirmDiscard -> isEnabled && selectedCardCount > 0
-                        else -> isEnabled
-                    }
+            GamePhase.DISCARD -> {
+                // FASE DESCARTE: Solo se muestra el botón de descartar
+                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                    val discardAction = GameAction.ConfirmDiscard
                     GameActionButton(
-                        action = action,
-                        onClick = { onActionClick(action, currentPlayerId) },
-                        isEnabled = isButtonEnabled // Usamos la nueva lógica
+                        action = discardAction,
+                        onClick = { onActionClick(discardAction, currentPlayerId) },
+                        isEnabled = isEnabled && selectedCardCount > 0
                     )
                 }
+            }
+            else -> {
+                // FASES DE APUESTA (GRANDE, CHICA, PARES, JUEGO): Layout fijo de dos columnas
+
+                // Columna Izquierda: Respuestas
+                Row(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.Bottom // <-- ESTA ES LA LÍNEA A CAMBIAR
+
+                )  {
+                    Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    val quieroAction = GameAction.Quiero
+                    GameActionButton(
+                        action = quieroAction,
+                        onClick = { onActionClick(quieroAction, currentPlayerId) },
+                        isEnabled = isEnabled && availableActionsMap.containsKey(quieroAction::class)
+                    )
+                    val noQuieroAction = GameAction.NoQuiero
+                    GameActionButton(
+                        action = noQuieroAction,
+                        onClick = { onActionClick(noQuieroAction, currentPlayerId) },
+                        isEnabled = isEnabled && availableActionsMap.containsKey(noQuieroAction::class)
+                    )
+                }
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        val pasoAction = GameAction.Paso
+                        GameActionButton(
+                            action = pasoAction,
+                            onClick = { onActionClick(pasoAction, currentPlayerId) },
+                            isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class)
+                        )
+                        val envidoAction = GameAction.Envido(2)
+                        GameActionButton(
+                            action = envidoAction,
+                            onClick = { onActionClick(envidoAction, currentPlayerId) },
+                            isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class)
+                        )
+                        val ordagoAction = GameAction.Órdago
+                        GameActionButton(
+                            action = ordagoAction,
+                            onClick = { onActionClick(ordagoAction, currentPlayerId) },
+                            isEnabled = isEnabled && availableActionsMap.containsKey(ordagoAction::class)
+                        )
+                    }
+                }
+
+
+                // Columna Derecha: Acciones
+
             }
         }
     }
