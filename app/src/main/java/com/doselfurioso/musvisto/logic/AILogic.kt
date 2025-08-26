@@ -158,13 +158,12 @@ class AILogic @Inject constructor(
     }
 
     // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
-    private fun decideDiscard(
+
+    fun decideDiscard(
         aiPlayer: Player,
         decisionId: String
     ): AIDecision {
         val hand = aiPlayer.hand
-        val juegoValue = gameLogic.getHandJuegoValue(hand)
-
         logger.log(
             DecisionLog(
                 decisionId = decisionId,
@@ -173,36 +172,95 @@ class AILogic @Inject constructor(
                 phase = "DISCARD",
                 hand = hand.map { cardToShortString(it) },
                 chosenAction = "EVALUATING_DISCARD",
-                reason = "Applying 'Grande' discard strategy."
+                reason = "Applying advanced discard strategy."
             )
         )
 
-        // Estrategia Principal:
-        // 1. Si se tiene 31 de juego, es una jugada perfecta. No se descarta nada.
+        // --- LÓGICA DE DESCARTE AVANZADA ---
+
+        val juegoValue = gameLogic.getHandJuegoValue(hand)
+
+        // REGLA 0: ¡JUGADA PERFECTA! Si tienes 31, estás obligado a descartar una carta,
+        // así que tira la que menos valor tenga para la Grande (la de menor rango).
         if (juegoValue == 31) {
-            // Aunque tenga 31, si hubo Mus, está obligado a descartar.
-            // Descartará la carta con el valor más bajo para el juego (un As o un Dos).
-            val cardToDiscard = hand.minByOrNull { card ->
-                when (card.rank) {
-                    Rank.REY, Rank.TRES -> 12
-                    else -> card.rank.value
-                }
-            }
-            return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard!!))
+            val cardToDiscard = hand.minByOrNull { it.rank.value }!!
+            return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // 2. Estrategia "a la grande": conservar solo Reyes y Treses.
-        var cardsToDiscard = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }.toSet()
+        // REGLA 1: SI TIENES 3 FIGURAS (Sota, Caballo, Rey), tienes 30 puntos.
+        // Es una jugada muy fuerte para buscar 31 o 40. Descarta la 4ª carta.
+        val figures = hand.filter { it.rank.value in 10..12 }
+        if (figures.size == 3) {
+            val nonFigureCard = hand.first { it !in figures }
+            return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
+        }
 
-        // 3. REGLA OBLIGATORIA: Si después de aplicar la estrategia no se descarta nada,
-        //    forzamos el descarte de la carta menos valiosa de la mano.
+        // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
+        // A cada carta se le da una "puntuación para mantenerla" basada en la estrategia.
+        // Las cartas con la puntuación más baja serán las candidatas al descarte.
+
+        val cardScores = mutableMapOf<Card, Int>()
+        val rankCounts = hand.groupingBy { it.rank }.eachCount()
+
+        for (card in hand) {
+            var score = 0
+
+            // Prioridad 1: Reyes y Treses (para Grande)
+            if (card.rank == Rank.REY || card.rank == Rank.TRES) {
+                score += 50
+            }
+
+            // Prioridad 2: Pares
+            // Si la carta es parte de una pareja, recibe muchos puntos.
+            val count = rankCounts[card.rank] ?: 0
+            when (count) {
+                4 -> score += 100 // Prácticamente intocable
+                3 -> score += 80  // Muy fuerte
+                2 -> score += 40  // Bastante bueno
+            }
+
+            // Prioridad 3: Chica y Juego
+            // Ases y Doses son valiosos para la Chica y para sumar 31.
+            if (card.rank == Rank.AS || card.rank == Rank.DOS) {
+                score += 20
+            }
+
+            // Penalización para cartas "malas" (4, 5, 6, 7) que no forman pares.
+            if (card.rank.value in 4..7 && count < 2) {
+                score -= 10
+            }
+
+            cardScores[card] = score
+        }
+
+        // Ordenamos las cartas de peor a mejor según su puntuación.
+        val sortedCards = hand.sortedBy { cardScores[it] }
+
+        // --- DECISIÓN FINAL DE DESCARTE ---
+
+        // Por defecto, descartamos todas las cartas con puntuación negativa o cero.
+        var cardsToDiscard = sortedCards.filter { (cardScores[it] ?: 0) < 0 }.toSet()
+
+        // REGLA OBLIGATORIA: Si tras la evaluación no se iba a descartar nada,
+        // forzamos el descarte de la carta con la puntuación más baja.
         if (cardsToDiscard.isEmpty()) {
-            // La mano solo contiene Reyes y Treses. La "peor" es un Tres (valor de rango 3 vs 12 del Rey).
-            val worstCard = hand.minByOrNull { it.rank.value }
+            // En caso de empate en la peor puntuación, se descarta la de menor valor para Grande.
+            val worstCard = sortedCards.minByOrNull { it.rank.value }
             if (worstCard != null) {
                 cardsToDiscard = setOf(worstCard)
+            } else {
+                // Fallback por si la mano está vacía, aunque no debería ocurrir.
+                return AIDecision(GameAction.ConfirmDiscard, emptySet())
             }
         }
+
+        // Ejemplo: Mano (Rey, Tres, 5, As)
+        // Puntuaciones aproximadas:
+        // Rey: 50
+        // Tres: 50
+        // As: 20
+        // 5: -10
+        // El 5 será descartado. Si se pudieran descartar más, el siguiente sería el As.
 
         return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
     }

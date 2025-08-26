@@ -88,15 +88,10 @@ class GameViewModel @Inject constructor(
                 if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
             }
         }
-
-        // Procesar la acción una sola vez
+        // 1. Llama al motor con el estado actual y la acción.
         val newState = gameLogic.processAction(currentState, action, playerId)
-
-        if (newState.gamePhase == GamePhase.ROUND_OVER) {
-            processEndOfRound(newState)
-        } else {
-            updateStateAndCheckAiTurn(newState)
-        }
+        // 2. Actualiza la UI y comprueba si ahora le toca a la IA.
+        updateStateAndCheckAiTurn(newState)
     }
 
     private fun handleGameEvent(event: GameEvent?) {

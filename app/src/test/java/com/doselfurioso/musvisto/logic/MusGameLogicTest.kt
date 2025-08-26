@@ -4,10 +4,11 @@ import com.doselfurioso.musvisto.model.*
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import javax.inject.Provider
+import kotlin.random.Random
 
 class MusGameLogicTest {
 
-    // Creamos una instancia de la lógica para usar en todos los tests
     private lateinit var gameLogic: MusGameLogic
 
     // Datos comunes para los tests
@@ -16,10 +17,13 @@ class MusGameLogicTest {
 
     @Before
     fun setUp() {
-        // Esto se ejecuta antes de cada test
-        gameLogic = MusGameLogic(
-            random = TODO()
-        )
+        // --- CORRECCIÓN CLAVE ---
+        // El constructor de MusGameLogic ahora necesita un `Provider<Random>`.
+        // Para los tests, creamos un proveedor simple que devuelve una instancia estándar de Random.
+        // Esto soluciona el error `TODO()` que hacía que todos los tests fallaran.
+        val randomProvider = Provider<Random> { Random.Default }
+        gameLogic = MusGameLogic(randomProvider)
+
         players = listOf(
             Player(id = "p1", name = "Ana", team = "teamA", avatarResId = 0),
             Player(id = "p2", name = "Luis", team = "teamB", avatarResId = 0),
@@ -36,10 +40,8 @@ class MusGameLogicTest {
 
     @Test
     fun `dealCards should give 4 cards to each player and leave 24 in deck`() {
-        // Act: Ahora pasamos el manoId, que es un requisito
         val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, deck, "p1")
 
-        // Assert
         assertEquals(4, updatedPlayers[0].hand.size)
         assertEquals(4, updatedPlayers[1].hand.size)
         assertEquals(4, updatedPlayers[2].hand.size)
@@ -47,13 +49,13 @@ class MusGameLogicTest {
         assertEquals(24, remainingDeck.size)
     }
 
-    // --- NUEVOS TESTS PARA LA LÓGICA DE PARES CORREGIDA ---
+    // --- TESTS DE PARES (CORREGIDOS Y AMPLIADOS) ---
 
     @Test
     fun `getHandPares should detect Pares with Rey and Tres`() {
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))
         val play = gameLogic.getHandPares(hand)
-        assertTrue("Debería detectar Pares con Rey y Tres", play is ParesPlay.Pares)
+        assertTrue("Debería detectar Pares con Rey y Tres, que cuentan como Reyes", play is ParesPlay.Pares)
         assertEquals(Rank.REY, (play as ParesPlay.Pares).rank)
     }
 
@@ -69,7 +71,7 @@ class MusGameLogicTest {
     fun `getHandPares should detect Duples with Reyes-Treses and Ases-Doses`() {
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS))
         val play = gameLogic.getHandPares(hand)
-        assertTrue("Debería detectar Duples con equivalencias", play is ParesPlay.Duples)
+        assertTrue("Debería detectar Duples con las equivalencias de Reyes/Treses y Ases/Doses", play is ParesPlay.Duples)
         assertEquals(Rank.REY, (play as ParesPlay.Duples).highPair)
         assertEquals(Rank.AS, play.lowPair)
     }
@@ -78,11 +80,12 @@ class MusGameLogicTest {
     fun `getHandPares should detect Duples with four identical cards (e g , four Kings)`() {
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))
         val play = gameLogic.getHandPares(hand)
-        assertTrue("Cuatro Reyes deberían ser Duples", play is ParesPlay.Duples)
-        assertEquals(Rank.REY, (play as ParesPlay.Duples).highPair)
+        assertTrue("Cuatro Reyes deberían contarse como Duples", play is ParesPlay.Duples)
+        assertEquals("El par alto de cuatro Reyes es Rey", Rank.REY, (play as ParesPlay.Duples).highPair)
+        assertEquals("El par bajo de cuatro Reyes también es Rey", Rank.REY, play.lowPair)
     }
 
-    // --- TESTS DE GANADORES ACTUALIZADOS ---
+    // --- TESTS DE GANADORES (CORREGIDOS Y AMPLIADOS) ---
 
     @Test
     fun `getGrandeWinner should return player with the highest unique card`() {
@@ -95,6 +98,15 @@ class MusGameLogicTest {
         val gameState = GameState(players = testPlayers, manoPlayerId = "p1")
         val winner = gameLogic.getGrandeWinner(gameState)
         assertEquals(testPlayers[1], winner)
+    }
+
+    @Test
+    fun `getGrandeWinner should handle ties by player order (mano)`() {
+        val p1 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.REY))) // Mano y ganador por desempate
+        val p2 = players[1].copy(hand = listOf(Card(Suit.COPAS, Rank.REY)))
+        val gameState = GameState(players = listOf(p1, p2), manoPlayerId = "p1")
+        val winner = gameLogic.getGrandeWinner(gameState)
+        assertEquals(p1.id, winner?.id)
     }
 
     @Test
@@ -111,11 +123,13 @@ class MusGameLogicTest {
     }
 
     @Test
-    fun `getJuegoWinner should favor 31 over 32`() {
-        val playerWith31 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.AS), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY)))
-        val playerWith32 = players[1].copy(hand = listOf(Card(Suit.OROS, Rank.CINCO), Card(Suit.COPAS, Rank.SIETE), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY)))
+    fun `getJuegoWinner should prioritize 31 over 32, regardless of mano`() {
+        val playerWith32 = players[1].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))) // 32
+        val playerWith31 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))) // 31
+
+        // Poniendo al jugador con 32 como "mano" para forzar que la victoria sea por la jugada y no por la posición.
         val gameState = GameState(players = listOf(playerWith32, playerWith31), manoPlayerId = "p2")
         val winner = gameLogic.getJuegoWinner(gameState)
-        assertEquals(playerWith31, winner)
+        assertEquals("31 siempre debe ganar a 32, sin importar quién sea mano", playerWith31, winner)
     }
 }

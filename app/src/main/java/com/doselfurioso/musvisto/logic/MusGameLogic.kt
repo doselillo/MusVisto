@@ -204,15 +204,12 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
         var workingState = currentState
-
         // Si esta es la primera acción de un nuevo lance, limpiamos el log ANTES de hacer nada.
         if (currentState.isNewLance) {
             workingState = currentState.copy(actionLog = emptyList(), isNewLance = false)
         }
 
         // --- A partir de aquí, usamos "workingState" en lugar de "currentState" ---
-
-        // --- VALIDACIÓN DE ACCIÓN ---
         val player = workingState.players.find { it.id == playerId } ?: return workingState
 
         if (workingState.currentTurnPlayerId != playerId) return workingState
@@ -237,12 +234,16 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             is GameAction.LogAction -> workingState
         }
 
+        if (nextState.gamePhase == GamePhase.ROUND_OVER) {
+            Log.d("MusGameLogic", "Fin de ronda detectado. Puntuando...")
+            // La propia lógica se encarga de puntuar y comprobar si la partida ha terminado.
+            return scoreAndCheckForGameOver(nextState)
+        }
+
         return if (nextState != workingState) {
             val newActionInfo = LastActionInfo(playerId, action)
             var finalLog = nextState.actionLog
-
-            // Si la acción NO es un descarte, la añadimos al log del estado resultante.
-            // Si SÍ es un descarte, confiamos en el log personalizado que ya se creó dentro de handleDiscard.
+            
            if (action !is GameAction.ConfirmDiscard) {
                finalLog = (nextState.actionLog + newActionInfo).takeLast(4)
            }
@@ -250,6 +251,33 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             nextState.copy(lastAction = newActionInfo, actionLog = finalLog)
         } else {
             nextState
+        }
+    }
+
+    // NUEVA FUNCIÓN PRIVADA que encapsula la puntuación y la comprobación de fin de partida.
+    private fun scoreAndCheckForGameOver(roundEndState: GameState): GameState {
+        val scoredState = scoreRound(roundEndState)
+
+        val scoreToWin = 40 // O el valor que definas
+        val teamAScore = scoredState.score["teamA"] ?: 0
+        val teamBScore = scoredState.score["teamB"] ?: 0
+        val winner = if (teamAScore >= scoreToWin) "teamA" else if (teamBScore >= scoreToWin) "teamB" else null
+
+        return if (winner != null) {
+            scoredState.copy(
+                gamePhase = GamePhase.GAME_OVER,
+                winningTeam = winner,
+                availableActions = listOf(GameAction.NewGame),
+                revealAllHands = true
+            )
+        } else {
+            // La ronda terminó, pero la partida sigue.
+            // Prepara el estado para la siguiente ronda.
+            scoredState.copy(
+                gamePhase = GamePhase.ROUND_OVER,
+                availableActions = listOf(GameAction.Continue),
+                revealAllHands = true
+            )
         }
     }
 
