@@ -7,53 +7,51 @@ plugins {
 }
 
 android {
-    namespace = "com.doselfurioso.musvisto"
-    compileSdk = 35
+    namespace = "com.example.myapp"
+    compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.doselfurioso.musvisto"
-        minSdk = 29
-        targetSdk = 35
+        applicationId = "com.example.myapp"
+        minSdk = 24
+        targetSdk = 34
+
         versionCode = 1
         versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    buildFeatures {
+        buildConfig = true
+    }
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/my-release-key.jks") // ruta a tu keystore
+            storePassword = "TU_STORE_PASSWORD"
+            keyAlias = "TU_KEY_ALIAS"
+            keyPassword = "TU_KEY_PASSWORD"
+        }
+    }
+
 
     buildTypes {
         getByName("debug") {
-            // Habilita logs y depuración
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             isMinifyEnabled = false
             isDebuggable = true
-
             buildConfigField("Boolean", "LOG_ENABLED", "true")
         }
 
         getByName("release") {
-            // Optimizado y sin logs
             isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            isShrinkResources = true
-            isDebuggable = false
-
+            signingConfig = signingConfigs.getByName("release")
             buildConfigField("Boolean", "LOG_ENABLED", "false")
         }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-    buildFeatures {
-        compose = true
-        buildConfig = true
     }
 }
 
