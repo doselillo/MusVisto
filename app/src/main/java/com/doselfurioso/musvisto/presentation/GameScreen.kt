@@ -411,13 +411,12 @@ fun GameScreen(
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(bottom = 200.dp, start = 120.dp, end = 120.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(bottom = 200.dp), // Quitamos el padding lateral innecesario
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Scoreboard(score = gameState.score)
-                Spacer(modifier = Modifier.height(8.dp))
-                ActionLogDisplay(log = gameState.actionLog, players = players, gameState.gamePhase)
-                RoundHistoryDisplay(history = gameState.roundHistory)
+                LanceTracker(currentPhase = gameState.gamePhase, history = gameState.roundHistory)
             }
 
             ActionButtons(
@@ -694,57 +693,6 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
         }
     }
 }
-// --- REEMPLAZA EL ANTIGUO LanceInfo POR ESTE ---
-@Composable
-fun ActionLogDisplay(
-    log: List<LastActionInfo>,
-    players: List<Player>,
-    gamePhase: GamePhase, // <-- AÑADE ESTE PARÁMETRO
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.defaultMinSize(minHeight = 120.dp), // Aumentamos un poco el tamaño
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f))
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp), // Espacio entre elementos
-        ) {
-            // Título del Lance
-            Text(
-                if (gamePhase == GamePhase.DISCARD) "DESCARTAR" else gamePhase.name.replace('_', ' '),
-                color = Color.Yellow,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-
-            // Divisor
-            Box(
-                modifier = Modifier
-                    .height(1.dp)
-                    .fillMaxWidth(0.8f)
-                    .background(Color.Gray)
-            )
-
-            // Log de acciones
-            if (log.isEmpty()) {
-                Text("Esperando acción...", color = Color.Gray, fontSize = 14.sp)
-            } else {
-                log.forEach { actionInfo ->
-                    val playerName = players.find { it.id == actionInfo.playerId }?.name ?: ""
-                    Text(
-                        text = "$playerName: ${actionInfo.action.displayText}",
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun ActionAnnouncement(
@@ -889,6 +837,64 @@ fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifie
                     .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 2.dp)
             )
+        }
+    }
+}
+
+@Composable
+fun LanceTracker(
+    currentPhase: GamePhase,
+    history: List<LanceResult>,
+    modifier: Modifier = Modifier
+) {
+    val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
+
+    // Usamos una Card para darle un fondo y bordes redondeados
+    Card(
+        modifier = modifier.width(IntrinsicSize.Max), // Hacemos que la Card se ajuste al contenido
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
+    ) {
+        // Usamos una Columna para que cada lance ocupe una fila
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            lances.forEach { lance ->
+                val isCurrent = (currentPhase == lance)
+                val result = history.find { it.lance == lance }
+                var resultText = ""
+                // Si el lance ya ha terminado, preparamos su resultado para mostrarlo
+                if (result != null) {
+                    resultText = when (result.outcome) {
+                        "Querido" -> "Vale ${result.amount}"
+                        "No Querido" -> "No Querida"
+                        "Paso" -> "En Paso"
+                        else -> ""
+                    }
+                }
+
+                // Usamos una Fila para alinear el nombre del lance a la izquierda y el resultado a la derecha
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = lance.name,
+                        color = if (isCurrent) Color.Yellow else Color.White,
+                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 16.sp
+                    )
+                    // Mostramos el resultado solo si existe
+                    if (resultText.isNotEmpty()) {
+                        Text(
+                            text = resultText,
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }

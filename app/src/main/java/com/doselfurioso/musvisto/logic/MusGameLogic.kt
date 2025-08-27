@@ -67,9 +67,26 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     fun getGrandeWinner(gameState: GameState): Player? {
         val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
         return orderedPlayers.reduceOrNull { winner, challenger ->
-            val winnerCard = winner.hand.maxByOrNull { it.rank.value }
-            val challengerCard = challenger.hand.maxByOrNull { it.rank.value }
-            if ((challengerCard?.rank?.value ?: 0) > (winnerCard?.rank?.value ?: 0)) challenger else winner
+            // Ordenamos las manos de la carta más ALTA a la más baja
+            val winnerHand = winner.hand.sortedByDescending { it.rank.value }
+            val challengerHand = challenger.hand.sortedByDescending { it.rank.value }
+
+            // Comparamos las manos carta por carta
+            for (i in 0..3) {
+                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 0 // Usamos 0 como valor si no hay carta
+                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 0
+
+                // Si la carta del aspirante es más alta, él es el nuevo ganador
+                if (challengerCardValue > winnerCardValue) {
+                    return@reduceOrNull challenger
+                }
+                // Si la carta del ganador actual es más alta, él mantiene la victoria
+                if (winnerCardValue > challengerCardValue) {
+                    return@reduceOrNull winner
+                }
+            }
+            // Si son idénticas, gana el que esté antes en el turno
+            winner
         }
     }
 
@@ -80,9 +97,26 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     fun getChicaWinner(gameState: GameState): Player? {
         val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
         return orderedPlayers.reduceOrNull { winner, challenger ->
-            val winnerCard = winner.hand.minByOrNull { it.rank.value }
-            val challengerCard = challenger.hand.minByOrNull { it.rank.value }
-            if ((challengerCard?.rank?.value ?: 13) < (winnerCard?.rank?.value ?: 13)) challenger else winner
+            // Ordenamos las manos de ambos jugadores de la carta más baja a la más alta
+            val winnerHand = winner.hand.sortedBy { it.rank.value }
+            val challengerHand = challenger.hand.sortedBy { it.rank.value }
+
+            // Comparamos las manos carta por carta
+            for (i in 0..3) {
+                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 13 // Usamos 13 como valor si no hay carta
+                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 13
+
+                // Si la carta del aspirante es más baja, él es el nuevo ganador y terminamos la comparación
+                if (challengerCardValue < winnerCardValue) {
+                    return@reduceOrNull challenger
+                }
+                // Si la carta del ganador actual es más baja, él mantiene la victoria y terminamos la comparación
+                if (winnerCardValue < challengerCardValue) {
+                    return@reduceOrNull winner
+                }
+            }
+            // Si después de comparar las 4 cartas son idénticas, entonces gana el que esté antes en el turno (el "winner" actual)
+            winner
         }
     }
 
@@ -541,7 +575,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         var updatedState = currentState.updates()
 
-        // --- LÓGICA DE HISTORIAL DE RONDA (sin cambios) ---
         val lanceResult = when {
             updatedState.currentBet != null && updatedState.agreedBets.containsKey(updatedState.gamePhase) ->
                 LanceResult(updatedState.gamePhase, "Querido", updatedState.currentBet.amount)
@@ -551,11 +584,9 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         }
         val newHistory = updatedState.roundHistory + lanceResult
         updatedState = updatedState.copy(roundHistory = newHistory)
-        // ------------------------------------------------
 
         val nextPhase = advanceToNextPhase(updatedState.gamePhase)
 
-        // --- LÓGICA DE TRANSICIÓN DE FASE ---
         var finalState = updatedState.copy(
             gamePhase = nextPhase,
             currentTurnPlayerId = updatedState.manoPlayerId,
@@ -566,36 +597,33 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             currentLanceActions = emptyMap()
         )
 
-        // Comprobación de Pares
         if (nextPhase == GamePhase.PARES) {
             val playersWithPares = finalState.players.filter { getHandPares(it.hand).strength > 0 }
             if (playersWithPares.isEmpty()) {
                 Log.d("MusVistoTest", "PARES: Nadie tiene. Saltando a Juego.")
-                return endLanceAndAdvance(finalState) { this } // Llama recursivamente para saltar a Juego
+                return endLanceAndAdvance(finalState) { this }
             }
-            // Comprueba si todos los que tienen pares son del mismo equipo
             val teamsWithPares = playersWithPares.map { it.team }.distinct()
             if (teamsWithPares.size == 1) {
-                Log.d("MusVistoTest", "PARES: Solo el equipo ${teamsWithPares.first()} tiene. Ganan puntos y se salta el lance.")
-                val scoredState = scoreParesPlays(finalState) // Suma los puntos de las jugadas de pares
-                return endLanceAndAdvance(scoredState) { this } // Llama recursivamente para saltar a Juego
+                Log.d("MusVistoTest", "PARES: Solo el equipo ${teamsWithPares.first()} tiene. Se salta el lance.")
+                // --- CORRECCIÓN ---
+                // Simplemente saltamos al siguiente lance. La puntuación se hará al final.
+                return endLanceAndAdvance(finalState) { this }
             }
         }
 
-        // Comprobación de Juego
         if (nextPhase == GamePhase.JUEGO) {
             val playersWithJuego = finalState.players.filter { getHandJuegoValue(it.hand) >= 31 }
             if (playersWithJuego.isEmpty()) {
-                // Nadie tiene Juego, se juega al Punto
                 finalState = finalState.copy(isPuntoPhase = true)
             } else {
-                // Alguien tiene Juego, se juega a Juego
                 finalState = finalState.copy(isPuntoPhase = false)
                 val teamsWithJuego = playersWithJuego.map { it.team }.distinct()
                 if (teamsWithJuego.size == 1) {
-                    Log.d("MusVistoTest", "JUEGO: Solo el equipo ${teamsWithJuego.first()} tiene. Ganan puntos y se acaba la ronda.")
-                    val scoredState = scoreJuegoPlays(finalState) // Suma los puntos de las jugadas de juego
-                    return endLanceAndAdvance(scoredState) { this } // Llama recursivamente para terminar la ronda
+                    Log.d("MusVistoTest", "JUEGO: Solo el equipo ${teamsWithJuego.first()} tiene. Se acaba la ronda.")
+                    // --- CORRECCIÓN ---
+                    // Saltamos directamente al final de la ronda. La puntuación se hará allí.
+                    return endLanceAndAdvance(finalState) { this }
                 }
             }
         }
@@ -735,10 +763,13 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         return null // Should not happen in a 2v2 game
     }
 
+    // En: MusGameLogic.kt
+// Reemplaza la función antigua con esta nueva versión corregida
+
     fun scoreRound(currentState: GameState): GameState {
         var finalScore = currentState.score.toMutableMap()
 
-        // 1. Score "Grande"
+        // 1. Puntuación de "Grande" (Esta parte ya era correcta)
         getGrandeWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.GRANDE] ?: 0
             if (points > 0) {
@@ -748,7 +779,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             }
         }
 
-        // 2. Score "Chica"
+        // 2. Puntuación de "Chica" (Esta parte ya era correcta)
         getChicaWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.CHICA] ?: 0
             if (points > 0) {
@@ -758,65 +789,72 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             }
         }
 
-        // 3. Score "Pares" (Points for having the best pares, plus points for the bet)
-        getParesWinner(gameState = currentState)?.let { winner ->
-            // Points for the bet
+        // --- INICIO DE LA CORRECCIÓN PARA PARES ---
+        // 3. Puntuación de "Pares"
+        val paresWinner = getParesWinner(gameState = currentState)
+        if (paresWinner != null) {
+            val winningTeam = paresWinner.team
+            Log.d("MusVistoTest", "PARES: El equipo ganador del lance es $winningTeam")
+
+            // Puntos por la apuesta (si la hubo)
             val betPoints = currentState.agreedBets[GamePhase.PARES] ?: 0
             if (betPoints > 0) {
-                val currentScore = finalScore[winner.team] ?: 0
-                finalScore[winner.team] = currentScore + betPoints
-                Log.d("MusVistoTest", "PARES (Bet): Team ${winner.team} wins $betPoints points.")
+                val currentScore = finalScore[winningTeam] ?: 0
+                finalScore[winningTeam] = currentScore + betPoints
+                Log.d("MusVistoTest", "PARES (Apuesta): Team $winningTeam gana $betPoints puntos.")
             }
-            // Points for the plays themselves
-            currentState.players.forEach { player ->
-                val play = getHandPares(player.hand)
-                val playPoints = when (play) {
-                    is ParesPlay.Duples -> 3
-                    is ParesPlay.Medias -> 2
-                    is ParesPlay.Pares -> 1
-                    else -> 0
-                }
-                if (playPoints > 0) {
-                    val currentScore = finalScore[player.team] ?: 0
-                    finalScore[player.team] = currentScore + playPoints
-                    Log.d("MusVistoTest", "PARES (Play): Team ${player.team} scores $playPoints points for ${play::class.simpleName}.")
-                }
-            }
-        }
 
-        // 4. Score "Juego" (Similar to Pares)
-        getJuegoWinner(gameState = currentState)?.let { winner ->
-            // Points for the bet
-            val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
-            if (betPoints > 0) {
-                val currentScore = finalScore[winner.team] ?: 0
-                finalScore[winner.team] = currentScore + betPoints
-                Log.d("MusVistoTest", "JUEGO (Bet): Team ${winner.team} wins $betPoints points.")
-            }
-            // Points for the plays themselves
+            // Puntos por las jugadas (SOLO para los jugadores del equipo ganador)
             currentState.players.forEach { player ->
-                if ((getHandJuegoValue(player.hand)) != 31) {
-                    val playPoints = when (getHandJuegoValue(player.hand)) {
-                        32, 40, 37, 36, 35, 34, 33 -> 2
+                if (player.team == winningTeam) { // <-- ¡LA CLAVE ESTÁ AQUÍ!
+                    val play = getHandPares(player.hand)
+                    val playPoints = when (play) {
+                        is ParesPlay.Duples -> 3
+                        is ParesPlay.Medias -> 2
+                        is ParesPlay.Pares -> 1
                         else -> 0
                     }
                     if (playPoints > 0) {
                         val currentScore = finalScore[player.team] ?: 0
                         finalScore[player.team] = currentScore + playPoints
-                        Log.d("MusVistoTest", "JUEGO (Play): Team ${player.team} scores $playPoints points.")
+                        Log.d("MusVistoTest", "PARES (Jugada): Team ${player.team} suma $playPoints puntos por la jugada de ${player.name}.")
                     }
-                } else {
-                    val playPoints = 3
-                    val currentScore = finalScore[player.team] ?: 0
-                    finalScore[player.team] = currentScore + playPoints
-                    Log.d("MusVistoTest", "JUEGO (Play): Team ${player.team} scores $playPoints points.")
                 }
             }
         }
+        // --- FIN DE LA CORRECCIÓN PARA PARES ---
 
+        // --- INICIO DE LA CORRECCIÓN PARA JUEGO ---
+        // 4. Puntuación de "Juego"
+        val juegoWinner = getJuegoWinner(gameState = currentState)
+        if (juegoWinner != null) {
+            val winningTeam = juegoWinner.team
+            Log.d("MusVistoTest", "JUEGO: El equipo ganador del lance es $winningTeam")
 
-        return currentState.copy(score = finalScore,
-            manoPlayerId = currentState.manoPlayerId )
+            // Puntos por la apuesta (si la hubo)
+            val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
+            if (betPoints > 0) {
+                val currentScore = finalScore[winningTeam] ?: 0
+                finalScore[winningTeam] = currentScore + betPoints
+                Log.d("MusVistoTest", "JUEGO (Apuesta): Team $winningTeam gana $betPoints puntos.")
+            }
+
+            // Puntos por las jugadas (SOLO para los jugadores del equipo ganador)
+            currentState.players.forEach { player ->
+                if (player.team == winningTeam) { // <-- ¡LA MISMA CLAVE AQUÍ!
+                    val juegoValue = getHandJuegoValue(player.hand)
+                    if (juegoValue >= 31) {
+                        val playPoints = if (juegoValue == 31) 3 else 2
+                        val currentScore = finalScore[player.team] ?: 0
+                        finalScore[player.team] = currentScore + playPoints
+                        Log.d("MusVistoTest", "JUEGO (Jugada): Team ${player.team} suma $playPoints puntos por la jugada de ${player.name}.")
+                    }
+                }
+            }
+        }
+        // --- FIN DE LA CORRECCIÓN PARA JUEGO ---
+
+        return currentState.copy(score = finalScore, manoPlayerId = currentState.manoPlayerId)
     }
 
      internal fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
