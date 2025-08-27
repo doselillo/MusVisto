@@ -276,7 +276,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
-        // --- INICIO DE LA CORRECCIÓN ---
 
         // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
         val eligiblePlayers = getEligiblePlayersForLance(currentState)
@@ -310,14 +309,10 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             return currentState
         }
 
-        // --- FIN DE LA CORRECCIÓN ---
-
-
         val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            // El primer oponente en el orden de turno correcto es quien debe responder
             respondingPlayerId = orderedEligibleOpponents.first()
         )
 
@@ -325,10 +320,11 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             currentBet = newBet,
             currentTurnPlayerId = orderedEligibleOpponents.first(),
             betInitiatorTeam = bettingPlayer.team,
-            // La lista de pendientes ahora tiene el orden de respuesta correcto
             playersPendingResponse = orderedEligibleOpponents,
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
-            playersWhoPassed = emptySet()
+            // Cuando alguien sube la apuesta, los que habían pasado ("Paso") pueden volver a hablar,
+            // pero los que dijeron "No Quiero" no. Por eso, reiniciamos la lista de "pasos".
+            playersWhoPassed = currentState.playersWhoPassed
         )
     }
 
@@ -350,31 +346,42 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     }
 
     private fun handleNoQuiero(currentState: GameState, playerId: String): GameState {
-        // Si no hay una apuesta activa, la acción no es válida.
+        // Validación inicial (sin cambios)
         if (currentState.currentBet == null || playerId !in currentState.playersPendingResponse) {
             return currentState
         }
 
-        // Eliminamos al jugador actual de la lista de los que faltan por responder.
-        val remainingResponders = currentState.playersPendingResponse.filter { it != playerId }
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 1. Añadimos al jugador que ha dicho "No Quiero" a la lista de los que
+        //    ya no pueden participar en este lance.
+        val playersNowOutOfLance = currentState.playersWhoPassed + playerId
 
-        // Si ya no quedan miembros del equipo por responder, el rechazo es definitivo.
+        // 2. Buscamos si queda algún compañero que todavía pueda responder.
+        val remainingResponders = currentState.playersPendingResponse
+            .filter { it != playerId } // Quitamos al jugador actual
+        // --- FIN DE LA CORRECCIÓN ---
+
+        // Si ya no quedan compañeros por hablar, el rechazo es definitivo.
         if (remainingResponders.isEmpty()) {
-            Log.d("MusVistoTest", "El equipo entero ha rechazado la apuesta.")
-            val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
+            val resolvedState = currentState.copy(
+                betInitiatorTeam = null,
+                playersPendingResponse = emptyList()
+            )
             return endLanceAndAdvance(resolvedState) {
                 val bet = this.currentBet ?: return@endLanceAndAdvance this
                 val bettingPlayer = this.players.find { p -> p.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
-                val pointsWon = this.agreedBets[this.gamePhase] ?: 1
+                // Los puntos ganados son los que ya estaban aceptados más 1 por el rechazo
+                val pointsWon = (this.agreedBets[this.gamePhase] ?: 0) + 1
                 val currentScore = this.score[bettingPlayer.team] ?: 0
                 val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
                 Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s).")
                 this.copy(score = newScore)
             }
         } else {
-            // Si aún queda un compañero por hablar, le pasamos el turno a él.
-            Log.d("MusVistoTest", "Jugador $playerId rechaza, pero pasa el turno a su compañero.")
+            // Si aún queda un compañero, le pasamos el turno a él
+            // y guardamos en el estado que el jugador actual ya no participa.
             return currentState.copy(
+                playersWhoPassed = playersNowOutOfLance, // <-- Guardamos quién está fuera
                 playersPendingResponse = remainingResponders,
                 currentTurnPlayerId = remainingResponders.first()
             )
