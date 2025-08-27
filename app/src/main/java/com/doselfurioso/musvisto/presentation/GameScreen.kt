@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -463,10 +464,20 @@ fun GameScreen(
             }
         }
         if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
-            RoundEndOverlay(
-                breakdown = gameState.scoreBreakdown!!,
-                onContinueClick = { gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId) }
-            )
+            // Este Box se asegura de que el panel aparezca centrado
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 180.dp)
+                    .background(Color.Black.copy(alpha = 0.0f)) // Un fondo oscuro para dar énfasis
+                    .clickable(enabled = false, onClick = {}),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                RoundEndOverlay(
+                    breakdown = gameState.scoreBreakdown!!,
+                    onContinueClick = { gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId) }
+                )
+            }
         }
     }
 }
@@ -885,79 +896,74 @@ fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifie
     }
 }
 
+// En: GameScreen.kt
+// Reemplaza la función RoundEndOverlay entera por esta
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
     onContinueClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
-            .clickable(enabled = false, onClick = {}), // Evita clics en el fondo
-        contentAlignment = Alignment.Center
+    // La Card ahora es el elemento principal, sin un Box que ocupe toda la pantalla
+    Card(
+        // Le damos un borde y una elevación para que "flote" sobre el fondo
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(1.dp, Color.Yellow.copy(alpha = 0.5f)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E).copy(alpha = 0.9f)) // Hacemos el fondo casi opaco para legibilidad
     ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E))
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Text("FIN DE LA RONDA", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Yellow)
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                Text("FIN DE LA RONDA", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Yellow)
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    // Columna para "Nosotros"
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("NOSOTROS", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        breakdown.teamAScoreDetails.forEach { detail ->
-                            Row(modifier = Modifier.fillMaxWidth(0.5f), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(detail.reason, color = Color.LightGray)
-                                Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        // Línea de total
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(modifier = Modifier.height(1.dp).fillMaxWidth(0.5f).background(Color.Gray))
-                        Row(modifier = Modifier.fillMaxWidth(0.5f), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("+${breakdown.teamAScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
+                // Columna para "Nosotros" (sin cambios)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("NOSOTROS", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    breakdown.teamAScoreDetails.forEach { detail ->
+                        Row(modifier = Modifier.width(150.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
-
-                    // Columna para "Ellos"
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("ELLOS", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        breakdown.teamBScoreDetails.forEach { detail ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(detail.reason, color = Color.LightGray)
-                                Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        // Línea de total
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color.Gray))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("+${breakdown.teamBScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
-                        }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
+                    Row(modifier = Modifier.width(150.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("+${breakdown.teamAScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Button(onClick = onContinueClick) {
-                    Text("Continuar", fontSize = 18.sp)
+                // Columna para "Ellos" (sin cambios)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("ELLOS", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    breakdown.teamBScoreDetails.forEach { detail ->
+                        Row(modifier = Modifier.width(150.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
+                    Row(modifier = Modifier.width(150.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("+${breakdown.teamBScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
+                    }
                 }
+            }
+
+            Button(onClick = onContinueClick) {
+                Text("Continuar", fontSize = 12.sp)
             }
         }
     }
 }
-
 @Composable
 fun LanceTracker(
     currentPhase: GamePhase,
