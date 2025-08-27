@@ -40,27 +40,27 @@ class GameViewModel @Inject constructor(
         val manualHands = mapOf(
             "p1" to listOf( // Mano del Jugador Humano
                 Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.REY),
-                Card(Suit.BASTOS, Rank.CUATRO),
-                Card(Suit.COPAS, Rank.AS)
+                Card(Suit.OROS, Rank.TRES),
+                Card(Suit.OROS, Rank.CUATRO),
+                Card(Suit.OROS, Rank.AS)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.REY),
-                Card(Suit.BASTOS, Rank.CUATRO),
+                Card(Suit.COPAS, Rank.REY),
+                Card(Suit.COPAS, Rank.TRES),
+                Card(Suit.COPAS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.AS)
             ),
             "p3" to listOf( // Mano del Compañero
-                Card(Suit.OROS, Rank.REY),
                 Card(Suit.ESPADAS, Rank.REY),
-                Card(Suit.BASTOS, Rank.CUATRO),
-                Card(Suit.COPAS, Rank.AS)
+                Card(Suit.ESPADAS, Rank.TRES),
+                Card(Suit.ESPADAS, Rank.CUATRO),
+                Card(Suit.ESPADAS, Rank.AS)
             ),
             "p4" to listOf( // Mano del Rival Derecho
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.REY),
+                Card(Suit.BASTOS, Rank.REY),
+                Card(Suit.BASTOS, Rank.TRES),
                 Card(Suit.BASTOS, Rank.CUATRO),
-                Card(Suit.COPAS, Rank.AS)
+                Card(Suit.BASTOS, Rank.AS)
             )
         )
 
