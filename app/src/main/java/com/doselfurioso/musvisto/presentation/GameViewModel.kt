@@ -181,7 +181,7 @@ class GameViewModel @Inject constructor(
 
     private fun handleAiTurn() {
         viewModelScope.launch {
-            delay(500)
+            delay(1000)
             val currentState = _gameState.value
             val currentPlayer =
                 currentState.players.find { it.id == currentState.currentTurnPlayerId }
@@ -251,7 +251,7 @@ class GameViewModel @Inject constructor(
             if (phaseChanged) {
                 // La información del último anuncio está en `newState.transientAction`
                 // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
-                delay(500)
+                delay(1000)
 
                 // Pasado el tiempo, nos aseguramos de que el estado esté limpio
                 // antes de continuar.
