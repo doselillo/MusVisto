@@ -21,7 +21,7 @@ class GameViewModel @Inject constructor(
     private val aiLogic: AILogic
 ) : ViewModel() {
 
-    private val manualDealingEnabled = true
+    private val manualDealingEnabled = false
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
