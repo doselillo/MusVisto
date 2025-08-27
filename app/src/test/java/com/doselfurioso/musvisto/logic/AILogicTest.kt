@@ -120,4 +120,37 @@ class AILogicTest {
         assertFalse(decision.action is GameAction.Órdago) // NO debe cantar órdago
         assertTrue(decision.action is GameAction.Envido) // Debería hacer un envite normal
     }
+    @Test
+    fun `makeDecision - IA should NOT make a premature Órdago with 31`() {
+        // NUEVO TEST: Recrea el caso del órdago inesperado.
+        // Escenario: La IA (p3) tiene 31 de Juego, pero es la primera ronda y el marcador está a cero.
+        // Responde a un envite de 2 del rival. NO debería cantar órdago.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CABALLO), // 10
+            Card(Suit.COPAS, Rank.SOTA),   // 10
+            Card(Suit.ESPADAS, Rank.SIETE),  // 7
+            Card(Suit.BASTOS, Rank.CUATRO)  // 4
+        ) // Total: 31
+        val aiPlayer = testPlayer.copy(id = "p3", hand = hand)
+        val humanPlayer = opponentPlayer.copy(id = "p2")
+        val score = mapOf("teamA" to 0, "teamB" to 0)
+
+        // El rival (p2) ha envidado 2, y ahora le toca a la IA (p3)
+        val bet = BetInfo(amount = 2, bettingPlayerId = "p2", respondingPlayerId = "p3", pointsIfRejected = 1)
+        val gameState = GameState(
+            players = listOf(aiPlayer, humanPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = score,
+            currentBet = bet,
+            currentTurnPlayerId = "p3"
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        // Verificamos que la decisión NO es un órdago
+        assertFalse("La IA no debería cantar órdago en la primera ronda solo por tener 31", decision.action is GameAction.Órdago)
+        // La decisión correcta sería subir o, al menos, aceptar
+        assertTrue(decision.action is GameAction.Envido || decision.action is GameAction.Quiero)
+    }
+
 }
