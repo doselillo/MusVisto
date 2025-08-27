@@ -192,20 +192,19 @@ class GameViewModel @Inject constructor(
             }
         }
     }
-    
+
     private fun updateStateAndCheckAiTurn(newState: GameState) {
-        // Primero gestionamos el evento si lo hay
         handleGameEvent(newState.event)
 
-        // "Protegemos" el evento para que no se borre
+        // AHORA gestionamos también el evento transitorio
+        handleTransientAction(newState.transientAction)
+
         val finalState = newState.copy(event = newState.event ?: _gameState.value.event)
         _gameState.value = finalState
 
-        // Comprobamos si la ronda ha terminado
         if (finalState.gamePhase == GamePhase.ROUND_OVER) {
             processEndOfRound(finalState)
         } else {
-            // Si no, comprobamos si el siguiente jugador es una IA
             handleAiTurn()
         }
     }
@@ -260,5 +259,16 @@ class GameViewModel @Inject constructor(
         )
         // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
         handleAiTurn()
+    }
+
+    private fun handleTransientAction(transientAction: LastActionInfo?) {
+        if (transientAction == null) return
+
+        viewModelScope.launch {
+            delay(2000) // Muestra el anuncio transitorio durante 2 segundos
+            if (_gameState.value.transientAction == transientAction) {
+                _gameState.value = _gameState.value.copy(transientAction = null)
+            }
+        }
     }
 }

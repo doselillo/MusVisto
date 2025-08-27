@@ -33,5 +33,7 @@ data class GameState(
     val roundHistory: List<LanceResult> = emptyList(),
     val actionLog: List<LastActionInfo> = emptyList(),
     val noMusPlayer: String? = null,
-    val isNewLance: Boolean = true
-)
+    val isNewLance: Boolean = true,
+    val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
+    val transientAction: LastActionInfo? = null
+    )

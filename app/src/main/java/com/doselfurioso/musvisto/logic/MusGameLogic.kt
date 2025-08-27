@@ -202,18 +202,21 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     }
 
 
+    // En MusGameLogic.kt
+
+// --- REEMPLAZA LA FUNCIÓN processAction ENTERA POR ESTA VERSIÓN ---
+
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
         var workingState = currentState
-        // Si esta es la primera acción de un nuevo lance, limpiamos el log ANTES de hacer nada.
+
         if (currentState.isNewLance) {
-            workingState = currentState.copy(actionLog = emptyList(), isNewLance = false)
+            workingState = currentState.copy(isNewLance = false, currentLanceActions = emptyMap())
         }
 
-        // --- A partir de aquí, usamos "workingState" en lugar de "currentState" ---
         val player = workingState.players.find { it.id == playerId } ?: return workingState
 
         if (workingState.currentTurnPlayerId != playerId) return workingState
-        if (action !in workingState.availableActions) return workingState
+        if (action !in workingState.availableActions && action !is GameAction.ConfirmDiscard) return workingState
 
         when (workingState.gamePhase) {
             GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(workingState, playerId)
@@ -234,24 +237,34 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             is GameAction.LogAction -> workingState
         }
 
-        if (nextState.gamePhase == GamePhase.ROUND_OVER) {
-            Log.d("MusGameLogic", "Fin de ronda detectado. Puntuando...")
-            // La propia lógica se encarga de puntuar y comprobar si la partida ha terminado.
-            return scoreAndCheckForGameOver(nextState)
-        }
 
-        return if (nextState != workingState) {
-            val newActionInfo = LastActionInfo(playerId, action)
-            var finalLog = nextState.actionLog
-            
-           if (action !is GameAction.ConfirmDiscard) {
-               finalLog = (nextState.actionLog + newActionInfo).takeLast(4)
-           }
+        if (nextState == workingState) return nextState
 
-            nextState.copy(lastAction = newActionInfo, actionLog = finalLog)
+        val newActionInfo = LastActionInfo(playerId, action)
+        val phaseChanged = workingState.gamePhase != nextState.gamePhase
+
+        var finalLanceActions = nextState.currentLanceActions
+        var finalTransientAction: LastActionInfo? = nextState.transientAction
+
+        if (phaseChanged) {
+            finalLanceActions = emptyMap()
+            finalTransientAction = newActionInfo
         } else {
-            nextState
+            finalLanceActions = workingState.currentLanceActions + (playerId to newActionInfo)
         }
+
+        val newActionLog = if (action !is GameAction.ConfirmDiscard) {
+            (nextState.actionLog + newActionInfo).takeLast(4)
+        } else {
+            nextState.actionLog
+        }
+
+        return nextState.copy(
+            lastAction = newActionInfo,
+            actionLog = newActionLog,
+            currentLanceActions = finalLanceActions,
+            transientAction = finalTransientAction
+        )
     }
 
     // NUEVA FUNCIÓN PRIVADA que encapsula la puntuación y la comprobación de fin de partida.
@@ -377,7 +390,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
                 availableActions = listOf(GameAction.ConfirmDiscard),
                 playersWhoPassed = emptySet(),
                 currentTurnPlayerId = newState.manoPlayerId,
-                isNewLance = true
+                isNewLance = true,
+                currentLanceActions = emptyMap()
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
@@ -393,7 +407,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             discardCounts = emptyMap(),
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
-            isNewLance = true
+            isNewLance = true,
+            currentLanceActions = emptyMap()
         )
     }
 
@@ -511,7 +526,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             playersWhoPassed = emptySet(),
             currentBet = null,
             isNewLance = true,
-            actionLog = emptyList()
+            actionLog = emptyList(),
+            currentLanceActions = emptyMap()
         )
 
         // Comprobación de Pares

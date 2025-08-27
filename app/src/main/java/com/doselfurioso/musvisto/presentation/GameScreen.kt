@@ -317,22 +317,22 @@ fun GameScreen(
             Box(Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 12.dp, top = 150.dp)) {
-                ActionAnnouncement(gameState.lastAction, rivalLeft, gameState)
+                ActionAnnouncement(rivalLeft, gameState)
             }
             Box(Modifier
                 .align(Alignment.TopEnd)
                 .padding(end = 12.dp, top = 150.dp)) {
-                ActionAnnouncement(gameState.lastAction, rivalRight, gameState)
+                ActionAnnouncement(rivalRight, gameState)
             }
             Box(Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 50.dp, top = 110.dp)) {
-                ActionAnnouncement(gameState.lastAction, partner, gameState)
+                ActionAnnouncement(partner, gameState)
             }
             Box(Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 36.dp, bottom = 140.dp)) {
-                ActionAnnouncement(gameState.lastAction, player, gameState)
+                ActionAnnouncement(player, gameState)
             }
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(modifier = Modifier
@@ -748,25 +748,27 @@ fun ActionLogDisplay(
 
 @Composable
 fun ActionAnnouncement(
-    lastAction: LastActionInfo?,
     player: Player,
-    gameState: GameState// <--- AÑADE ESTE PARÁMETRO
+    gameState: GameState
 ) {
-    // This controls the visibility of the announcement
-    var visible by remember(lastAction) { mutableStateOf(false) }
+    // 1. DETERMINAMOS LA ACCIÓN CORRECTA PARA ESTE JUGADOR
+    //    Esta variable local 'actionToShow' será la única fuente de verdad para este anuncio.
+    var actionToShow: LastActionInfo? = null
 
-    // When lastAction changes and matches this player, show the announcement
-    if (lastAction?.playerId == player.id) {
-        visible = true
+    // Primero, miramos si hay una acción persistente para este jugador en el lance actual.
+    val persistentAction = gameState.currentLanceActions[player.id]
+    if (persistentAction != null) {
+        actionToShow = persistentAction
     }
 
-    // After a delay, hide the announcement
-    LaunchedEffect(lastAction) {
-        if (lastAction?.playerId == player.id) {
-            delay(2000) // 2 seconds
-            visible = false
-        }
+    // Luego, comprobamos si la acción transitoria (la que cambia de fase) es de este jugador.
+    // Si es así, tiene prioridad para mostrarse.
+    if (gameState.transientAction?.playerId == player.id) {
+        actionToShow = gameState.transientAction
     }
+
+    // 2. LA VISIBILIDAD DEPENDE EXCLUSIVAMENTE DE SI HEMOS ENCONTRADO UNA ACCIÓN
+    val visible = actionToShow != null
 
     AnimatedVisibility(
         visible = visible,
@@ -777,13 +779,13 @@ fun ActionAnnouncement(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
             modifier = Modifier.padding(8.dp)
         ) {
-            if (lastAction?.action?.actionType == GameAction.ConfirmDiscard.actionType) Text(
-                text = ("Dame: ${gameState.discardCounts[player.id]}"),
+            if (actionToShow?.action is GameAction.ConfirmDiscard) Text(
+                text = ("Dame ${gameState.discardCounts[player.id]}"),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             ) else Text(
-                text = lastAction?.action?.displayText ?: "",
+                text = actionToShow?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
