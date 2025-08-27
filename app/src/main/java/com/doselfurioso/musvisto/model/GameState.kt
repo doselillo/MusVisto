@@ -36,7 +36,8 @@ data class GameState(
     val isNewLance: Boolean = true,
     val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
     val transientAction: LastActionInfo? = null,
-    val scoreBreakdown: ScoreBreakdown? = null
+    val scoreBreakdown: ScoreBreakdown? = null,
+    val scoreEvents: List<Pair<String, ScoreDetail>> = emptyList()
 )
 
 data class ScoreDetail(val reason: String, val points: Int)

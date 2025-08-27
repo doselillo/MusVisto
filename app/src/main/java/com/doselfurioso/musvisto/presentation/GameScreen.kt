@@ -417,7 +417,9 @@ fun GameScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Scoreboard(score = gameState.score)
-                LanceTracker(currentPhase = gameState.gamePhase, history = gameState.roundHistory)
+                LanceTracker(currentPhase = gameState.gamePhase,
+                    history = gameState.roundHistory,
+                    isPuntoPhase = gameState.isPuntoPhase)
             }
 
             ActionButtons(
@@ -927,16 +929,15 @@ fun RoundEndOverlay(
 fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
+    isPuntoPhase: Boolean, // <-- Necesitamos saber si se juega a Punto
     modifier: Modifier = Modifier
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
-    // Usamos una Card para darle un fondo y bordes redondeados
     Card(
-        modifier = modifier.width(IntrinsicSize.Max), // Hacemos que la Card se ajuste al contenido
+        modifier = modifier.width(IntrinsicSize.Max),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
-        // Usamos una Columna para que cada lance ocupe una fila
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -945,7 +946,6 @@ fun LanceTracker(
                 val isCurrent = (currentPhase == lance)
                 val result = history.find { it.lance == lance }
                 var resultText = ""
-                // Si el lance ya ha terminado, preparamos su resultado para mostrarlo
                 if (result != null) {
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
@@ -955,19 +955,38 @@ fun LanceTracker(
                     }
                 }
 
-                // Usamos una Fila para alinear el nombre del lance a la izquierda y el resultado a la derecha
+                // --- INICIO DE LAS NUEVAS REGLAS VISUALES ---
+
+                // 1. Determinar el nombre a mostrar (Juego o Punto)
+                val lanceName = if (lance == GamePhase.JUEGO && isPuntoPhase) {
+                    "PUNTO"
+                } else {
+                    lance.name
+                }
+
+                // 2. Determinar si el lance de Pares fue saltado
+                val isParesSkipped = lance == GamePhase.PARES && result?.outcome == "Paso" && !isCurrent
+
+                // 3. Decidir el color del texto
+                val textColor = when {
+                    isCurrent -> Color.Yellow // El lance actual siempre es amarillo
+                    isParesSkipped -> Color.DarkGray // Pares saltado es gris oscuro
+                    else -> Color.White // El resto, blanco
+                }
+
+                // --- FIN DE LAS NUEVAS REGLAS VISUALES ---
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = lance.name,
-                        color = if (isCurrent) Color.Yellow else Color.White,
+                        text = lanceName,
+                        color = textColor,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                         fontSize = 16.sp
                     )
-                    // Mostramos el resultado solo si existe
                     if (resultText.isNotEmpty()) {
                         Text(
                             text = resultText,

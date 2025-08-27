@@ -397,20 +397,24 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         // Si ya no quedan compañeros por hablar, el rechazo es definitivo.
         if (remainingResponders.isEmpty()) {
-            val resolvedState = currentState.copy(
+            // Obtenemos la información de la apuesta que fue rechazada
+            val bet = currentState.currentBet ?: return currentState
+            val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
+            val agreedPoints = currentState.agreedBets[currentState.gamePhase] ?: 0
+            val pointsWon = agreedPoints + 1
+
+            // Determinamos el motivo correcto (Juego o Punto)
+            val reason = if (currentState.isPuntoPhase) "Punto (No Querido)" else "${currentState.gamePhase.name} (No Querida)"
+            val detail = ScoreDetail(reason, pointsWon)
+
+            // Creamos un nuevo estado que INCLUYE el evento de puntuación
+            val newState = currentState.copy(
                 betInitiatorTeam = null,
-                playersPendingResponse = emptyList()
+                playersPendingResponse = emptyList(),
+                scoreEvents = currentState.scoreEvents + (bettingPlayer.team to detail) // <-- GUARDAMOS EL EVENTO
             )
-            return endLanceAndAdvance(resolvedState) {
-                val bet = this.currentBet ?: return@endLanceAndAdvance this
-                val bettingPlayer = this.players.find { p -> p.id == bet.bettingPlayerId } ?: return@endLanceAndAdvance this
-                // Los puntos ganados son los que ya estaban aceptados más 1 por el rechazo
-                val pointsWon = (this.agreedBets[this.gamePhase] ?: 0) + 1
-                val currentScore = this.score[bettingPlayer.team] ?: 0
-                val newScore = this.score + (bettingPlayer.team to currentScore + pointsWon)
-                Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s).")
-                this.copy(score = newScore)
-            }
+            // Y ahora terminamos el lance con este nuevo estado actualizado
+            return endLanceAndAdvance(newState) { this }
         } else {
             // Si aún queda un compañero, le pasamos el turno a él
             // y guardamos en el estado que el jugador actual ya no participa.
@@ -767,56 +771,69 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     fun scoreRound(currentState: GameState): GameState {
         val teamADetails = mutableListOf<ScoreDetail>()
         val teamBDetails = mutableListOf<ScoreDetail>()
+        val historyMap = currentState.roundHistory.associateBy { it.lance }
 
-        // 1. Puntuación de "Grande"
-        getGrandeWinner(gameState = currentState)?.let { winner ->
-            val points = currentState.agreedBets[GamePhase.GRANDE] ?: 0
-            if (points > 0) {
-                val detail = ScoreDetail("Grande (Apuesta)", points)
-                if (winner.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-            }
+        // 1. Añadimos los puntos de eventos ocurridos durante la ronda (p. ej. "No Quiero")
+        currentState.scoreEvents.forEach { (teamId, detail) ->
+            if (teamId == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
         }
 
-        // 2. Puntuación de "Chica"
-        getChicaWinner(gameState = currentState)?.let { winner ->
-            val points = currentState.agreedBets[GamePhase.CHICA] ?: 0
-            if (points > 0) {
-                val detail = ScoreDetail("Chica (Apuesta)", points)
-                if (winner.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-            }
-        }
-
-        // 3. Puntuación de "Pares"
-        getParesWinner(gameState = currentState)?.let { winner ->
-            val winningTeam = winner.team
-            val betPoints = currentState.agreedBets[GamePhase.PARES] ?: 0
-            if (betPoints > 0) {
-                val detail = ScoreDetail("Pares (Apuesta)", betPoints)
-                if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-            }
-            currentState.players.forEach { player ->
-                if (player.team == winningTeam) {
-                    val play = getHandPares(player.hand)
-                    val (reason, playPoints) = when (play) {
-                        is ParesPlay.Duples -> "Duples (${player.name})" to 3
-                        is ParesPlay.Medias -> "Medias (${player.name})" to 2
-                        is ParesPlay.Pares -> "Pares (${player.name})" to 1
-                        else -> "" to 0
-                    }
-                    if (playPoints > 0) {
-                        val detail = ScoreDetail(reason, playPoints)
-                        if (player.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+        // 2. Puntuamos los lances con apuestas ACEPTADAS o PASADOS
+        // Puntuación de GRANDE y CHICA
+        listOf(GamePhase.GRANDE, GamePhase.CHICA).forEach { lance ->
+            historyMap[lance]?.let { result ->
+                val winner = if (lance == GamePhase.GRANDE) getGrandeWinner(currentState) else getChicaWinner(currentState)
+                winner?.let {
+                    if (result.outcome == "Paso") {
+                        val detail = ScoreDetail("${lance.name} (En paso)", 1)
+                        if (it.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+                    } else if (result.outcome == "Querido") {
+                        val points = currentState.agreedBets[lance] ?: 0
+                        if (points > 0) {
+                            val detail = ScoreDetail("${lance.name} (Apuesta)", points)
+                            if (it.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+                        }
                     }
                 }
             }
         }
 
-        // 4. Puntuación de "Juego"
-        getJuegoWinner(gameState = currentState)?.let { winner ->
+        // Puntuación de PARES
+        getParesWinner(currentState)?.let { winner ->
             val winningTeam = winner.team
-            val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
-            if (betPoints > 0) {
-                val detail = ScoreDetail("Juego (Apuesta)", betPoints)
+            if (historyMap[GamePhase.PARES]?.outcome == "Querido") {
+                val points = currentState.agreedBets[GamePhase.PARES] ?: 0
+                if(points > 0) teamADetails.add(ScoreDetail("Pares (Apuesta)", points))
+            }
+            currentState.players.forEach { player ->
+                if (player.team == winningTeam) {
+                    val (reason, playPoints) = getHandPares(player.hand).let {
+                        when (it) {
+                            is ParesPlay.Duples -> "Duples (${player.name})" to 3
+                            is ParesPlay.Medias -> "Medias (${player.name})" to 2
+                            is ParesPlay.Pares -> "Pares (${player.name})" to 1
+                            else -> "" to 0
+                        }
+                    }
+                    if (playPoints > 0) {
+                        if (player.team == "teamA") teamADetails.add(ScoreDetail(reason, playPoints)) else teamBDetails.add(ScoreDetail(reason, playPoints))
+                    }
+                }
+            }
+        }
+
+        // Puntuación de JUEGO / PUNTO
+        getJuegoWinner(currentState)?.let { winner ->
+            val winningTeam = winner.team
+            if (historyMap[GamePhase.JUEGO]?.outcome == "Querido") {
+                val points = currentState.agreedBets[GamePhase.JUEGO] ?: 0
+                if (points > 0) {
+                    val detail = ScoreDetail("Juego (Apuesta)", points)
+                    if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+                }
+            }
+            if (currentState.isPuntoPhase && historyMap[GamePhase.JUEGO]?.outcome == "Paso") {
+                val detail = ScoreDetail("Punto", 1)
                 if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
             currentState.players.forEach { player ->
