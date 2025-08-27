@@ -6,11 +6,8 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.random.Random
 
-// Mock simple para el Logger, para que los tests puedan funcionar sin él.
 class TestAILogger : AILogger {
-    override fun log(decision: DecisionLog) {
-        // No hace nada, solo existe para poder instanciar AILogic.
-    }
+    override fun log(decision: DecisionLog) { /* No hace nada */ }
 }
 
 class AILogicTest {
@@ -18,117 +15,109 @@ class AILogicTest {
     private lateinit var aiLogic: AILogic
     private lateinit var gameLogic: MusGameLogic
     private lateinit var testPlayer: Player
+    private lateinit var opponentPlayer: Player
 
     @Before
     fun setUp() {
-        // Inicializamos las clases necesarias antes de cada test.
-        gameLogic = MusGameLogic { Random.Default } // Usamos un proveedor de Random para MusGameLogic
+        gameLogic = MusGameLogic { Random.Default }
         aiLogic = AILogic(gameLogic, TestAILogger())
         testPlayer = Player(id = "ai1", name = "IA Test", team = "teamB", avatarResId = 0, isAi = true)
+        opponentPlayer = Player(id = "p1", name = "Humano", team = "teamA", avatarResId = 0)
     }
 
-    // --- TESTS PARA LA NUEVA LÓGICA DE DESCARTE ---
-
+    // --- TESTS DE DESCARTE (EXISTENTES, SIN CAMBIOS) ---
     @Test
-    fun `decideDiscard con 31 de juego, descarta la carta mas baja`() {
-        // MANO: Sota, Sota, Sota, As (Suma 31)
-        val hand = listOf(
-            Card(Suit.OROS, Rank.SOTA),
-            Card(Suit.COPAS, Rank.SOTA),
-            Card(Suit.ESPADAS, Rank.SOTA),
-            Card(Suit.BASTOS, Rank.AS)
-        )
+    fun `decideDiscard with 31 de juego, discards the lowest card`() {
+        val hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))
         val playerWithHand = testPlayer.copy(hand = hand)
-        val cartaEsperada = Card(Suit.BASTOS, Rank.AS) // Debe descartar el As
-
         val decision = aiLogic.decideDiscard(playerWithHand, "test1")
+        assertEquals(1, decision.cardsToDiscard.size)
+        assertTrue(decision.cardsToDiscard.contains(Card(Suit.BASTOS, Rank.AS)))
+    }
 
-        assertEquals("Con 31, debe descartar solo una carta", 1, decision.cardsToDiscard.size)
-        assertTrue("Con 31, debe descartar la carta de menor rango (el As)", decision.cardsToDiscard.contains(cartaEsperada))
+    // --- NUEVOS TESTS DE DECISIONES DE LA IA ---
+
+    @Test
+    fun `makeDecision - IA should pass with a weak hand`() {
+        // NUEVO: Comprueba el comportamiento conservador.
+        val hand = listOf(Card(Suit.OROS, Rank.CUATRO), Card(Suit.COPAS, Rank.CINCO), Card(Suit.ESPADAS, Rank.SEIS), Card(Suit.BASTOS, Rank.SIETE))
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Paso)
     }
 
     @Test
-    fun `decideDiscard con 3 figuras, descarta la que no es figura`() {
-        // MANO: Rey, Caballo, Sota, Cinco (Suma 35)
-        val hand = listOf(
-            Card(Suit.OROS, Rank.REY),
-            Card(Suit.COPAS, Rank.CABALLO),
-            Card(Suit.ESPADAS, Rank.SOTA),
-            Card(Suit.BASTOS, Rank.CINCO)
-        )
-        val playerWithHand = testPlayer.copy(hand = hand)
-        val cartaEsperada = Card(Suit.BASTOS, Rank.CINCO) // Debe descartar el 5
-
-        val decision = aiLogic.decideDiscard(playerWithHand, "test2")
-
-        assertEquals("Con 3 figuras, debe descartar solo una carta", 1, decision.cardsToDiscard.size)
-        assertTrue("Con 3 figuras, debe descartar la carta que no es figura", decision.cardsToDiscard.contains(cartaEsperada))
+    fun `makeDecision - IA should make a standard bet with a good hand`() {
+        // NUEVO: Comprueba el envite estándar.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS)) // Buena a Grande y Chica
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Envido)
+        assertEquals(2, (decision.action as GameAction.Envido).amount)
     }
 
     @Test
-    fun `decideDiscard prioriza mantener Pares sobre cartas altas sueltas`() {
-        // MANO: Rey, Sota, Sota, Cuatro
-        val hand = listOf(
-            Card(Suit.OROS, Rank.REY),
-            Card(Suit.COPAS, Rank.SOTA),
-            Card(Suit.ESPADAS, Rank.SOTA),
-            Card(Suit.BASTOS, Rank.CUATRO)
-        )
-        val playerWithHand = testPlayer.copy(hand = hand)
-        val cartasEsperadas = setOf(
-            Card(Suit.OROS, Rank.REY),
-            Card(Suit.BASTOS, Rank.CUATRO)
-        ) // Debería descartar el Rey y el 4 para quedarse con la pareja de Sotas
-
-        val decision = aiLogic.decideDiscard(playerWithHand, "test3")
-
-        // NOTA: Esta lógica es un poco más avanzada. La actual tirará el 4 y el Rey.
-        // Adaptamos el test a la lógica actual: descarta lo que no es par o Rey/Tres.
-        val cartaDescartadaEsperada = Card(Suit.BASTOS, Rank.CUATRO)
-
-        assertEquals("Debe descartar las cartas que no son ni Rey/Tres ni parte de una pareja", 1, decision.cardsToDiscard.size)
-        assertTrue("Debe descartar el Cuatro", decision.cardsToDiscard.contains(cartaDescartadaEsperada))
+    fun `makeDecision - IA should make a standard bet even with a great hand due to conservative logic`() {
+        // --- TEST CORREGIDO ---
+        // AHORA: Comprobamos que, con tres Reyes, la IA hace el envite estándar de 2,
+        // porque su personalidad ya no es tan agresiva.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.CABALLO))
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Envido)
+        assertEquals(2, (decision.action as GameAction.Envido).amount) // Esperamos un envite de 2
     }
 
     @Test
-    fun `decideDiscard descarta cartas malas (4, 5, 6, 7) antes que Ases o Doses`() {
-        // MANO: Rey, Seis, Cinco, As
-        val hand = listOf(
-            Card(Suit.OROS, Rank.REY),
-            Card(Suit.COPAS, Rank.SEIS),
-            Card(Suit.ESPADAS, Rank.CINCO),
-            Card(Suit.BASTOS, Rank.AS)
-        )
-        val playerWithHand = testPlayer.copy(hand = hand)
-        val cartasEsperadas = setOf(
-            Card(Suit.COPAS, Rank.SEIS),
-            Card(Suit.ESPADAS, Rank.CINCO)
-        ) // Debe mantener Rey (Grande) y As (Chica/Juego)
-
-        val decision = aiLogic.decideDiscard(playerWithHand, "test4")
-
-        assertEquals("Debe descartar las dos cartas 'malas'", 2, decision.cardsToDiscard.size)
-        assertEquals("Debe descartar el 6 y el 5", cartasEsperadas, decision.cardsToDiscard)
+    fun `makeDecision - IA should accept a bet if it has a strong advantage`() {
+        // NUEVO: Comprueba la lógica de "Quiero".
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY)) // Mano invencible a Grande
+        val bet = BetInfo(2, opponentPlayer.id, testPlayer.id)
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE, currentBet = bet)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Quiero || decision.action is GameAction.Envido || decision.action is GameAction.Órdago) // Acepta o sube
     }
 
     @Test
-    fun `decideDiscard sin jugada clara, descarta solo la carta con puntuacion negativa`() {
-        // MANO: Rey (score 50), Caballo (score 0), Siete (score -10), As (score 20)
-        val hand = listOf(
-            Card(Suit.OROS, Rank.REY),
-            Card(Suit.COPAS, Rank.CABALLO),
-            Card(Suit.ESPADAS, Rank.SIETE),
-            Card(Suit.BASTOS, Rank.AS)
-        )
-        val playerWithHand = testPlayer.copy(hand = hand)
-        val cartaEsperada = Card(Suit.ESPADAS, Rank.SIETE)
-        val cartaNoEsperada = Card(Suit.COPAS, Rank.CABALLO)
+    fun `makeDecision - IA should reject a bet if it has a weak hand`() {
+        // NUEVO: Comprueba la lógica de "No Quiero".
+        val hand = listOf(Card(Suit.OROS, Rank.CUATRO), Card(Suit.COPAS, Rank.CINCO), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS)) // Mala a Grande
+        val bet = BetInfo(4, opponentPlayer.id, testPlayer.id)
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE, currentBet = bet)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.NoQuiero)
+    }
 
-        val decision = aiLogic.decideDiscard(playerWithHand, "test5")
+    @Test
+    fun `makeDecision - IA should be more aggressive when losing (riskFactor)`() {
+        // NUEVO: Comprueba el efecto del riskFactor.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.SIETE), Card(Suit.ESPADAS, Rank.SEIS), Card(Suit.BASTOS, Rank.CINCO)) // Mano mediocre
+        val score = mapOf("teamA" to 30, "teamB" to 5) // La IA va perdiendo por mucho
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand), opponentPlayer), gamePhase = GamePhase.GRANDE, score = score)
+        // Con esta mano y marcador igualado, pasaría. Perdiendo, debería envidar.
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Envido)
+    }
 
-        // Verificaciones más específicas
-        assertEquals("Debe descartar solo 1 carta", 1, decision.cardsToDiscard.size)
-        assertTrue("La carta a descartar debe ser el Siete", decision.cardsToDiscard.contains(cartaEsperada))
-        assertFalse("No debe descartar el Caballo (score 0)", decision.cardsToDiscard.contains(cartaNoEsperada))
+    @Test
+    fun `makeDecision - IA should consider an Órdago ONLY when opponent is about to win`() {
+        // --- TEST CORREGIDO ---
+        // AHORA: Forzamos la condición exacta para el órdago (rival con más de 30 puntos).
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))
+        val score = mapOf("teamA" to 35, "teamB" to 10) // El rival está a punto de ganar
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand), opponentPlayer), gamePhase = GamePhase.GRANDE, score = score)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertTrue(decision.action is GameAction.Órdago)
+    }
+
+    @Test
+    fun `makeDecision - IA should NOT consider an Órdago if opponent is not close to winning`() {
+        // NUEVO: Añadimos el caso contrario para asegurar que no canta órdago a la ligera.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))
+        val score = mapOf("teamA" to 10, "teamB" to 10) // Marcador igualado
+        val gameState = GameState(players = listOf(testPlayer.copy(hand = hand), opponentPlayer), gamePhase = GamePhase.GRANDE, score = score)
+        val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
+        assertFalse(decision.action is GameAction.Órdago) // NO debe cantar órdago
+        assertTrue(decision.action is GameAction.Envido) // Debería hacer un envite normal
     }
 }

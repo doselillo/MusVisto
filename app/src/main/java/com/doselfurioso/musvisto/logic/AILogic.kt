@@ -43,78 +43,102 @@ class AILogic @Inject constructor(
     // ---------------- Public entry point ----------------
     fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision {
         val decisionId = UUID.randomUUID().toString()
-        val strength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
-        // Log: evaluación inicial
+
+        // --- CÁLCULO DEL RISK FACTOR ---
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val scoreDifference = (gameState.score[aiPlayer.team] ?: 0) - (gameState.score[opponentTeam] ?: 0)
+        val riskFactor = when {
+            scoreDifference < -20 -> 15  // Perdiendo por mucho: muy agresivo
+            scoreDifference < -10 -> 10  // Perdiendo: algo agresivo
+            scoreDifference > 20 -> -15 // Ganando por mucho: muy conservador
+            scoreDifference > 10 -> -10 // Ganando: algo conservador
+            else -> 0 // Marcador igualado: juego estándar
+        }
+
+        // Evaluamos la fuerza base de la mano
+        val baseStrength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
+
+        // APLICAMOS EL RISK FACTOR: Creamos la fuerza ajustada para cada lance
+        val adjustedGrande = (baseStrength.grande + riskFactor).coerceIn(0, 100)
+        val adjustedChica = (baseStrength.chica + riskFactor).coerceIn(0, 100)
+        val adjustedPares = (baseStrength.pares + riskFactor).coerceIn(0, 100)
+        val adjustedJuego = (baseStrength.juego + riskFactor).coerceIn(0, 100)
+
+        // Log (ahora incluye el risk factor y las fuerzas ajustadas)
         logger.log(
             DecisionLog(
                 decisionId = decisionId,
-                timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                phase = "EVALUATE_HAND",
+                playerId = aiPlayer.id,
+                phase = "EVALUATE_WITH_RISK",
                 hand = aiPlayer.hand.map { cardToShortString(it) },
                 strengths = mapOf(
-                    "grande" to strength.grande,
-                    "chica" to strength.chica,
-                    "pares" to strength.pares,
-                    "juego" to strength.juego
+                    "grande" to adjustedGrande, "chica" to adjustedChica,
+                    "pares" to adjustedPares, "juego" to adjustedJuego
                 ),
                 chosenAction = "EVALUATED",
-                reason = "Hand evaluated",
-                details = emptyMap()
+                reason = "Hand evaluated with risk factor",
+                details = mapOf("scoreDiff" to scoreDifference, "riskFactor" to riskFactor)
             )
         )
 
-        // Si hay apuesta activa, responder acorde
+        // --- LÓGICA DE DECISIÓN PRINCIPAL ---
+        // Si hay una apuesta activa, la IA responde usando su fuerza ajustada
         gameState.currentBet?.let {
-            return AIDecision(decideResponse(strength, gameState, decisionId, aiPlayer))
+            val strengthForLance = when (gameState.gamePhase) {
+                GamePhase.GRANDE -> adjustedGrande
+                GamePhase.CHICA -> adjustedChica
+                GamePhase.PARES -> adjustedPares
+                GamePhase.JUEGO -> adjustedJuego
+                else -> 0
+            }
+            return AIDecision(decideResponse(strengthForLance, gameState, decisionId, aiPlayer))
         }
 
-        // Si no hay apuesta, decidir según la fase
+        // Si no, la IA toma la iniciativa
         return when (gameState.gamePhase) {
-            GamePhase.MUS -> AIDecision(decideMus(strength, decisionId, aiPlayer))
-            GamePhase.DISCARD ->(decideDiscard(aiPlayer, decisionId))
-            GamePhase.GRANDE -> AIDecision(decideInitialBet(strength.grande, decisionId, aiPlayer, GamePhase.GRANDE))
-            GamePhase.CHICA -> AIDecision(decideInitialBet(strength.chica, decisionId, aiPlayer, GamePhase.CHICA))
-            GamePhase.PARES -> AIDecision(decideInitialBet(strength.pares, decisionId, aiPlayer, GamePhase.PARES))
-            GamePhase.JUEGO -> AIDecision(decideInitialBet(strength.juego, decisionId, aiPlayer, GamePhase.JUEGO))
-            else -> return AIDecision(GameAction.Paso)
+            GamePhase.MUS -> AIDecision(decideMus(baseStrength, decisionId, aiPlayer, riskFactor)) // El Mus se decide con la fuerza base
+            GamePhase.DISCARD -> decideDiscard(aiPlayer, decisionId)
+            GamePhase.PARES_CHECK -> AIDecision(if (baseStrength.pares > 0) GameAction.Tengo else GameAction.NoTengo)
+            GamePhase.JUEGO_CHECK -> AIDecision(if (baseStrength.juego > 0) GameAction.Tengo else GameAction.NoTengo)
+            GamePhase.GRANDE -> AIDecision(decideInitialBet(adjustedGrande, decisionId, aiPlayer, GamePhase.GRANDE, gameState))
+            GamePhase.CHICA -> AIDecision(decideInitialBet(adjustedChica, decisionId, aiPlayer, GamePhase.CHICA, gameState))
+            GamePhase.PARES -> AIDecision(decideInitialBet(adjustedPares, decisionId, aiPlayer, GamePhase.PARES, gameState))
+            GamePhase.JUEGO -> AIDecision(decideInitialBet(adjustedJuego, decisionId, aiPlayer, GamePhase.JUEGO, gameState))
+            else -> AIDecision(GameAction.Paso)
         }
     }
 
     // ---------------- Responder a apuestas activas ----------------
     private fun decideResponse(
-        strength: HandStrength,
+        adjustedStrength: Int,
         gameState: GameState,
         decisionId: String,
         aiPlayer: Player
     ): GameAction {
-        val strengthScore = when (gameState.gamePhase) {
-            GamePhase.GRANDE -> strength.grande
-            GamePhase.CHICA -> strength.chica
-            GamePhase.PARES -> strength.pares
-            GamePhase.JUEGO -> strength.juego
-            else -> 0
-        }
 
+        val currentBetAmount = gameState.currentBet?.amount ?: 0
+
+        // Lógica de respuesta a Órdago (sin cambios, ya era para casos desesperados)
         if (gameState.currentBet?.isOrdago == true) {
-            Log.d("AILogic", "AI (${aiPlayer.name}) está respondiendo a un ÓRDAGO con una fuerza de $strengthScore.")
-            return if (strengthScore >= 95) { // Umbral de certeza muy alto
-                GameAction.Quiero
+            val opponentTeam = if(aiPlayer.team == "teamA") "teamB" else "teamA"
+            if (adjustedStrength >= 95 || ((gameState.score[opponentTeam] ?: 0) - (gameState.score[aiPlayer.team] ?: 0) > 20)) {
+                return GameAction.Quiero
             } else {
-                GameAction.NoQuiero
+                return GameAction.NoQuiero
             }
         }
 
-        val currentBetAmount = gameState.currentBet?.amount ?: 0
-        if (currentBetAmount >= (6 + rng.nextInt(5)) && strengthScore < 85) {
-            // Si la apuesta ya es alta y no tenemos una jugada ganadora, solo aceptamos o rechazamos
-            return if (strengthScore-currentBetAmount > 70) GameAction.Quiero else GameAction.NoQuiero
-        }
-
+        // LÓGICA DE RESPUESTA (AHORA MÁS CONSERVADORA)
+        val advantage = adjustedStrength - currentBetAmount
         val action = when {
-            strengthScore > 85 -> GameAction.Envido(2)
-            strengthScore > 60 -> GameAction.Quiero
-            strengthScore > 45 && rng.nextInt(100) < 20 -> GameAction.Quiero
+            // Solo subirá a órdago si la ventaja es total (>95)
+            advantage > 95 -> GameAction.Órdago
+            // Solo subirá la apuesta si la ventaja es muy grande (>85)
+            advantage > 85 -> GameAction.Envido(2) // Sube con un envite simple de 2
+            // El umbral para aceptar ("Quiero") ahora es más alto (>70)
+            advantage > 70 -> GameAction.Quiero
+            // La probabilidad de "pagar por ver" es más baja
+            advantage > 60 && rng.nextInt(100) < 20 -> GameAction.Quiero // 20% de probabilidad
             else -> GameAction.NoQuiero
         }
 
@@ -125,7 +149,7 @@ class AILogic @Inject constructor(
                 playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
                 phase = "RESPONSE",
                 hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("phaseScore" to strengthScore),
+                strengths = mapOf("phaseScore" to adjustedStrength),
                 chosenAction = action.toString(),
                 reason = "Response decision based on phase score",
                 details = mapOf("phase" to gameState.gamePhase.toString())
@@ -136,9 +160,21 @@ class AILogic @Inject constructor(
     }
 
     // ---------------- Mus / NoMus ----------------
-    private fun decideMus(strength: HandStrength, decisionId: String, aiPlayer: Player): GameAction {
-        //val action = if (strength.juego >= 95 || strength.pares >= 65 || (strength.juego + strength.pares) >= 140 || strength.grande >= 95 || strength.chica >= 95) GameAction.NoMus else GameAction.Mus
-        val action  = if (strength.juego >= 70 || strength.pares >= 65 || strength.grande >= 85 || strength.chica >= 85) GameAction.NoMus else GameAction.Mus
+    private fun decideMus(
+        baseStrength: HandStrength,
+        decisionId: String,
+        aiPlayer: Player,
+        riskFactor: Int // Recibimos el riskFactor para un pequeño ajuste
+    ): GameAction {
+        // Si la IA está desesperada (riskFactor alto), será más propensa a cortar el Mus
+        // con manos peores, buscando un golpe de suerte.
+        val juegoThreshold = 70 - riskFactor
+        val paresThreshold = 65 - riskFactor
+
+        val action  = if (baseStrength.juego >= juegoThreshold ||
+            baseStrength.pares >= paresThreshold ||
+            baseStrength.grande >= (85 - riskFactor) ||
+            baseStrength.chica >= (85 - riskFactor)) GameAction.NoMus else GameAction.Mus
 
         logger.log(
             DecisionLog(
@@ -147,10 +183,10 @@ class AILogic @Inject constructor(
                 playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
                 phase = "MUS",
                 hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("juego" to strength.juego, "pares" to strength.pares),
+                strengths = mapOf("juego" to baseStrength.juego, "pares" to baseStrength.pares),
                 chosenAction = action.toString(),
                 reason = "Mus decision using thresholds",
-                details = mapOf("juego" to strength.juego, "pares" to strength.pares)
+                details = mapOf("juego" to baseStrength.juego, "pares" to baseStrength.pares)
             )
         )
 
@@ -239,16 +275,22 @@ class AILogic @Inject constructor(
     }
     // ---------------- Apuesta inicial (instrumentado) ----------------
     private fun decideInitialBet(
-        strengthScore: Int,
+        adjustedStrength: Int,
         decisionId: String,
         aiPlayer: Player,
-        phase: GamePhase
+        phase: GamePhase,
+        gameState: GameState // Necesitamos el estado del juego
     ): GameAction {
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        if (adjustedStrength > 98 && opponentScore > 30) {
+            return GameAction.Órdago
+        }
         val action = when {
-            // Umbral subido de 80 a 85
-            strengthScore > 85 -> GameAction.Envido(2)
-            // Umbral subido de 55 a 60 y probabilidad bajada
-            strengthScore > 60 && rng.nextInt(100) < 15 -> GameAction.Envido(2)
+            adjustedStrength > 90 -> GameAction.Envido(rng.nextInt(3) + 3)
+            adjustedStrength > 75 -> GameAction.Envido(2)
+            adjustedStrength > 55 && rng.nextInt(100) < 50 -> GameAction.Envido(2) // 50% de probabilidad
+            adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(2) // Farol más probable si la mano no es malísima
             else -> GameAction.Paso
         }
 
@@ -259,10 +301,10 @@ class AILogic @Inject constructor(
                 playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
                 phase = phase.toString(),
                 hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("phaseScore" to strengthScore),
+                strengths = mapOf("phaseScore" to adjustedStrength),
                 chosenAction = action.toString(),
                 reason = "Initial bet evaluated",
-                details = mapOf("phaseScore" to strengthScore, "phaseLimit:" to ">85 o >60+15%random")
+                details = mapOf("phaseScore" to adjustedStrength, "phaseLimit:" to ">85 o >60+15%random")
             )
         )
 
@@ -278,7 +320,7 @@ class AILogic @Inject constructor(
             1 -> 50 + hand.maxOf { it.rank.value } // Con un rey, es decente
             2 -> 70 + hand.maxOf { it.rank.value } // Con dos, es fuerte
             3 -> 90 // Con tres, es muy fuerte
-            4 -> 95 // Con cuatro, es casi seguro ganar
+            4 -> 100 // Con cuatro, es casi seguro ganar
             else -> 0
         }
 

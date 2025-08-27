@@ -46,15 +46,15 @@ class GameViewModel @Inject constructor(
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.TRES),
+                Card(Suit.COPAS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.CABALLO),
                 Card(Suit.COPAS, Rank.AS)
             ),
             "p3" to listOf( // Mano del Compañero
-                Card(Suit.ESPADAS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.CABALLO),
-                Card(Suit.ESPADAS, Rank.CUATRO),
-                Card(Suit.ESPADAS, Rank.AS)
+                Card(Suit.OROS, Rank.REY),
+                Card(Suit.OROS, Rank.CABALLO),
+                Card(Suit.OROS, Rank.SOTA),
+                Card(Suit.OROS, Rank.CABALLO)
             ),
             "p4" to listOf( // Mano del Rival Derecho
                 Card(Suit.BASTOS, Rank.REY),

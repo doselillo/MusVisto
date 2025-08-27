@@ -371,62 +371,55 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
 
     private fun handleQuiero(currentState: GameState): GameState {
-        // Si la apuesta actual es un órdago, se resuelve la partida inmediatamente.
         if (currentState.currentBet?.isOrdago == true) {
             return resolveOrdagoShowdown(currentState)
         }
 
-        // Si no, es un envite normal.
-        val resolvedState = currentState.copy(betInitiatorTeam = null, playersPendingResponse = emptyList())
-        return endLanceAndAdvance(resolvedState) {
-            val bet = this.currentBet ?: return@endLanceAndAdvance this
-            val newAgreedBets = this.agreedBets + (this.gamePhase to bet.amount)
-            Log.d("MusVistoTest", "Bet of ${bet.amount} ACCEPTED for ${this.gamePhase}.")
-            this.copy(agreedBets = newAgreedBets)
-        }
+        val bet = currentState.currentBet ?: return currentState
+
+        // NO se suman puntos aquí. Solo se guarda la cantidad acordada.
+        val resolvedState = currentState.copy(
+            betInitiatorTeam = null,
+            playersPendingResponse = emptyList(),
+            agreedBets = currentState.agreedBets + (currentState.gamePhase to bet.amount)
+        )
+
+        Log.d("MusVistoTest", "APUESTA ACEPTADA por valor de ${bet.amount}. Se resolverá al final de la ronda.")
+        return endLanceAndAdvance(resolvedState) { this }
     }
 
     private fun handleNoQuiero(currentState: GameState, playerId: String): GameState {
-        // Validación inicial (sin cambios)
         if (currentState.currentBet == null || playerId !in currentState.playersPendingResponse) {
             return currentState
         }
 
-        // --- INICIO DE LA CORRECCIÓN ---
-        // 1. Añadimos al jugador que ha dicho "No Quiero" a la lista de los que
-        //    ya no pueden participar en este lance.
-        val playersNowOutOfLance = currentState.playersWhoPassed + playerId
+        val remainingResponders = currentState.playersPendingResponse.filter { it != playerId }
 
-        // 2. Buscamos si queda algún compañero que todavía pueda responder.
-        val remainingResponders = currentState.playersPendingResponse
-            .filter { it != playerId } // Quitamos al jugador actual
-        // --- FIN DE LA CORRECCIÓN ---
-
-        // Si ya no quedan compañeros por hablar, el rechazo es definitivo.
+        // Si ya no quedan miembros del equipo por responder, el rechazo es definitivo
         if (remainingResponders.isEmpty()) {
-            // Obtenemos la información de la apuesta que fue rechazada
             val bet = currentState.currentBet ?: return currentState
+            // Buscamos al jugador que lanzó el envite para saber a qué equipo darle los puntos
             val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
-            val agreedPoints = currentState.agreedBets[currentState.gamePhase] ?: 0
-            val pointsWon = agreedPoints + 1
 
-            // Determinamos el motivo correcto (Juego o Punto)
-            val reason = if (currentState.isPuntoPhase) "Punto (No Querido)" else "${currentState.gamePhase.name} (No Querida)"
-            val detail = ScoreDetail(reason, pointsWon)
+            // Calculamos los puntos: los que ya estaban acordados + 1 por el rechazo
+            val pointsWon = (currentState.agreedBets[currentState.gamePhase] ?: 0) + 1
+            val currentScore = currentState.score[bettingPlayer.team] ?: 0
+            // Actualizamos el marcador EN ESTE MOMENTO
+            val newScore = currentState.score + (bettingPlayer.team to currentScore + pointsWon)
 
-            // Creamos un nuevo estado que INCLUYE el evento de puntuación
-            val newState = currentState.copy(
+            Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")
+
+            // Preparamos el estado para pasar al siguiente lance
+            val resolvedState = currentState.copy(
                 betInitiatorTeam = null,
                 playersPendingResponse = emptyList(),
-                scoreEvents = currentState.scoreEvents + (bettingPlayer.team to detail) // <-- GUARDAMOS EL EVENTO
+                score = newScore // <-- Guardamos el nuevo marcador
             )
-            // Y ahora terminamos el lance con este nuevo estado actualizado
-            return endLanceAndAdvance(newState) { this }
+            // Y avanzamos al siguiente lance
+            return endLanceAndAdvance(resolvedState) { this }
         } else {
-            // Si aún queda un compañero, le pasamos el turno a él
-            // y guardamos en el estado que el jugador actual ya no participa.
+            // Si aún queda un compañero por hablar, el turno pasa a él y no se suman puntos todavía
             return currentState.copy(
-                playersWhoPassed = playersNowOutOfLance, // <-- Guardamos quién está fuera
                 playersPendingResponse = remainingResponders,
                 currentTurnPlayerId = remainingResponders.first()
             )
@@ -575,46 +568,35 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         )
     }
 
-    fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
-        Log.d("LogDebug", "-> Entrando en endLanceAndAdvance para el lance: ${currentState.gamePhase}")
-
+    // En MusGameLogic.kt
+// Reemplaza la función endLanceAndAdvance
+    private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
         var updatedState = currentState.updates()
 
+        // Guardamos el resultado del lance que acaba de terminar
         val lanceResult = when {
             updatedState.currentBet != null && updatedState.agreedBets.containsKey(updatedState.gamePhase) ->
                 LanceResult(updatedState.gamePhase, "Querido", updatedState.currentBet.amount)
             updatedState.currentBet != null ->
-                LanceResult(updatedState.gamePhase, "No Querido", updatedState.agreedBets[updatedState.gamePhase] ?: 1)
+                LanceResult(updatedState.gamePhase, "No Querido") // Ya no necesitamos guardar los puntos aquí
             else -> LanceResult(updatedState.gamePhase, "Paso")
         }
-        val newHistory = updatedState.roundHistory + lanceResult
-        updatedState = updatedState.copy(roundHistory = newHistory)
+        updatedState = updatedState.copy(roundHistory = updatedState.roundHistory + lanceResult)
 
         val nextPhase = advanceToNextPhase(updatedState.gamePhase)
 
-        var finalState = updatedState.copy(
+        // Preparamos el estado para el siguiente lance
+        return updatedState.copy(
             gamePhase = nextPhase,
             currentTurnPlayerId = updatedState.manoPlayerId,
             playersWhoPassed = emptySet(),
             currentBet = null,
             isNewLance = true,
             actionLog = emptyList(),
-            currentLanceActions = emptyMap()
+            currentLanceActions = emptyMap(),
+            availableActions = if (nextPhase == GamePhase.PARES_CHECK || nextPhase == GamePhase.JUEGO_CHECK) emptyList()
+            else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
-
-        finalState = when (nextPhase) {
-            GamePhase.PARES_CHECK, GamePhase.JUEGO_CHECK -> {
-                finalState.copy(availableActions = emptyList())
-            }
-            else -> {
-                finalState.copy(availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago))
-            }
-        }
-
-        // Aquí es donde estaba la lógica antigua que hemos eliminado
-
-        Log.d("LogDebug", "Limpiando actionLog. Pasando al siguiente lance: $nextPhase")
-        return finalState
     }
 
 
@@ -752,38 +734,44 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val teamBDetails = mutableListOf<ScoreDetail>()
         val historyMap = currentState.roundHistory.associateBy { it.lance }
 
-        // 1. Añadimos los puntos de eventos ocurridos durante la ronda (p. ej. "No Quiero")
-        currentState.scoreEvents.forEach { (teamId, detail) ->
-            if (teamId == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-        }
+        // 1. PUNTUACIÓN DE LANCES CON APUESTAS ACEPTADAS O PASADOS
+        listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.JUEGO, GamePhase.PARES).forEach { lance ->
+            val winner = when (lance) {
+                GamePhase.GRANDE -> getGrandeWinner(currentState)
+                GamePhase.CHICA -> getChicaWinner(currentState)
+                GamePhase.JUEGO -> getJuegoWinner(currentState)
+                GamePhase.PARES -> getParesWinner(currentState)
+                else -> null
+            }
+            val result = historyMap[lance]
 
-        // 2. Puntuamos los lances con apuestas ACEPTADAS o PASADOS
-        // Puntuación de GRANDE y CHICA
-        listOf(GamePhase.GRANDE, GamePhase.CHICA).forEach { lance ->
-            historyMap[lance]?.let { result ->
-                val winner = if (lance == GamePhase.GRANDE) getGrandeWinner(currentState) else getChicaWinner(currentState)
-                winner?.let {
-                    if (result.outcome == "Paso") {
-                        val detail = ScoreDetail("${lance.name} (En paso)", 1)
-                        if (it.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-                    } else if (result.outcome == "Querido") {
-                        val points = currentState.agreedBets[lance] ?: 0
-                        if (points > 0) {
-                            val detail = ScoreDetail("${lance.name} (Apuesta)", points)
-                            if (it.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-                        }
+            if (winner != null && result != null) {
+                val winningTeam = winner.team
+
+                // Caso 1: La apuesta fue aceptada ("Querido")
+                if (result.outcome == "Querido") {
+                    val points = currentState.agreedBets[lance] ?: 0
+                    if (points > 0) {
+                        val detail = ScoreDetail("${lance.name} (Apuesta)", points)
+                        if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
                     }
                 }
+                // Caso 2: El lance fue pasado ("Paso" o "Skipped")
+                else if (result.outcome == "Paso" || result.outcome == "Skipped") {
+                    // El punto de bonificación por ganar al Punto se gestiona por separado
+                    if (lance == GamePhase.GRANDE || lance == GamePhase.CHICA) {
+                        val detail = ScoreDetail(lance.name, 1)
+                        if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+                    }
+                }
+                // NO HACEMOS NADA PARA "No Querido", porque ya se ha puntuado.
             }
         }
 
-        // Puntuación de PARES
+        // 2. PUNTUACIÓN POR VALOR DE LAS JUGADAS (PARES Y JUEGO)
+        // Puntos por la jugada de Pares
         getParesWinner(currentState)?.let { winner ->
             val winningTeam = winner.team
-            if (historyMap[GamePhase.PARES]?.outcome == "Querido") {
-                val points = currentState.agreedBets[GamePhase.PARES] ?: 0
-                if(points > 0) teamADetails.add(ScoreDetail("Pares (Apuesta)", points))
-            }
             currentState.players.forEach { player ->
                 if (player.team == winningTeam) {
                     val (reason, playPoints) = getHandPares(player.hand).let {
@@ -801,17 +789,10 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             }
         }
 
-        // Puntuación de JUEGO / PUNTO
+        // Puntos por la jugada de Juego y bonificación de Punto
         getJuegoWinner(currentState)?.let { winner ->
             val winningTeam = winner.team
-            if (historyMap[GamePhase.JUEGO]?.outcome == "Querido") {
-                val points = currentState.agreedBets[GamePhase.JUEGO] ?: 0
-                if (points > 0) {
-                    val detail = ScoreDetail("Juego (Apuesta)", points)
-                    if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
-                }
-            }
-            if (currentState.isPuntoPhase && historyMap[GamePhase.JUEGO]?.outcome == "Paso") {
+            if (currentState.isPuntoPhase) {
                 val detail = ScoreDetail("Punto", 1)
                 if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
@@ -885,8 +866,9 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         }
     }
     fun resolveDeclaration(currentState: GameState): GameState {
-        val currentCheckPhase = currentState.gamePhase // PARES_CHECK o JUEGO_CHECK
+        val currentCheckPhase = currentState.gamePhase // Será PARES_CHECK o JUEGO_CHECK
 
+        // Determinamos qué jugada estamos comprobando
         val playersWithPlay = currentState.players.filter {
             if (currentCheckPhase == GamePhase.PARES_CHECK) {
                 getHandPares(it.hand).strength > 0
@@ -902,12 +884,23 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
             Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
-            // Creamos un resultado de "Paso" para el historial
+            // Creamos un resultado de "Skipped" para el historial
             val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
             val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
 
-            // Usamos endLanceAndAdvance para pasar limpiamente al siguiente lance (JUEGO_CHECK o FIN DE RONDA)
-            return endLanceAndAdvance(stateWithHistory) { this }
+            // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
+            // En lugar de llamar a endLanceAndAdvance, que puede causar bucles,
+            // simplemente calculamos la siguiente fase y devolvemos un estado limpio.
+            val nextPhase = advanceToNextPhase(lancePhase)
+            return stateWithHistory.copy(
+                gamePhase = nextPhase,
+                currentTurnPlayerId = stateWithHistory.manoPlayerId,
+                playersWhoPassed = emptySet(),
+                isNewLance = true,
+                currentLanceActions = emptyMap(),
+                availableActions = if (nextPhase == GamePhase.PARES_CHECK || nextPhase == GamePhase.JUEGO_CHECK) emptyList()
+                else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+            )
         }
 
         // CASO 2: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas
@@ -919,7 +912,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         return currentState.copy(
             gamePhase = bettingPhase,
-            playersInLance = playersWithPlay.map { it.id }.toSet(), // Guardamos quiénes pueden apostar
+            playersInLance = playersWithPlay.map { it.id }.toSet(),
             currentTurnPlayerId = firstPlayerToBet.id,
             playersWhoPassed = emptySet(),
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
