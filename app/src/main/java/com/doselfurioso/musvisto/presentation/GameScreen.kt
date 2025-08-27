@@ -537,20 +537,6 @@ fun ActionButtons(
         if (it is GameAction.Envido) GameAction.Envido::class else it::class
     }
 
-    // --- Manejo para fin de ronda/partida ---
-    val roundEndActions = actions.filter { it is GameAction.Continue || it is GameAction.NewGame }
-    if (roundEndActions.isNotEmpty()) {
-        Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            roundEndActions.forEach { action ->
-                GameActionButton(action = action, onClick = { onActionClick(action, currentPlayerId) }, isEnabled = true)
-            }
-        }
-        return
-    }
-
     // --- Layout principal que cambia según la fase del juego ---
     Box(modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.CenterEnd) {
@@ -635,10 +621,6 @@ fun ActionButtons(
                         )
                     }
                 }
-
-
-                // Columna Derecha: Acciones
-
             }
         }
     }
@@ -776,7 +758,7 @@ fun GameOverOverlay(
     if (ordagoInfo != null) {
         val winnerPlayer = players.find { it.id == ordagoInfo.winnerId }
         titleText = "¡VICTORIA POR ÓRDAGO!"
-        subtitleText = "Gana el equipo de ${winnerPlayer?.name ?: ""} a la ${ordagoInfo.lance.name}"
+        subtitleText = "Gana el equipo de ${winnerPlayer?.name ?: ""} en ${ordagoInfo.lance.name}"
     } else {
         titleText = if (winnerTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
         subtitleText = "La partida ha terminado"
