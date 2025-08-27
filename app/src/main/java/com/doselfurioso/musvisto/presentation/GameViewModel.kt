@@ -112,31 +112,40 @@ class GameViewModel @Inject constructor(
     private fun processEndOfRound(roundEndState: GameState) {
         Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")
 
-        val manoOfFinishedRound = roundEndState.manoPlayerId
+        // El motor del juego nos da el estado con el desglose
+        val stateWithBreakdown = gameLogic.scoreRound(roundEndState)
+        val breakdown = stateWithBreakdown.scoreBreakdown ?: return
 
-        val scoredState = gameLogic.scoreRound(roundEndState)
-        Log.d("MusVistoTest", "FINAL SCORE: ${scoredState.score}")
+        // Calculamos los nuevos totales a partir del desglose
+        val pointsTeamA = breakdown.teamAScoreDetails.sumOf { it.points }
+        val pointsTeamB = breakdown.teamBScoreDetails.sumOf { it.points }
+
+        val currentScore = roundEndState.score
+        val newScore = mapOf(
+            "teamA" to (currentScore["teamA"]!! + pointsTeamA),
+            "teamB" to (currentScore["teamB"]!! + pointsTeamB)
+        )
+        Log.d("MusVistoTest", "FINAL SCORE: $newScore")
 
         val scoreToWin = 40
-        val teamAScore = scoredState.score["teamA"] ?: 0
-        val teamBScore = scoredState.score["teamB"] ?: 0
-        val winner = if (teamAScore >= scoreToWin) "teamA" else if (teamBScore >= scoreToWin) "teamB" else null
+        val winner = if (newScore["teamA"]!! >= scoreToWin) "teamA" else if (newScore["teamB"]!! >= scoreToWin) "teamB" else null
 
         if (winner != null) {
-            _gameState.value = scoredState.copy(
+            _gameState.value = stateWithBreakdown.copy(
+                score = newScore,
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
                 availableActions = listOf(GameAction.NewGame),
                 revealAllHands = true
             )
         } else {
-            _gameState.value = scoredState.copy(
+            _gameState.value = stateWithBreakdown.copy(
+                score = newScore,
                 gamePhase = GamePhase.ROUND_OVER,
                 availableActions = listOf(GameAction.Continue),
                 revealAllHands = true
             )
         }
-
     }
 
     fun onCardSelected(card: Card) {
@@ -209,29 +218,26 @@ class GameViewModel @Inject constructor(
         }
     }
 
-    // En: GameViewModel.kt
-// Reemplaza la función antigua con esta nueva versión
     private fun updateStateAndCheckAiTurn(newState: GameState) {
-        // La gestión de eventos y la actualización del estado se mantienen igual
-        handleGameEvent(newState.event)
+        // 1. Actualizamos el estado inmediatamente para que la interfaz gráfica reaccione.
         _gameState.value = newState
 
-        // Si la ronda o la partida han terminado, la lógica no cambia
+        // 2. Comprobamos PRIMERO si la ronda ha terminado.
         if (newState.gamePhase == GamePhase.ROUND_OVER) {
+            // Si ha terminado, procesamos los puntos UNA SOLA VEZ y nos detenemos.
             processEndOfRound(newState)
-            return // Salimos para no llamar a la IA
+            return // La palabra "return" es clave para romper el bucle.
         }
+        // Hacemos lo mismo si la partida ha terminado.
         if (newState.gamePhase == GamePhase.GAME_OVER) {
-            return // Salimos para no llamar a la IA
+            return
         }
 
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // En lugar de bloquear a la IA, ahora gestionamos el flujo en una corrutina
+        // 3. Si la ronda NO ha terminado, continuamos con la lógica normal
+        //    para gestionar el turno de la IA y las pausas visuales.
         viewModelScope.launch {
-            // Si hay una acción para mostrar al usuario (como un cambio de fase), esperamos un momento
             if (newState.transientAction != null) {
-                delay(1000) // Pausa para que el usuario vea la acción
-                // Limpiamos la acción transitoria después de la pausa
+                delay(1000)
                 if (_gameState.value.transientAction == newState.transientAction) {
                     _gameState.value = _gameState.value.copy(
                         transientAction = null,
@@ -239,12 +245,8 @@ class GameViewModel @Inject constructor(
                     )
                 }
             }
-
-            // DESPUÉS de la pausa (si la hubo), llamamos a la IA para que haga su jugada.
-            // Esto asegura que el juego SIEMPRE continúe.
             handleAiTurn()
         }
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
     }
 
     private fun startNewGame(previousState: GameState?) {

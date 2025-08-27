@@ -57,6 +57,7 @@ import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LanceResult
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
+import com.doselfurioso.musvisto.model.ScoreBreakdown
 import kotlinx.coroutines.delay
 import java.util.Collections.rotate
 import kotlin.math.abs
@@ -443,8 +444,16 @@ fun GameScreen(
                 GameEventNotification(event = gameState.event)
             }
         }
+        if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
+            RoundEndOverlay(
+                breakdown = gameState.scoreBreakdown!!,
+                onContinueClick = { gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId) }
+            )
+        }
     }
 }
+
+
 @Composable
 fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
     if (count > 0) {
@@ -842,6 +851,79 @@ fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifie
 }
 
 @Composable
+fun RoundEndOverlay(
+    breakdown: ScoreBreakdown,
+    onContinueClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.8f))
+            .clickable(enabled = false, onClick = {}), // Evita clics en el fondo
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("FIN DE LA RONDA", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Yellow)
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    // Columna para "Nosotros"
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("NOSOTROS", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        breakdown.teamAScoreDetails.forEach { detail ->
+                            Row(modifier = Modifier.fillMaxWidth(0.5f), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(detail.reason, color = Color.LightGray)
+                                Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        // Línea de total
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(modifier = Modifier.height(1.dp).fillMaxWidth(0.5f).background(Color.Gray))
+                        Row(modifier = Modifier.fillMaxWidth(0.5f), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("+${breakdown.teamAScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Columna para "Ellos"
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ELLOS", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        breakdown.teamBScoreDetails.forEach { detail ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(detail.reason, color = Color.LightGray)
+                                Text("+${detail.points}", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        // Línea de total
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color.Gray))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("+${breakdown.teamBScoreDetails.sumOf { it.points }}", color = Color.Yellow, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Button(onClick = onContinueClick) {
+                    Text("Continuar", fontSize = 18.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
@@ -898,3 +980,4 @@ fun LanceTracker(
         }
     }
 }
+

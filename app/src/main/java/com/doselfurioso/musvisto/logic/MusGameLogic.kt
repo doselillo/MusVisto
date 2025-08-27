@@ -763,98 +763,77 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         return null // Should not happen in a 2v2 game
     }
 
-    // En: MusGameLogic.kt
-// Reemplaza la función antigua con esta nueva versión corregida
 
     fun scoreRound(currentState: GameState): GameState {
-        var finalScore = currentState.score.toMutableMap()
+        val teamADetails = mutableListOf<ScoreDetail>()
+        val teamBDetails = mutableListOf<ScoreDetail>()
 
-        // 1. Puntuación de "Grande" (Esta parte ya era correcta)
+        // 1. Puntuación de "Grande"
         getGrandeWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.GRANDE] ?: 0
             if (points > 0) {
-                val currentScore = finalScore[winner.team] ?: 0
-                finalScore[winner.team] = currentScore + points
-                Log.d("MusVistoTest", "GRANDE: Team ${winner.team} wins $points points.")
+                val detail = ScoreDetail("Grande (Apuesta)", points)
+                if (winner.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
         }
 
-        // 2. Puntuación de "Chica" (Esta parte ya era correcta)
+        // 2. Puntuación de "Chica"
         getChicaWinner(gameState = currentState)?.let { winner ->
             val points = currentState.agreedBets[GamePhase.CHICA] ?: 0
             if (points > 0) {
-                val currentScore = finalScore[winner.team] ?: 0
-                finalScore[winner.team] = currentScore + points
-                Log.d("MusVistoTest", "CHICA: Team ${winner.team} wins $points points.")
+                val detail = ScoreDetail("Chica (Apuesta)", points)
+                if (winner.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
         }
 
-        // --- INICIO DE LA CORRECCIÓN PARA PARES ---
         // 3. Puntuación de "Pares"
-        val paresWinner = getParesWinner(gameState = currentState)
-        if (paresWinner != null) {
-            val winningTeam = paresWinner.team
-            Log.d("MusVistoTest", "PARES: El equipo ganador del lance es $winningTeam")
-
-            // Puntos por la apuesta (si la hubo)
+        getParesWinner(gameState = currentState)?.let { winner ->
+            val winningTeam = winner.team
             val betPoints = currentState.agreedBets[GamePhase.PARES] ?: 0
             if (betPoints > 0) {
-                val currentScore = finalScore[winningTeam] ?: 0
-                finalScore[winningTeam] = currentScore + betPoints
-                Log.d("MusVistoTest", "PARES (Apuesta): Team $winningTeam gana $betPoints puntos.")
+                val detail = ScoreDetail("Pares (Apuesta)", betPoints)
+                if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
-
-            // Puntos por las jugadas (SOLO para los jugadores del equipo ganador)
             currentState.players.forEach { player ->
-                if (player.team == winningTeam) { // <-- ¡LA CLAVE ESTÁ AQUÍ!
+                if (player.team == winningTeam) {
                     val play = getHandPares(player.hand)
-                    val playPoints = when (play) {
-                        is ParesPlay.Duples -> 3
-                        is ParesPlay.Medias -> 2
-                        is ParesPlay.Pares -> 1
-                        else -> 0
+                    val (reason, playPoints) = when (play) {
+                        is ParesPlay.Duples -> "Duples (${player.name})" to 3
+                        is ParesPlay.Medias -> "Medias (${player.name})" to 2
+                        is ParesPlay.Pares -> "Pares (${player.name})" to 1
+                        else -> "" to 0
                     }
                     if (playPoints > 0) {
-                        val currentScore = finalScore[player.team] ?: 0
-                        finalScore[player.team] = currentScore + playPoints
-                        Log.d("MusVistoTest", "PARES (Jugada): Team ${player.team} suma $playPoints puntos por la jugada de ${player.name}.")
+                        val detail = ScoreDetail(reason, playPoints)
+                        if (player.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
                     }
                 }
             }
         }
-        // --- FIN DE LA CORRECCIÓN PARA PARES ---
 
-        // --- INICIO DE LA CORRECCIÓN PARA JUEGO ---
         // 4. Puntuación de "Juego"
-        val juegoWinner = getJuegoWinner(gameState = currentState)
-        if (juegoWinner != null) {
-            val winningTeam = juegoWinner.team
-            Log.d("MusVistoTest", "JUEGO: El equipo ganador del lance es $winningTeam")
-
-            // Puntos por la apuesta (si la hubo)
+        getJuegoWinner(gameState = currentState)?.let { winner ->
+            val winningTeam = winner.team
             val betPoints = currentState.agreedBets[GamePhase.JUEGO] ?: 0
             if (betPoints > 0) {
-                val currentScore = finalScore[winningTeam] ?: 0
-                finalScore[winningTeam] = currentScore + betPoints
-                Log.d("MusVistoTest", "JUEGO (Apuesta): Team $winningTeam gana $betPoints puntos.")
+                val detail = ScoreDetail("Juego (Apuesta)", betPoints)
+                if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
-
-            // Puntos por las jugadas (SOLO para los jugadores del equipo ganador)
             currentState.players.forEach { player ->
-                if (player.team == winningTeam) { // <-- ¡LA MISMA CLAVE AQUÍ!
+                if (player.team == winningTeam) {
                     val juegoValue = getHandJuegoValue(player.hand)
                     if (juegoValue >= 31) {
+                        val reason = "Juego ${juegoValue} (${player.name})"
                         val playPoints = if (juegoValue == 31) 3 else 2
-                        val currentScore = finalScore[player.team] ?: 0
-                        finalScore[player.team] = currentScore + playPoints
-                        Log.d("MusVistoTest", "JUEGO (Jugada): Team ${player.team} suma $playPoints puntos por la jugada de ${player.name}.")
+                        val detail = ScoreDetail(reason, playPoints)
+                        if (player.team == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
                     }
                 }
             }
         }
-        // --- FIN DE LA CORRECCIÓN PARA JUEGO ---
 
-        return currentState.copy(score = finalScore, manoPlayerId = currentState.manoPlayerId)
+        val breakdown = ScoreBreakdown(teamADetails, teamBDetails)
+        return currentState.copy(scoreBreakdown = breakdown)
     }
 
      internal fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {

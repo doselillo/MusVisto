@@ -35,5 +35,12 @@ data class GameState(
     val noMusPlayer: String? = null,
     val isNewLance: Boolean = true,
     val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
-    val transientAction: LastActionInfo? = null
-    )
+    val transientAction: LastActionInfo? = null,
+    val scoreBreakdown: ScoreBreakdown? = null
+)
+
+data class ScoreDetail(val reason: String, val points: Int)
+data class ScoreBreakdown(
+    val teamAScoreDetails: List<ScoreDetail> = emptyList(),
+    val teamBScoreDetails: List<ScoreDetail> = emptyList()
+)
