@@ -44,11 +44,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.constraintlayout.compose.Dimension
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
+import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
@@ -139,9 +142,8 @@ fun PlayerHandArc(
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 32.dp),
-        contentAlignment = Alignment.BottomCenter
+            .padding(bottom = 12.dp, start = 64.dp, end = 64.dp),
+        contentAlignment = Alignment.BottomEnd
     ) {
         val cardCount = cards.size
         cards.forEachIndexed { index, card ->
@@ -230,10 +232,11 @@ fun VerticalPlayerArea(
     isCurrentTurn: Boolean,
     isMano: Boolean,
     handContent: @Composable () -> Unit,
-    hasCutMus: Boolean
-
+    hasCutMus: Boolean,
+    modifier: Modifier = Modifier // Añadimos el modifier
 ) {
     Column(
+        modifier = modifier, // Lo aplicamos aquí
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -248,16 +251,16 @@ fun HorizontalPlayerArea(
     isCurrentTurn: Boolean,
     isMano: Boolean,
     handContent: @Composable () -> Unit,
-    hasCutMus: Boolean
+    hasCutMus: Boolean,
+    modifier: Modifier = Modifier // Añadimos el modifier
 ) {
     Row(
+        modifier = modifier, // Lo aplicamos aquí
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(40.dp),
     ) {
         PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus)
-        Box(contentAlignment = Alignment.Center) {
-            handContent()
-        }
+        handContent()
     }
 }
 
@@ -267,217 +270,274 @@ fun GameScreen(
 ) {
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
-    val players = gameState.players
-    val gameLogic: MusGameLogic = hiltViewModel<GameViewModel>().gameLogic
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF006A4E))
-    ) {
-
-        if (players.size == 4) {
-            val player = players[0]
-            val rivalLeft = players[1]
-            val partner = players[2]
-            val rivalRight = players[3]
-
+    // Usamos un Box para poder superponer las capas de Overlays al final
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (gameState.players.size == 4) {
+            val player = gameState.players[0]
+            val rivalLeft = gameState.players[1]
+            val partner = gameState.players[2]
+            val rivalRight = gameState.players[3]
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
-            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
-            var actionsForUi = gameState.availableActions
-            if (currentPlayer?.id == gameViewModel.humanPlayerId) {
-                val playerHand = currentPlayer.hand
-                actionsForUi = when (gameState.gamePhase) {
-                    GamePhase.PARES -> {
-                        if (gameLogic.getHandPares(playerHand).strength > 0) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    }
-                    GamePhase.JUEGO -> {
-                        if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) >= 31) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    }
-                    else -> gameState.availableActions
-                }
-            }
 
-            IconButton(
-                onClick = { gameViewModel.onToggleDebugMode() },
+            ConstraintLayout(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 32.dp, end = 16.dp)
-                    .zIndex(3f)
+                    .fillMaxSize()
+                    .background(Color(0xFF006A4E))
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_debug),
-                    contentDescription = "Toggle Debug Mode",
-                    tint = Color.White.copy(alpha = 0.7f),
-                )
-            }
+                // 1. Creamos las referencias para cada elemento de la UI
+                val (
+                    partnerArea, rivalLeftArea, rivalRightArea, playerArea,
+                    centerInfo, actionButtons, debugButton,
+                    announcementLeft, announcementRight, announcementPartner, announcementPlayer,
+                    betSelector, roundEndSummary, gameOver
+                ) = createRefs()
 
-            // --- ANUNCIOS DE ACCIÓN ---
-            Box(Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 12.dp, top = 150.dp)) {
-                ActionAnnouncement(rivalLeft, gameState)
-            }
-            Box(Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 12.dp, top = 150.dp)) {
-                ActionAnnouncement(rivalRight, gameState)
-            }
-            Box(Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 50.dp, top = 110.dp)) {
-                ActionAnnouncement(partner, gameState)
-            }
-            Box(Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 36.dp, bottom = 140.dp)) {
-                ActionAnnouncement(player, gameState)
-            }
-            // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
-            Box(modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 32.dp)) {
+                // 2. Posicionamos cada elemento usando el modificador .constrainAs()
+
+                // ÁREA DEL COMPAÑERO (ARRIBA)
                 HorizontalPlayerArea(
+                    modifier = Modifier.constrainAs(partnerArea) {
+                        top.linkTo(parent.top, margin = 48.dp)
+                        centerHorizontallyTo(parent)
+                    },
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     isMano = gameState.manoPlayerId == partner.id,
-                    hasCutMus = gameState.noMusPlayer == partner.id, // <-- AÑADE ESTO
-                    handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
-                        cards = partner.hand.sortedByDescending { it.rank.value },
-                        isDebugMode = isDebugMode,
-                        revealHand = gameState.revealAllHands) }
-                )
-            }
-
-            // ÁREA DEL RIVAL IZQUIERDO - Horizontal
-            Box(modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 16.dp, bottom = 280.dp)) {
-                VerticalPlayerArea(
-                    player = rivalLeft,
-                    isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                    isMano = gameState.manoPlayerId == rivalLeft.id,
-                    hasCutMus = gameState.noMusPlayer == rivalLeft.id, // <-- AÑADE ESTO
-                    handContent = { SideOpponentHandStacked(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .graphicsLayer { rotationX = 90f },
-                        cards = rivalLeft.hand.sortedByDescending { it.rank.value },
-                        isDebugMode = isDebugMode,
-                        revealHand = gameState.revealAllHands,
-                        rotate = true) }
-                )
-            }
-
-            // ÁREA DEL RIVAL DERECHO - Horizontal
-            Box(modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp, bottom = 280.dp)) {
-                VerticalPlayerArea(
-                    player = rivalRight,
-                    isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                    isMano = gameState.manoPlayerId == rivalRight.id,
-                    hasCutMus = gameState.noMusPlayer == rivalRight.id, // <-- AÑADE ESTO
-                    handContent = { SideOpponentHandStacked(
-                        modifier = Modifier
-                            .graphicsLayer { rotationZ = 180f },
-                        cards = rivalRight.hand.sortedBy { it.rank.value },
-                        isDebugMode = isDebugMode,
-                        revealHand = gameState.revealAllHands,
-                        rotate = false) }
-                )
-            }
-
-            // ÁREA DEL JUGADOR PRINCIPAL (ABAJO) - Vertical
-            Box(modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp, start = 32.dp)) {
-                HorizontalPlayerArea(
-                    player = player,
-                    isCurrentTurn = isMyTurn,
-                    isMano = gameState.manoPlayerId == player.id,
-                    hasCutMus = gameState.noMusPlayer == player.id, // <-- AÑADE ESTO
+                    hasCutMus = gameState.noMusPlayer == partner.id,
                     handContent = {
-                        PlayerHandArc(
-                            cards = player.hand.sortedByDescending { it.rank.value },
-                            selectedCards = gameState.selectedCardsForDiscard,
-                            gamePhase = gameState.gamePhase,
-                            isMyTurn = isMyTurn,
-                            onCardClick = { card -> gameViewModel.onCardSelected(card) }
+                        PartnerHand(
+                            modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                            cards = partner.hand.sortedByDescending { it.rank.value },
+                            isDebugMode = isDebugMode,
+                            revealHand = gameState.revealAllHands
                         )
                     }
                 )
-            }
 
-            // INFO CENTRAL Y BOTONES
-            // Dentro del Column central en GameScreen
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(bottom = 200.dp), // Quitamos el padding lateral innecesario
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Scoreboard(score = gameState.score)
-                LanceTracker(currentPhase = gameState.gamePhase,
-                    history = gameState.roundHistory,
-                    isPuntoPhase = gameState.isPuntoPhase)
-            }
+                // ÁREA DEL RIVAL IZQUIERDO (IZQUIERDA)
+                VerticalPlayerArea(
+                    modifier = Modifier.constrainAs(rivalLeftArea) {
+                        start.linkTo(parent.start, margin = 8.dp)
+                        centerVerticallyTo(parent, bias = 0.30f) // Lo subimos un poco
+                    },
+                    player = rivalLeft,
+                    isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
+                    isMano = gameState.manoPlayerId == rivalLeft.id,
+                    hasCutMus = gameState.noMusPlayer == rivalLeft.id,
+                    handContent = {
+                        SideOpponentHandStacked(
+                            modifier = Modifier.graphicsLayer { rotationX = 90f },
+                            cards = rivalLeft.hand.sortedByDescending { it.rank.value },
+                            isDebugMode = isDebugMode,
+                            revealHand = gameState.revealAllHands,
+                            rotate = true
+                        )
+                    }
+                )
 
-            ActionButtons(
-                actions = gameState.availableActions,
-                gamePhase = gameState.gamePhase, // <-- Pasa la fase del juego
-                onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
-                selectedCardCount = gameState.selectedCardsForDiscard.size,
-                isEnabled = isMyTurn,
-                currentPlayerId = gameViewModel.humanPlayerId,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 180.dp, start = 32.dp, end = 32.dp) // Añadimos padding lateral
-            )
+                // ÁREA DEL RIVAL DERECHO (DERECHA)
+                VerticalPlayerArea(
+                    modifier = Modifier.constrainAs(rivalRightArea) {
+                        end.linkTo(parent.end, margin = 8.dp)
+                        centerVerticallyTo(parent, bias = 0.30f) // Lo subimos un poco
+                    },
+                    player = rivalRight,
+                    isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
+                    isMano = gameState.manoPlayerId == rivalRight.id,
+                    hasCutMus = gameState.noMusPlayer == rivalRight.id,
+                    handContent = {
+                        SideOpponentHandStacked(
+                            modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                            cards = rivalRight.hand.sortedBy { it.rank.value },
+                            isDebugMode = isDebugMode,
+                            revealHand = gameState.revealAllHands,
+                            rotate = false
+                        )
+                    }
+                )
 
-            if (gameState.isSelectingBet) {
-                Box(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    contentAlignment = Alignment.BottomCenter
+                // ÁREA DEL JUGADOR PRINCIPAL (ABAJO)
+
+                    HorizontalPlayerArea(
+                        player = player,
+                        isCurrentTurn = isMyTurn,
+                        isMano = gameState.manoPlayerId == player.id,
+                        hasCutMus = gameState.noMusPlayer == player.id,
+                        modifier = Modifier.constrainAs(playerArea) {
+                            bottom.linkTo(parent.bottom, margin = 32.dp) // Más arriba
+                            end.linkTo(parent.end, margin = 8.dp)
+                            start.linkTo(parent.start, margin = 8.dp)
+                            centerHorizontallyTo(parent)
+                        },
+                        handContent = {
+                            PlayerHandArc(
+                                cards = player.hand.sortedByDescending { it.rank.value },
+                                selectedCards = gameState.selectedCardsForDiscard,
+                                gamePhase = gameState.gamePhase,
+                                isMyTurn = isMyTurn,
+                                onCardClick = { card -> gameViewModel.onCardSelected(card) }
+                            )
+                        }
+                    )
+
+
+                // BOTONES DE ACCIÓN
+                ActionButtons(
+                    modifier = Modifier.constrainAs(actionButtons) {
+                        bottom.linkTo(playerArea.top, margin = 32.dp) // Más arriba
+                        end.linkTo(parent.end, margin = 8.dp)
+                        start.linkTo(parent.start, margin = 8.dp)
+                        width = Dimension.fillToConstraints
+                    },
+                    actions = gameState.availableActions,
+                    gamePhase = gameState.gamePhase,
+                    onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                    selectedCardCount = gameState.selectedCardsForDiscard.size,
+                    isEnabled = isMyTurn,
+                    currentPlayerId = gameViewModel.humanPlayerId
+                )
+
+                // INFO CENTRAL (MARCADOR Y LANCES)
+                Column(
+                    modifier = Modifier.constrainAs(centerInfo) {
+                        centerTo(parent)
+                        centerVerticallyTo(parent, bias = 0.30f)
+                    },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    BetSelector(
-                        onBet = { amount -> gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId) },
-                        onCancel = { gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId) }
+                    Scoreboard(score = gameState.score)
+                    LanceTracker(
+                        currentPhase = gameState.gamePhase,
+                        history = gameState.roundHistory,
+                        currentBet = gameState.currentBet,
+                        isPuntoPhase = gameState.isPuntoPhase
                     )
                 }
+
+                // ANUNCIOS DE ACCIÓN (Con posicionamiento de precisión)
+                Box(modifier = Modifier
+                    .constrainAs(announcementLeft) {
+                        bottom.linkTo(rivalLeftArea.top)
+                    }
+                ) { ActionAnnouncement(rivalLeft, gameState) }
+
+                Box(modifier = Modifier
+                    .constrainAs(announcementRight) {
+                        bottom.linkTo(rivalRightArea.top)
+                        centerHorizontallyTo(rivalRightArea)
+                    }
+                ) { ActionAnnouncement(rivalRight, gameState) }
+
+                Box(modifier = Modifier
+                    .constrainAs(announcementPartner) {
+                        top.linkTo(partnerArea.bottom)
+                        start.linkTo(partnerArea.start, margin = 8.dp)
+                    }
+                ) { ActionAnnouncement(partner, gameState) }
+
+                Box(modifier = Modifier
+                    .constrainAs(announcementPlayer) {
+                        bottom.linkTo(playerArea.top, margin = 4.dp)
+                        start.linkTo(playerArea.start)
+                    }
+                ) { ActionAnnouncement(player, gameState) }
+
+
+                // BOTÓN DE DEBUG
+                IconButton(
+                    onClick = { gameViewModel.onToggleDebugMode() },
+                    modifier = Modifier
+                        .constrainAs(debugButton) {
+                            top.linkTo(parent.top, margin = 32.dp)
+                            end.linkTo(parent.end, margin = 32.dp)
+                        }
+                        .zIndex(3f)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_debug),
+                        contentDescription = "Toggle Debug Mode",
+                        tint = Color.White.copy(alpha = 0.7f),
+                    )
+                }
+                if (gameState.isSelectingBet) {
+                    Box(modifier = Modifier
+                        .constrainAs(betSelector) {
+                            bottom.linkTo(playerArea.top, margin = 4.dp)
+                            centerHorizontallyTo(parent)
+                        }
+
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        BetSelector(
+                            onBet = { amount -> gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId) },
+                            onCancel = { gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.humanPlayerId) },
+                        )
+                    }
+                }
+
+                if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
+                    Box(
+                        modifier = Modifier
+                            .constrainAs(roundEndSummary) {
+                                centerVerticallyTo(parent)
+                                centerHorizontallyTo(parent)
+                            }
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.6f))
+                            .clickable(enabled = false, onClick = {}),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        RoundEndOverlay(
+
+                            breakdown = gameState.scoreBreakdown!!,
+                            onContinueClick = { gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId) },
+                            modifier = Modifier.padding(bottom = 180.dp) // Más abajo
+                        )
+                    }
+                }
+
+                if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
+                    Box(modifier = Modifier
+                        .constrainAs(gameOver) {
+                            centerVerticallyTo(parent)
+                            centerHorizontallyTo(parent)
+                        }
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable(enabled = false, onClick = {}),
+                        contentAlignment = Alignment.BottomCenter) {
+                        GameOverOverlay(
+
+                            winnerTeam = gameState.winningTeam!!,
+                            ordagoInfo = gameState.ordagoInfo,
+                            players = gameState.players,
+                            onNewGameClick = {
+                                gameViewModel.onAction(
+                                    GameAction.NewGame,
+                                    gameViewModel.humanPlayerId
+                                )
+                            }
+                        )
+                    }
+                }
+
             }
 
-            if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
-                GameOverOverlay(
-                    winnerTeam = gameState.winningTeam!!,
-                    ordagoInfo = gameState.ordagoInfo, // <-- Pasa la nueva info
-                    players = players, // <-- Pasa la lista de jugadores
-                    onNewGameClick = { gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId) }
-                )
-            }
+            // --- Capas superpuestas (Overlays) ---
 
-            Box(modifier = Modifier.align(Alignment.Center)) {
+
+
+            Box(
+                modifier = Modifier.align(Alignment.Center)
+            ) {
                 GameEventNotification(event = gameState.event)
             }
-        }
-        if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
-            // Este Box se asegura de que el panel aparezca centrado
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 180.dp)
-                    .background(Color.Black.copy(alpha = 0.0f)) // Un fondo oscuro para dar énfasis
-                    .clickable(enabled = false, onClick = {}),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                RoundEndOverlay(
-                    breakdown = gameState.scoreBreakdown!!,
-                    onContinueClick = { gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId) }
-                )
-            }
+
+
+
         }
     }
 }
@@ -562,14 +622,13 @@ fun ActionButtons(
     }
 
     // --- Layout principal que cambia según la fase del juego ---
-    Box(modifier = modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterEnd) {
+    Box(modifier = modifier,
+        contentAlignment = Alignment.CenterEnd) { // Alineamos los botones a la derecha del Box
         when (gamePhase) {
             GamePhase.MUS -> {
                 // FASE MUS: Solo se muestran los botones de Mus
                 Row(
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 ) {
                     GameActionButton(
                         action = GameAction.Mus,
@@ -585,43 +644,36 @@ fun ActionButtons(
             }
             GamePhase.DISCARD -> {
                 // FASE DESCARTE: Solo se muestra el botón de descartar
-                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                    val discardAction = GameAction.ConfirmDiscard
-                    GameActionButton(
-                        action = discardAction,
-                        onClick = { onActionClick(discardAction, currentPlayerId) },
-                        isEnabled = isEnabled && selectedCardCount > 0
-                    )
-                }
+                val discardAction = GameAction.ConfirmDiscard
+                GameActionButton(
+                    action = discardAction,
+                    onClick = { onActionClick(discardAction, currentPlayerId) },
+                    isEnabled = isEnabled && selectedCardCount > 0
+                )
             }
             else -> {
-                // FASES DE APUESTA (GRANDE, CHICA, PARES, JUEGO): Layout fijo de dos columnas
-
-                // Columna Izquierda: Respuestas
+                // FASES DE APUESTA (GRANDE, CHICA, PARES, JUEGO)
                 Row(
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                    verticalAlignment = Alignment.Bottom // <-- ESTA ES LA LÍNEA A CAMBIAR
-
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), // Alineamos a la derecha
+                    verticalAlignment = Alignment.Bottom
                 )  {
                     Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-
-                    val quieroAction = GameAction.Quiero
-                    GameActionButton(
-                        action = quieroAction,
-                        onClick = { onActionClick(quieroAction, currentPlayerId) },
-                        isEnabled = isEnabled && availableActionsMap.containsKey(quieroAction::class)
-                    )
-                    val noQuieroAction = GameAction.NoQuiero
-                    GameActionButton(
-                        action = noQuieroAction,
-                        onClick = { onActionClick(noQuieroAction, currentPlayerId) },
-                        isEnabled = isEnabled && availableActionsMap.containsKey(noQuieroAction::class)
-                    )
-                }
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        val quieroAction = GameAction.Quiero
+                        GameActionButton(
+                            action = quieroAction,
+                            onClick = { onActionClick(quieroAction, currentPlayerId) },
+                            isEnabled = isEnabled && availableActionsMap.containsKey(quieroAction::class)
+                        )
+                        val noQuieroAction = GameAction.NoQuiero
+                        GameActionButton(
+                            action = noQuieroAction,
+                            onClick = { onActionClick(noQuieroAction, currentPlayerId) },
+                            isEnabled = isEnabled && availableActionsMap.containsKey(noQuieroAction::class)
+                        )
+                    }
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -632,10 +684,10 @@ fun ActionButtons(
                             onClick = { onActionClick(pasoAction, currentPlayerId) },
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class)
                         )
-                        val envidoAction = GameAction.ToggleBetSelector // <-- CAMBIA ESTO
+                        val envidoAction = GameAction.ToggleBetSelector
                         GameActionButton(
                             action = envidoAction,
-                            onClick = { onActionClick(envidoAction, currentPlayerId) }, // Ahora envía la acción de mostrar el selector
+                            onClick = { onActionClick(envidoAction, currentPlayerId) },
                             isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class)
                         )
                         val ordagoAction = GameAction.Órdago
@@ -806,10 +858,14 @@ fun GameOverOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.3f)),
-        contentAlignment = Alignment.BottomCenter
+            .background(Color.Black.copy(alpha = 0.8f))
+            .clickable(enabled = false) {},
+        contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(bottom = 240.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             Text(
                 text = titleText,
                 color = if (ordagoInfo != null) Color.Red else Color.Yellow,
@@ -901,10 +957,12 @@ fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifie
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
-    onContinueClick: () -> Unit
+    onContinueClick: () -> Unit,
+    modifier: Modifier = Modifier // Añadimos el modifier para poder posicionarlo
 ) {
     // La Card ahora es el elemento principal, sin un Box que ocupe toda la pantalla
     Card(
+        modifier = modifier, // Aplicamos el modifier aquí
         // Le damos un borde y una elevación para que "flote" sobre el fondo
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         border = BorderStroke(1.dp, Color.Yellow.copy(alpha = 0.5f)),
@@ -969,6 +1027,7 @@ fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
     isPuntoPhase: Boolean,
+    currentBet: BetInfo?,
     modifier: Modifier = Modifier
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
@@ -986,7 +1045,9 @@ fun LanceTracker(
                 val result = history.find { it.lance == lance }
                 val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
-                if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
+                if (isCurrent && currentBet != null) {
+                    resultText = "En juego: ${currentBet.amount}"
+                } else if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
                         "No Querido" -> "No Querida"
@@ -1041,10 +1102,10 @@ fun BetSelector(
 
     Card(
         modifier = Modifier
-            .fillMaxWidth(0.8f)
-            .padding(bottom = 180.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            .fillMaxWidth(0.8f),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.9f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1075,4 +1136,3 @@ fun BetSelector(
         }
     }
 }
-
