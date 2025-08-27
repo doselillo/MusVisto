@@ -753,7 +753,14 @@ fun ActionAnnouncement(
 ) {
     // 1. DETERMINAMOS LA ACCIÓN CORRECTA PARA ESTE JUGADOR
     //    Esta variable local 'actionToShow' será la única fuente de verdad para este anuncio.
-    var actionToShow: LastActionInfo? = null
+    var actionToShow = gameState.currentLanceActions[player.id]
+
+    // Solo mostramos la acción transitoria si no hay ya una acción normal para ese jugador
+    if (actionToShow == null && gameState.transientAction?.playerId == player.id) {
+        actionToShow = gameState.transientAction
+    }
+
+    val visible = actionToShow != null
 
     // Primero, miramos si hay una acción persistente para este jugador en el lance actual.
     val persistentAction = gameState.currentLanceActions[player.id]
@@ -768,7 +775,6 @@ fun ActionAnnouncement(
     }
 
     // 2. LA VISIBILIDAD DEPENDE EXCLUSIVAMENTE DE SI HEMOS ENCONTRADO UNA ACCIÓN
-    val visible = actionToShow != null
 
     AnimatedVisibility(
         visible = visible,

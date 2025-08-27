@@ -201,73 +201,51 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         return winnerPair?.first
     }
 
-
-    // En MusGameLogic.kt
-
-// --- REEMPLAZA LA FUNCIÓN processAction ENTERA POR ESTA VERSIÓN ---
-
     fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState {
-        var workingState = currentState
+        // ---- VALIDACIÓN INICIAL ----
+        val player = currentState.players.find { it.id == playerId } ?: return currentState
+        if (currentState.currentTurnPlayerId != playerId) return currentState
+        if (action !in currentState.availableActions && action !is GameAction.ConfirmDiscard) return currentState
 
-        if (currentState.isNewLance) {
-            workingState = currentState.copy(isNewLance = false, currentLanceActions = emptyMap())
-        }
-
-        val player = workingState.players.find { it.id == playerId } ?: return workingState
-
-        if (workingState.currentTurnPlayerId != playerId) return workingState
-        if (action !in workingState.availableActions && action !is GameAction.ConfirmDiscard) return workingState
-
-        when (workingState.gamePhase) {
-            GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(workingState, playerId)
-            GamePhase.JUEGO -> if (!workingState.isPuntoPhase && getHandJuegoValue(player.hand) < 31) return handlePaso(workingState, playerId)
+        // Validaciones específicas de lances...
+        when (currentState.gamePhase) {
+            GamePhase.PARES -> if (getHandPares(player.hand).strength == 0) return handlePaso(currentState, playerId)
+            GamePhase.JUEGO -> if (!currentState.isPuntoPhase && getHandJuegoValue(player.hand) < 31) return handlePaso(currentState, playerId)
             else -> {}
         }
 
+        // ---- CÁLCULO DEL SIGUIENTE ESTADO ----
         val nextState = when (action) {
-            is GameAction.Mus -> handleMus(workingState, playerId)
-            is GameAction.NoMus -> handleNoMus(workingState)
-            is GameAction.ConfirmDiscard -> handleDiscard(workingState, playerId)
-            is GameAction.Paso -> handlePaso(workingState, playerId)
-            is GameAction.Envido -> handleEnvido(workingState, playerId, action.amount)
-            is GameAction.Quiero -> handleQuiero(workingState)
-            is GameAction.NoQuiero -> handleNoQuiero(workingState, playerId)
-            is GameAction.Órdago -> handleOrdago(workingState, playerId)
-            is GameAction.Continue, is GameAction.NewGame -> workingState
-            is GameAction.LogAction -> workingState
+            is GameAction.Mus -> handleMus(currentState, playerId)
+            is GameAction.NoMus -> handleNoMus(currentState)
+            is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId)
+            is GameAction.Paso -> handlePaso(currentState, playerId)
+            is GameAction.Envido -> handleEnvido(currentState, playerId, action.amount)
+            is GameAction.Quiero -> handleQuiero(currentState)
+            is GameAction.NoQuiero -> handleNoQuiero(currentState, playerId)
+            is GameAction.Órdago -> handleOrdago(currentState, playerId)
+            else -> currentState
         }
 
+        if (nextState == currentState) return currentState
 
-        if (nextState == workingState) return nextState
-
+        // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS (LÓGICA SIMPLIFICADA) ----
         val newActionInfo = LastActionInfo(playerId, action)
-        val phaseChanged = workingState.gamePhase != nextState.gamePhase
+        val phaseChanged = currentState.gamePhase != nextState.gamePhase
 
-        var finalLanceActions = nextState.currentLanceActions
-        var finalTransientAction: LastActionInfo? = nextState.transientAction
-
-        if (phaseChanged) {
-            finalLanceActions = emptyMap()
-            finalTransientAction = newActionInfo
-        } else {
-            finalLanceActions = workingState.currentLanceActions + (playerId to newActionInfo)
-        }
-
-        val newActionLog = if (action !is GameAction.ConfirmDiscard) {
-            (nextState.actionLog + newActionInfo).takeLast(4)
-        } else {
-            nextState.actionLog
-        }
+        // Siempre añadimos la acción al mapa de anuncios. El ViewModel se encargará de limpiarlo.
+        val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)
 
         return nextState.copy(
             lastAction = newActionInfo,
-            actionLog = newActionLog,
-            currentLanceActions = finalLanceActions,
-            transientAction = finalTransientAction
+            actionLog = (nextState.actionLog + newActionInfo).takeLast(4),
+            currentLanceActions = updatedLanceActions,
+            // Si la fase cambió, marcamos la acción como transitoria.
+            transientAction = if (phaseChanged) newActionInfo else null
         )
     }
 
-    // NUEVA FUNCIÓN PRIVADA que encapsula la puntuación y la comprobación de fin de partida.
+    //encapsula la puntuación y la comprobación de fin de partida.
     private fun scoreAndCheckForGameOver(roundEndState: GameState): GameState {
         val scoredState = scoreRound(roundEndState)
 

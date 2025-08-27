@@ -88,9 +88,11 @@ class GameViewModel @Inject constructor(
                 if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return
             }
         }
-        // 1. Llama al motor con el estado actual y la acción.
+
+        // Obtenemos el nuevo estado desde la lógica pura
         val newState = gameLogic.processAction(currentState, action, playerId)
-        // 2. Actualiza la UI y comprueba si ahora le toca a la IA.
+
+        // El ViewModel ahora gestiona las transiciones
         updateStateAndCheckAiTurn(newState)
     }
 
@@ -194,18 +196,20 @@ class GameViewModel @Inject constructor(
     }
 
     private fun updateStateAndCheckAiTurn(newState: GameState) {
-        handleGameEvent(newState.event)
-
-        // AHORA gestionamos también el evento transitorio
+        // El ViewModel ahora es el que gestiona la lógica de la transición.
         handleTransientAction(newState.transientAction)
 
-        val finalState = newState.copy(event = newState.event ?: _gameState.value.event)
-        _gameState.value = finalState
+        // El resto de la lógica se mantiene.
+        handleGameEvent(newState.event)
+        _gameState.value = newState
 
-        if (finalState.gamePhase == GamePhase.ROUND_OVER) {
-            processEndOfRound(finalState)
+        if (newState.gamePhase == GamePhase.ROUND_OVER) {
+            processEndOfRound(newState)
         } else {
-            handleAiTurn()
+            // Solo llamamos a la IA si no estamos en una transición de limpieza.
+            if (newState.transientAction == null) {
+                handleAiTurn()
+            }
         }
     }
 
@@ -265,9 +269,15 @@ class GameViewModel @Inject constructor(
         if (transientAction == null) return
 
         viewModelScope.launch {
-            delay(2000) // Muestra el anuncio transitorio durante 2 segundos
+            // Esperamos un momento para que el jugador vea el estado final del lance.
+            delay(1000)
+
+            // Pasado el tiempo, si el estado no ha cambiado, limpiamos TODO.
             if (_gameState.value.transientAction == transientAction) {
-                _gameState.value = _gameState.value.copy(transientAction = null)
+                _gameState.value = _gameState.value.copy(
+                    transientAction = null,
+                    currentLanceActions = emptyMap() // <-- Limpiamos todos los anuncios a la vez
+                )
             }
         }
     }
