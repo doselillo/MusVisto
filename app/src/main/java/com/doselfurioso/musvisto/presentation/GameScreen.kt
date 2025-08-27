@@ -1,7 +1,6 @@
 package com.doselfurioso.musvisto.presentation
 
 import android.annotation.SuppressLint
-import android.graphics.Paint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -55,12 +53,10 @@ import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LanceResult
-import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
 import kotlinx.coroutines.delay
-import java.util.Collections.rotate
 import kotlin.math.abs
 import com.doselfurioso.musvisto.model.Card as CardData
 
@@ -232,14 +228,15 @@ fun VerticalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit
+    handContent: @Composable () -> Unit,
+    hasCutMus: Boolean
 
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus)
         handContent()
     }
 }
@@ -249,13 +246,14 @@ fun HorizontalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit
+    handContent: @Composable () -> Unit,
+    hasCutMus: Boolean
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus)
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }
@@ -344,6 +342,7 @@ fun GameScreen(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     isMano = gameState.manoPlayerId == partner.id,
+                    hasCutMus = gameState.noMusPlayer == partner.id, // <-- AÑADE ESTO
                     handContent = { PartnerHand(modifier = Modifier.graphicsLayer { rotationZ = 180f },
                         cards = partner.hand.sortedByDescending { it.rank.value },
                         isDebugMode = isDebugMode,
@@ -359,6 +358,7 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     isMano = gameState.manoPlayerId == rivalLeft.id,
+                    hasCutMus = gameState.noMusPlayer == rivalLeft.id, // <-- AÑADE ESTO
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .padding(16.dp)
@@ -378,6 +378,7 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     isMano = gameState.manoPlayerId == rivalRight.id,
+                    hasCutMus = gameState.noMusPlayer == rivalRight.id, // <-- AÑADE ESTO
                     handContent = { SideOpponentHandStacked(
                         modifier = Modifier
                             .graphicsLayer { rotationZ = 180f },
@@ -396,6 +397,7 @@ fun GameScreen(
                     player = player,
                     isCurrentTurn = isMyTurn,
                     isMano = gameState.manoPlayerId == player.id,
+                    hasCutMus = gameState.noMusPlayer == player.id, // <-- AÑADE ESTO
                     handContent = {
                         PlayerHandArc(
                             cards = player.hand.sortedByDescending { it.rank.value },
@@ -643,7 +645,8 @@ fun PlayerAvatar(
     player: Player,
     isCurrentTurn: Boolean, // This will control the glow
     modifier: Modifier = Modifier,
-    isMano: Boolean
+    isMano: Boolean,
+    hasCutMus: Boolean
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
 
@@ -669,6 +672,19 @@ fun PlayerAvatar(
                 tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomEnd) // Lo colocamos en la esquina inferior derecha.
+                    .size(24.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .padding(4.dp)
+            )
+        }
+
+        if (hasCutMus) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_cut),
+                contentDescription = "Indicador de Corta Mus",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomStart) // Esquina inferior izquierda
                     .size(24.dp)
                     .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     .padding(4.dp)

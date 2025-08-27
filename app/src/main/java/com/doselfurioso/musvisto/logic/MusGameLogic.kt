@@ -258,7 +258,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         // ---- CÁLCULO DEL SIGUIENTE ESTADO ----
         val nextState = when (action) {
             is GameAction.Mus -> handleMus(currentState, playerId)
-            is GameAction.NoMus -> handleNoMus(currentState)
+            is GameAction.NoMus -> handleNoMus(currentState, playerId)
             is GameAction.ConfirmDiscard -> handleDiscard(currentState, playerId)
             is GameAction.Paso -> handlePaso(currentState, playerId)
             is GameAction.Envido -> handleEnvido(currentState, playerId, action.amount)
@@ -448,7 +448,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         }
     }
 
-    private fun handleNoMus(currentState: GameState): GameState {
+    private fun handleNoMus(currentState: GameState, playerId: String): GameState {
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
@@ -457,7 +457,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
-            currentLanceActions = emptyMap()
+            currentLanceActions = emptyMap(),
+            noMusPlayer = playerId
         )
     }
 
