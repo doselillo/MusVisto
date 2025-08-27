@@ -540,7 +540,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     private fun resolveOrdagoShowdown(currentState: GameState): GameState {
         Log.d("MusVistoTest", "¡ÓRDAGO ACEPTADO! Resolviendo la partida...")
 
-        // Determinamos quién habría ganado el lance actual
         val lanceWinner: Player? = when (currentState.gamePhase) {
             GamePhase.GRANDE -> getGrandeWinner(currentState)
             GamePhase.CHICA -> getChicaWinner(currentState)
@@ -549,32 +548,27 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             else -> null
         }
 
-        if (lanceWinner == null) {
-            // Esto no debería ocurrir, pero como salvaguarda, gana el equipo que lo cantó.
-            val bettingPlayer = currentState.players.find { it.id == currentState.currentBet?.bettingPlayerId }
-            val finalScore = currentState.score.toMutableMap()
-            if (bettingPlayer != null) {
-                finalScore[bettingPlayer.team] = 40
-            }
-            return currentState.copy(score = finalScore, gamePhase = GamePhase.GAME_OVER)
-        }
+        val winner = lanceWinner ?: currentState.players.find { it.id == currentState.currentBet?.bettingPlayerId }
+        if (winner == null) return currentState.copy(gamePhase = GamePhase.GAME_OVER) // Salida de seguridad
 
-        val winningTeam = lanceWinner.team
+        // Guardamos la información del órdago para la UI
+        val ordagoInfo = OrdagoInfo(winner.id, currentState.gamePhase)
+
+        // Asignamos los 40 puntos y terminamos la partida
         val finalScore = currentState.score.toMutableMap()
-        finalScore[winningTeam] = 40 // El equipo ganador se lleva los 40 puntos
-
-        Log.d("MusVistoTest", "El ganador del lance es ${lanceWinner.name}. ¡El equipo $winningTeam gana la partida!")
+        finalScore[winner.team] = 40
 
         return currentState.copy(
             score = finalScore,
             gamePhase = GamePhase.GAME_OVER,
-            winningTeam = winningTeam,
+            winningTeam = winner.team,
+            ordagoInfo = ordagoInfo, // <-- Guardamos el resultado
             availableActions = listOf(GameAction.NewGame),
             revealAllHands = true
         )
     }
 
-    private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
+    fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
         Log.d("LogDebug", "-> Entrando en endLanceAndAdvance para el lance: ${currentState.gamePhase}")
 
         var updatedState = currentState.updates()
@@ -601,49 +595,27 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             currentLanceActions = emptyMap()
         )
 
-        if (nextPhase == GamePhase.PARES) {
-            val playersWithPares = finalState.players.filter { getHandPares(it.hand).strength > 0 }
-            if (playersWithPares.isEmpty()) {
-                Log.d("MusVistoTest", "PARES: Nadie tiene. Saltando a Juego.")
-                return endLanceAndAdvance(finalState) { this }
+        finalState = when (nextPhase) {
+            GamePhase.PARES_CHECK, GamePhase.JUEGO_CHECK -> {
+                finalState.copy(availableActions = emptyList())
             }
-            val teamsWithPares = playersWithPares.map { it.team }.distinct()
-            if (teamsWithPares.size == 1) {
-                Log.d("MusVistoTest", "PARES: Solo el equipo ${teamsWithPares.first()} tiene. Se salta el lance.")
-                // --- CORRECCIÓN ---
-                // Simplemente saltamos al siguiente lance. La puntuación se hará al final.
-                return endLanceAndAdvance(finalState) { this }
+            else -> {
+                finalState.copy(availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago))
             }
         }
 
-        if (nextPhase == GamePhase.JUEGO) {
-            val playersWithJuego = finalState.players.filter { getHandJuegoValue(it.hand) >= 31 }
-            if (playersWithJuego.isEmpty()) {
-                finalState = finalState.copy(isPuntoPhase = true)
-            } else {
-                finalState = finalState.copy(isPuntoPhase = false)
-                val teamsWithJuego = playersWithJuego.map { it.team }.distinct()
-                if (teamsWithJuego.size == 1) {
-                    Log.d("MusVistoTest", "JUEGO: Solo el equipo ${teamsWithJuego.first()} tiene. Se acaba la ronda.")
-                    // --- CORRECCIÓN ---
-                    // Saltamos directamente al final de la ronda. La puntuación se hará allí.
-                    return endLanceAndAdvance(finalState) { this }
-                }
-            }
-        }
+        // Aquí es donde estaba la lógica antigua que hemos eliminado
+
         Log.d("LogDebug", "Limpiando actionLog. Pasando al siguiente lance: $nextPhase")
-
-        return finalState.copy(
-            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
-        )
+        return finalState
     }
 
 
     private fun advanceToNextPhase(currentPhase: GamePhase): GamePhase {
         return when (currentPhase) {
             GamePhase.GRANDE -> GamePhase.CHICA
-            GamePhase.CHICA -> GamePhase.PARES // It will now go to PARES first
-            GamePhase.PARES -> GamePhase.JUEGO
+            GamePhase.CHICA -> GamePhase.PARES_CHECK
+            GamePhase.PARES -> GamePhase.JUEGO_CHECK
             GamePhase.JUEGO -> GamePhase.ROUND_OVER
             else -> currentPhase // Should not happen
         }
@@ -853,10 +825,18 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         return currentState.copy(scoreBreakdown = breakdown)
     }
 
-     internal fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
+    internal fun getTurnOrderedPlayers(players: List<Player>, manoId: String): List<Player> {
         val manoIndex = players.indexOfFirst { it.id == manoId }
-        if (manoIndex == -1) return players
-        return players.drop(manoIndex) + players.take(manoIndex)
+        if (manoIndex == -1) return players // Salida de seguridad
+
+        // Esta es la lógica correcta para construir la lista en el orden de juego (antihorario)
+        // a partir de una lista de asientos que está en orden horario.
+        val orderedPlayers = mutableListOf<Player>()
+        for (i in 0 until players.size) {
+            val playerIndex = (manoIndex - i + players.size) % players.size
+            orderedPlayers.add(players[playerIndex])
+        }
+        return orderedPlayers
     }
 
     // --- NUEVAS FUNCIONES DE AYUDA PARA PUNTUAR ---
@@ -896,5 +876,46 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
                 else -> true // Todos los jugadores son aptos para Grande y Chica
             }
         }
+    }
+    fun resolveDeclaration(currentState: GameState): GameState {
+        val currentCheckPhase = currentState.gamePhase // PARES_CHECK o JUEGO_CHECK
+
+        val playersWithPlay = currentState.players.filter {
+            if (currentCheckPhase == GamePhase.PARES_CHECK) {
+                getHandPares(it.hand).strength > 0
+            } else { // JUEGO_CHECK
+                getHandJuegoValue(it.hand) >= 31
+            }
+        }
+
+        val teamsWithPlay = playersWithPlay.map { it.team }.distinct()
+
+        // CASO 1: Menos de 2 equipos tienen jugada -> Se salta la ronda de apuestas
+        if (teamsWithPlay.size < 2) {
+            val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
+            Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
+
+            // Creamos un resultado de "Paso" para el historial
+            val historyResult = LanceResult(lance = lancePhase, outcome = "Paso")
+            val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
+
+            // Usamos endLanceAndAdvance para pasar limpiamente al siguiente lance (JUEGO_CHECK o FIN DE RONDA)
+            return endLanceAndAdvance(stateWithHistory) { this }
+        }
+
+        // CASO 2: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas
+        val bettingPhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
+
+        // El turno es para el primer jugador en orden que SÍ tiene jugada
+        val firstPlayerToBet = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
+            .first { it in playersWithPlay }
+
+        return currentState.copy(
+            gamePhase = bettingPhase,
+            playersInLance = playersWithPlay.map { it.id }.toSet(), // Guardamos quiénes pueden apostar
+            currentTurnPlayerId = firstPlayerToBet.id,
+            playersWhoPassed = emptySet(),
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
     }
 }

@@ -56,6 +56,7 @@ import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LanceResult
 import com.doselfurioso.musvisto.model.LastActionInfo
+import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
 import kotlinx.coroutines.delay
@@ -437,7 +438,9 @@ fun GameScreen(
 
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
                 GameOverOverlay(
-                    winner = gameState.winningTeam!!,
+                    winnerTeam = gameState.winningTeam!!,
+                    ordagoInfo = gameState.ordagoInfo, // <-- Pasa la nueva info
+                    players = players, // <-- Pasa la lista de jugadores
                     onNewGameClick = { gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId) }
                 )
             }
@@ -761,23 +764,43 @@ fun ActionAnnouncement(
 
 
 @Composable
-fun GameOverOverlay(winner: String, onNewGameClick: () -> Unit) {
+fun GameOverOverlay(
+    winnerTeam: String,
+    ordagoInfo: OrdagoInfo?, // <-- Recibe la info del órdago
+    players: List<Player>, // <-- Necesita los jugadores para buscar el nombre
+    onNewGameClick: () -> Unit
+) {
+    // Lógica para mostrar el texto del órdago
+    val titleText: String
+    val subtitleText: String
+    if (ordagoInfo != null) {
+        val winnerPlayer = players.find { it.id == ordagoInfo.winnerId }
+        titleText = "¡VICTORIA POR ÓRDAGO!"
+        subtitleText = "Gana el equipo de ${winnerPlayer?.name ?: ""} a la ${ordagoInfo.lance.name}"
+    } else {
+        titleText = if (winnerTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
+        subtitleText = "La partida ha terminado"
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f)),
-        contentAlignment = Alignment.Center
+            .background(Color.Black.copy(alpha = 0.3f)),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(bottom = 240.dp)) {
             Text(
-                text = if (winner == "teamA") "¡HAS GANADO!" else "HAS PERDIDO",
-                color = Color.Yellow,
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold
+                text = titleText,
+                color = if (ordagoInfo != null) Color.Red else Color.Yellow,
+                fontSize = 22.sp
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Text(
+                text = subtitleText,
+                color = Color.White,
+                fontSize = 18.sp
+            )
             Button(onClick = onNewGameClick) {
-                Text(text = "Jugar de Nuevo", fontSize = 24.sp)
+                Text(text = "Jugar de Nuevo", fontSize = 18.sp)
             }
         }
     }
@@ -997,6 +1020,7 @@ fun LanceTracker(
                 }
             }
         }
+
     }
 }
 

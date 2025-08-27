@@ -2,7 +2,7 @@ package com.doselfurioso.musvisto.model
 
 // Defines the game phases or "lances".
 enum class GamePhase {
-    PRE_GAME, DEALING, MUS, DISCARD, GRANDE, CHICA, PARES, JUEGO, ROUND_OVER, GAME_OVER
+    PRE_GAME, MUS, DISCARD, GRANDE, CHICA, PARES_CHECK, PARES, JUEGO_CHECK, JUEGO, ROUND_OVER, GAME_OVER
 }
 
 enum class GameEvent {
@@ -37,7 +37,9 @@ data class GameState(
     val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
     val transientAction: LastActionInfo? = null,
     val scoreBreakdown: ScoreBreakdown? = null,
-    val scoreEvents: List<Pair<String, ScoreDetail>> = emptyList()
+    val scoreEvents: List<Pair<String, ScoreDetail>> = emptyList(),
+    val ordagoInfo: OrdagoInfo? = null,
+    val playersInLance: Set<String> = emptySet()
 )
 
 data class ScoreDetail(val reason: String, val points: Int)
@@ -45,3 +47,4 @@ data class ScoreBreakdown(
     val teamAScoreDetails: List<ScoreDetail> = emptyList(),
     val teamBScoreDetails: List<ScoreDetail> = emptyList()
 )
+data class OrdagoInfo(val winnerId: String, val lance: GamePhase)

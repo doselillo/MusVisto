@@ -19,7 +19,9 @@ sealed class GameAction(
     object Continue : GameAction("Continuar", ActionType.CONFIRM, R.drawable.ic_continue)
     object NewGame : GameAction("Jugar de Nuevo", ActionType.CONFIRM, R.drawable.ic_newgame)
 
-
+    // Acciones de declaración para los anuncios
+    object Tengo : GameAction("Tengo", ActionType.CONFIRM, null)
+    object NoTengo : GameAction("No tengo", ActionType.PASS, null)
 
     // Betting Actions
     object Paso : GameAction("Paso", ActionType.PASS, R.drawable.ic_pass)

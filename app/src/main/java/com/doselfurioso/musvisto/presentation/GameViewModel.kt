@@ -41,13 +41,13 @@ class GameViewModel @Inject constructor(
             "p1" to listOf( // Mano del Jugador Humano
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.CUATRO),
-                Card(Suit.OROS, Rank.AS)
+                Card(Suit.OROS, Rank.SOTA),
+                Card(Suit.OROS, Rank.CABALLO)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.COPAS, Rank.REY),
+                Card(Suit.COPAS, Rank.TRES),
                 Card(Suit.COPAS, Rank.CABALLO),
-                Card(Suit.COPAS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.AS)
             ),
             "p3" to listOf( // Mano del Compañero
@@ -135,7 +135,7 @@ class GameViewModel @Inject constructor(
                 score = newScore,
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
-                availableActions = listOf(GameAction.NewGame),
+                availableActions = emptyList(),
                 revealAllHands = true
             )
         } else {
@@ -219,25 +219,31 @@ class GameViewModel @Inject constructor(
     }
 
     private fun updateStateAndCheckAiTurn(newState: GameState) {
-        // 1. Actualizamos el estado inmediatamente para que la interfaz gráfica reaccione.
+        // Necesitamos saber si la fase ha cambiado para saber si debemos hacer la pausa de limpieza
+        val phaseChanged = _gameState.value.gamePhase != newState.gamePhase
+        // Actualizamos la UI inmediatamente con el nuevo estado
         _gameState.value = newState
 
-        // 2. Comprobamos PRIMERO si la ronda ha terminado.
+        // Si la ronda o la partida han terminado, la lógica no cambia
         if (newState.gamePhase == GamePhase.ROUND_OVER) {
-            // Si ha terminado, procesamos los puntos UNA SOLA VEZ y nos detenemos.
             processEndOfRound(newState)
-            return // La palabra "return" es clave para romper el bucle.
+            return
         }
-        // Hacemos lo mismo si la partida ha terminado.
         if (newState.gamePhase == GamePhase.GAME_OVER) {
             return
         }
 
-        // 3. Si la ronda NO ha terminado, continuamos con la lógica normal
-        //    para gestionar el turno de la IA y las pausas visuales.
+        // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
         viewModelScope.launch {
-            if (newState.transientAction != null) {
-                delay(1000)
+            // SI LA FASE HA CAMBIADO, significa que un lance acaba de terminar.
+            // Ahora, nos detenemos y esperamos a que su último anuncio desaparezca.
+            if (phaseChanged) {
+                // La información del último anuncio está en `newState.transientAction`
+                // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
+                delay(1500)
+
+                // Pasado el tiempo, nos aseguramos de que el estado esté limpio
+                // antes de continuar.
                 if (_gameState.value.transientAction == newState.transientAction) {
                     _gameState.value = _gameState.value.copy(
                         transientAction = null,
@@ -245,9 +251,51 @@ class GameViewModel @Inject constructor(
                     )
                 }
             }
-            handleAiTurn()
+
+            // AHORA que la pantalla está limpia, continuamos con el lance actual.
+            val currentState = _gameState.value // Volvemos a leer el estado por si ha cambiado
+            if (currentState.gamePhase == GamePhase.PARES_CHECK || currentState.gamePhase == GamePhase.JUEGO_CHECK) {
+                handleDeclarationSequence(currentState)
+            } else {
+                handleAiTurn()
+            }
         }
     }
+    private fun handleDeclarationSequence(currentState: GameState) {
+        viewModelScope.launch {
+            var tempState = currentState
+            val playersInOrder = gameLogic.getTurnOrderedPlayers(tempState.players, tempState.manoPlayerId)
+
+            // Recorremos los jugadores uno por uno en orden de turno
+            for (player in playersInOrder) {
+                // Hacemos una pausa para que el efecto sea visible
+                delay(750)
+
+                // Determinamos si el jugador actual tiene jugada o no
+                val hasPlay = if (tempState.gamePhase == GamePhase.PARES_CHECK) {
+                    gameLogic.getHandPares(player.hand).strength > 0
+                } else { // JUEGO_CHECK
+                    gameLogic.getHandJuegoValue(player.hand) >= 31
+                }
+                val action = if (hasPlay) GameAction.Tengo else GameAction.NoTengo
+
+                // Creamos el anuncio visual
+                val actionInfo = LastActionInfo(player.id, action)
+                tempState = tempState.copy(
+                    lastAction = actionInfo,
+                    currentLanceActions = tempState.currentLanceActions + (player.id to actionInfo)
+                )
+                _gameState.value = tempState
+            }
+
+            // Una vez que todos han hablado, hacemos una última pausa y avanzamos a la siguiente fase
+            delay(1000)
+            // La función endLanceAndAdvance es la que contiene la lógica para saltar lances si es necesario
+            val finalState = gameLogic.resolveDeclaration(tempState)
+            updateStateAndCheckAiTurn(finalState)
+        }
+    }
+
 
     private fun startNewGame(previousState: GameState?) {
         val score = previousState?.score ?: mapOf("teamA" to 0, "teamB" to 0)
