@@ -21,12 +21,27 @@ android {
     }
 
     buildTypes {
-        release {
+        getByName("debug") {
+            // Habilita logs y depuración
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             isMinifyEnabled = false
+            isDebuggable = true
+
+            buildConfigField("Boolean", "LOG_ENABLED", "true")
+        }
+
+        getByName("release") {
+            // Optimizado y sin logs
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            isShrinkResources = true
+            isDebuggable = false
+
+            buildConfigField("Boolean", "LOG_ENABLED", "false")
         }
     }
     compileOptions {
@@ -38,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
