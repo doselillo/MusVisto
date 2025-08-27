@@ -41,24 +41,24 @@ class GameViewModel @Inject constructor(
             "p1" to listOf( // Mano del Jugador Humano
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.ESPADAS, Rank.REY),
-                Card(Suit.BASTOS, Rank.REY),
-                Card(Suit.COPAS, Rank.REY)
+                Card(Suit.BASTOS, Rank.CUATRO),
+                Card(Suit.COPAS, Rank.AS)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.ESPADAS, Rank.REY),
                 Card(Suit.BASTOS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.AS)
             ),
             "p3" to listOf( // Mano del Compañero
                 Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.ESPADAS, Rank.REY),
                 Card(Suit.BASTOS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.AS)
             ),
             "p4" to listOf( // Mano del Rival Derecho
                 Card(Suit.OROS, Rank.REY),
-                Card(Suit.ESPADAS, Rank.SOTA),
+                Card(Suit.ESPADAS, Rank.REY),
                 Card(Suit.BASTOS, Rank.CUATRO),
                 Card(Suit.COPAS, Rank.AS)
             )
@@ -176,8 +176,22 @@ class GameViewModel @Inject constructor(
 
                 // Si la acción es descartar, aplicamos la selección de cartas de la IA al estado
                 if (aiDecision.action is GameAction.ConfirmDiscard) {
+                    var cardsToDiscard = aiDecision.cardsToDiscard
+
+                    // --- INICIO DE LA CORRECCIÓN ---
+                    // AÑADIMOS UNA RED DE SEGURIDAD:
+                    // Si la IA, por error, devuelve una lista de descarte vacía,
+                    // forzamos que descarte al menos una carta para evitar que el juego se cuelgue.
+                    if (cardsToDiscard.isEmpty() && currentPlayer.hand.isNotEmpty()) {
+                        Log.e("GameViewModel", "AI LOGIC ERROR: AI decided to discard 0 cards. Forcing discard of 1 to prevent hang.")
+                        // Como fallback, descartamos la primera carta de su mano.
+                        cardsToDiscard = setOf(currentPlayer.hand.first())
+                    }
+                    // --- FIN DE LA CORRECCIÓN ---
+
                     _gameState.value =
-                        _gameState.value.copy(selectedCardsForDiscard = aiDecision.cardsToDiscard)
+                            // Usamos la lista de descarte (posiblemente corregida)
+                        _gameState.value.copy(selectedCardsForDiscard = cardsToDiscard)
                 }
 
                 delay(1000)
@@ -195,22 +209,42 @@ class GameViewModel @Inject constructor(
         }
     }
 
+    // En: GameViewModel.kt
+// Reemplaza la función antigua con esta nueva versión
     private fun updateStateAndCheckAiTurn(newState: GameState) {
-        // El ViewModel ahora es el que gestiona la lógica de la transición.
-        handleTransientAction(newState.transientAction)
-
-        // El resto de la lógica se mantiene.
+        // La gestión de eventos y la actualización del estado se mantienen igual
         handleGameEvent(newState.event)
         _gameState.value = newState
 
+        // Si la ronda o la partida han terminado, la lógica no cambia
         if (newState.gamePhase == GamePhase.ROUND_OVER) {
             processEndOfRound(newState)
-        } else {
-            // Solo llamamos a la IA si no estamos en una transición de limpieza.
-            if (newState.transientAction == null) {
-                handleAiTurn()
-            }
+            return // Salimos para no llamar a la IA
         }
+        if (newState.gamePhase == GamePhase.GAME_OVER) {
+            return // Salimos para no llamar a la IA
+        }
+
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // En lugar de bloquear a la IA, ahora gestionamos el flujo en una corrutina
+        viewModelScope.launch {
+            // Si hay una acción para mostrar al usuario (como un cambio de fase), esperamos un momento
+            if (newState.transientAction != null) {
+                delay(1000) // Pausa para que el usuario vea la acción
+                // Limpiamos la acción transitoria después de la pausa
+                if (_gameState.value.transientAction == newState.transientAction) {
+                    _gameState.value = _gameState.value.copy(
+                        transientAction = null,
+                        currentLanceActions = emptyMap()
+                    )
+                }
+            }
+
+            // DESPUÉS de la pausa (si la hubo), llamamos a la IA para que haga su jugada.
+            // Esto asegura que el juego SIEMPRE continúe.
+            handleAiTurn()
+        }
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
     }
 
     private fun startNewGame(previousState: GameState?) {

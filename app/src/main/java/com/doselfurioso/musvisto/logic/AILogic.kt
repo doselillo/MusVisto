@@ -176,11 +176,14 @@ class AILogic @Inject constructor(
             )
         )
 
-        // --- LÓGICA DE DESCARTE AVANZADA ---
+        // Si por alguna razón la mano está vacía, no se descarta nada.
+        if (hand.isEmpty()) {
+            return AIDecision(GameAction.ConfirmDiscard, emptySet())
+        }
 
         val juegoValue = gameLogic.getHandJuegoValue(hand)
 
-        // REGLA 0: ¡JUGADA PERFECTA! Si tienes 31, estás obligado a descartar una carta,
+        // REGLA 0: Si tienes 31, estás obligado a descartar una carta,
         // así que tira la que menos valor tenga para la Grande (la de menor rango).
         if (juegoValue == 31) {
             val cardToDiscard = hand.minByOrNull { it.rank.value }!!
@@ -196,75 +199,44 @@ class AILogic @Inject constructor(
         }
 
         // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
-        // A cada carta se le da una "puntuación para mantenerla" basada en la estrategia.
-        // Las cartas con la puntuación más baja serán las candidatas al descarte.
-
         val cardScores = mutableMapOf<Card, Int>()
         val rankCounts = hand.groupingBy { it.rank }.eachCount()
 
         for (card in hand) {
             var score = 0
-
-            // Prioridad 1: Reyes y Treses (para Grande)
-            if (card.rank == Rank.REY || card.rank == Rank.TRES) {
-                score += 50
+            if (card.rank == Rank.REY || card.rank == Rank.TRES) score += 50
+            when (rankCounts[card.rank] ?: 0) {
+                4 -> score += 100
+                3 -> score += 80
+                2 -> score += 40
             }
-
-            // Prioridad 2: Pares
-            // Si la carta es parte de una pareja, recibe muchos puntos.
-            val count = rankCounts[card.rank] ?: 0
-            when (count) {
-                4 -> score += 100 // Prácticamente intocable
-                3 -> score += 80  // Muy fuerte
-                2 -> score += 40  // Bastante bueno
-            }
-
-            // Prioridad 3: Chica y Juego
-            // Ases y Doses son valiosos para la Chica y para sumar 31.
-            if (card.rank == Rank.AS || card.rank == Rank.DOS) {
-                score += 20
-            }
-
-            // Penalización para cartas "malas" (4, 5, 6, 7) que no forman pares.
-            if (card.rank.value in 4..7 && count < 2) {
-                score -= 10
-            }
-
+            if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
+            if (card.rank.value in 4..7 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
             cardScores[card] = score
         }
 
         // Ordenamos las cartas de peor a mejor según su puntuación.
         val sortedCards = hand.sortedBy { cardScores[it] }
 
-        // --- DECISIÓN FINAL DE DESCARTE ---
+        // --- DECISIÓN FINAL DE DESCARTE (CORREGIDA) ---
 
-        // Por defecto, descartamos todas las cartas con puntuación negativa o cero.
+        // 1. Intentamos descartar todas las cartas que consideramos "malas" (puntuación negativa).
         var cardsToDiscard = sortedCards.filter { (cardScores[it] ?: 0) < 0 }.toSet()
 
-        // REGLA OBLIGATORIA: Si tras la evaluación no se iba a descartar nada,
-        // forzamos el descarte de la carta con la puntuación más baja.
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 2. REGLA OBLIGATORIA DE MUS: Si la estrategia no ha seleccionado ninguna carta para
+        //    descartar (porque la mano es muy buena), FORZAMOS el descarte de la peor carta.
         if (cardsToDiscard.isEmpty()) {
-            // En caso de empate en la peor puntuación, se descarta la de menor valor para Grande.
-            val worstCard = sortedCards.minByOrNull { it.rank.value }
-            if (worstCard != null) {
-                cardsToDiscard = setOf(worstCard)
-            } else {
-                // Fallback por si la mano está vacía, aunque no debería ocurrir.
-                return AIDecision(GameAction.ConfirmDiscard, emptySet())
-            }
+            // 'sortedCards' está ordenada por puntuación de PEOR a MEJOR.
+            // La peor carta es la primera de la lista.
+            val worstCard = sortedCards.first()
+            Log.d("AILogic", "Forcing discard of the worst card: ${cardToShortString(worstCard)}")
+            cardsToDiscard = setOf(worstCard)
         }
-
-        // Ejemplo: Mano (Rey, Tres, 5, As)
-        // Puntuaciones aproximadas:
-        // Rey: 50
-        // Tres: 50
-        // As: 20
-        // 5: -10
-        // El 5 será descartado. Si se pudieran descartar más, el siguiente sería el As.
+        // --- FIN DE LA CORRECCIÓN ---
 
         return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
     }
-
     // ---------------- Apuesta inicial (instrumentado) ----------------
     private fun decideInitialBet(
         strengthScore: Int,

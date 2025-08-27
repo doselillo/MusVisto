@@ -276,31 +276,57 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
+        // --- INICIO DE LA CORRECCIÓN ---
+
         // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
         val eligiblePlayers = getEligiblePlayersForLance(currentState)
 
-        // 2. De esa lista, filtramos a los oponentes en su orden de turno natural
-        val eligibleOpponents = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
-            .filter { it.team == opponentTeam && it in eligiblePlayers }
-            .map { it.id }
+        // 2. Filtramos solo a los oponentes que son aptos para hablar
+        val allEligibleOpponents = eligiblePlayers.filter { it.team == opponentTeam }
 
-        // Si no hay oponentes aptos, la acción no es válida (no se puede envidar a nadie)
-        if (eligibleOpponents.isEmpty()) {
+        // Si no hay oponentes aptos, la acción no es válida
+        if (allEligibleOpponents.isEmpty()) {
             return currentState
         }
+
+        // 3. Buscamos la posición del jugador que acaba de apostar
+        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
+
+        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
+        //    a los oponentes en la secuencia correcta en la que deben responder.
+        val orderedEligibleOpponents = mutableListOf<String>()
+        if (bettingPlayerIndex != -1) {
+            for (i in 1..currentState.players.size) {
+                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
+                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
+                if (nextPlayer in allEligibleOpponents) {
+                    orderedEligibleOpponents.add(nextPlayer.id)
+                }
+            }
+        }
+
+        // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
+        if (orderedEligibleOpponents.isEmpty()) {
+            return currentState
+        }
+
+        // --- FIN DE LA CORRECCIÓN ---
+
 
         val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            respondingPlayerId = eligibleOpponents.first() // El primer oponente apto responde
+            // El primer oponente en el orden de turno correcto es quien debe responder
+            respondingPlayerId = orderedEligibleOpponents.first()
         )
 
         return currentState.copy(
             currentBet = newBet,
-            currentTurnPlayerId = eligibleOpponents.first(),
+            currentTurnPlayerId = orderedEligibleOpponents.first(),
             betInitiatorTeam = bettingPlayer.team,
-            playersPendingResponse = eligibleOpponents, // La lista ahora solo contiene oponentes aptos
+            // La lista de pendientes ahora tiene el orden de respuesta correcto
+            playersPendingResponse = orderedEligibleOpponents,
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet()
         )
@@ -414,27 +440,52 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
-        val eligibleOpponents = getEligiblePlayersForLance(currentState)
-            .filter { it.team == opponentTeam }
-            .map { it.id }
 
-        if (eligibleOpponents.isEmpty()) {
-            return currentState // No se puede cantar órdago si no hay oponentes aptos
+        // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
+        val eligiblePlayers = getEligiblePlayersForLance(currentState)
+
+        // 2. Filtramos solo a los oponentes que son aptos para hablar
+        val allEligibleOpponents = eligiblePlayers.filter { it.team == opponentTeam }
+
+        // Si no hay oponentes aptos, la acción no es válida
+        if (allEligibleOpponents.isEmpty()) {
+            return currentState
+        }
+
+        // 3. Buscamos la posición del jugador que acaba de apostar
+        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
+
+        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
+        //    a los oponentes en la secuencia correcta en la que deben responder.
+        val orderedEligibleOpponents = mutableListOf<String>()
+        if (bettingPlayerIndex != -1) {
+            for (i in 1..currentState.players.size) {
+                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
+                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
+                if (nextPlayer in allEligibleOpponents) {
+                    orderedEligibleOpponents.add(nextPlayer.id)
+                }
+            }
+        }
+
+        // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
+        if (orderedEligibleOpponents.isEmpty()) {
+            return currentState
         }
 
         // El órdago se juega los 40 puntos del juego.
         val newBet = BetInfo(
             amount = 40,
             bettingPlayerId = playerId,
-            respondingPlayerId = eligibleOpponents.first(),
+            respondingPlayerId = orderedEligibleOpponents.first(),
             isOrdago = true // Marcamos la apuesta como un órdago
         )
 
         return currentState.copy(
             currentBet = newBet,
-            currentTurnPlayerId = eligibleOpponents.first(),
+            currentTurnPlayerId = orderedEligibleOpponents.first(),
             betInitiatorTeam = bettingPlayer.team,
-            playersPendingResponse = eligibleOpponents,
+            playersPendingResponse = orderedEligibleOpponents,
             // Al órdago solo se puede responder con "Quiero" o "No Quiero".
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero),
             playersWhoPassed = emptySet()
@@ -560,34 +611,31 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     }
 
     private fun setNextPlayerTurn(currentState: GameState): GameState {
+        val players = currentState.players
         val currentPlayerId = currentState.currentTurnPlayerId ?: return currentState
-        var currentIndex = currentState.players.indexOfFirst { it.id == currentPlayerId }
-        if (currentIndex == -1) return currentState
+        val currentIndex = players.indexOfFirst { it.id == currentPlayerId }
+        if (currentIndex == -1) return currentState // Medida de seguridad
 
-        val eligiblePlayers = currentState.players.filter { player ->
-            when (currentState.gamePhase) {
-                GamePhase.PARES -> getHandPares(player.hand).strength > 0
-                GamePhase.JUEGO -> if (currentState.isPuntoPhase) true else getHandJuegoValue(player.hand) >= 31
-                else -> true
-            }
-        }
+        // --- INICIO DE LA CORRECCIÓN DEFINITIVA ---
+        // Para mover el turno en sentido antihorario (a la derecha) en una lista
+        // que representa los asientos en sentido horario, debemos iterar hacia ATRÁS en el array.
+        // Esta es la lógica correcta para el Mus.
+        for (i in 1 until players.size) {
+            val nextIndex = (currentIndex - i + players.size) % players.size
+            val nextPlayer = players[nextIndex]
 
-        if (eligiblePlayers.isEmpty()) {
-            return endLanceAndAdvance(currentState) { this }
-        }
-
-        // Find the next eligible player in the original turn order
-        for (i in 1 until currentState.players.size) {
-            val nextPlayer = currentState.players[(currentIndex - i + currentState.players.size) % currentState.players.size]
-            if (nextPlayer in eligiblePlayers) {
+            // Buscamos al primer jugador que todavía no haya actuado en esta fase
+            if (nextPlayer.id !in currentState.playersWhoPassed) {
                 return currentState.copy(currentTurnPlayerId = nextPlayer.id)
             }
         }
+        // --- FIN DE LA CORRECCIÓN DEFINITIVA ---
 
-        // If we loop through everyone and only the current player is eligible, the lance is over
-        return endLanceAndAdvance(currentState) { this }
+        // Si el bucle termina, significa que todos han actuado.
+        return currentState
     }
 
+    // Reemplaza la función antigua con esta
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         val cardsToDiscard = currentState.selectedCardsForDiscard
@@ -598,27 +646,20 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             return currentState // Devuelve el estado sin cambios.
         }
 
-
         var deck = currentState.deck
         var discardPile = currentState.discardPile
         val cardsNeeded = cardsToDiscard.size
         var newCards: List<Card>
 
-
-        // --- LÓGICA CORREGIDA Y SIMPLIFICADA ---
         if (deck.size < cardsNeeded) {
             Log.d("MusVistoTest", "Deck empty! Shuffling discard pile of ${discardPile.size} cards.")
             event = GameEvent.DISCARD_PILE_SHUFFLED
             val fromOldDeck = deck
-
-            // El nuevo mazo es la pila de descartes barajada.
             deck = discardPile.shuffled(random.get())
-            // La pila de descartes se vacía.
             discardPile = emptyList()
-
             val neededFromNewDeck = cardsNeeded - fromOldDeck.size
             newCards = fromOldDeck + deck.take(neededFromNewDeck)
-            deck = deck.drop(neededFromNewDeck) // Actualizamos el nuevo mazo
+            deck = deck.drop(neededFromNewDeck)
         } else {
             newCards = deck.take(cardsNeeded)
             deck = deck.drop(cardsNeeded)
@@ -626,13 +667,11 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val cardCount = cardsToDiscard.size
         val customActionText ="Descarta $cardCount"
 
-        // Creamos una acción "falsa" solo para el log, con el texto personalizado
         val customLogAction = GameAction.LogAction(customActionText)
 
         val newActionInfo = LastActionInfo(playerId, customLogAction)
         val newLog = (currentState.actionLog + newActionInfo).takeLast(4)
 
-        // Las cartas que acaba de tirar el jugador se añaden a la nueva pila de descartes.
         discardPile += cardsToDiscard
 
         val newHand = player.hand.filterNot { it in cardsToDiscard } + newCards
@@ -643,7 +682,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val newPassedSet = currentState.playersWhoPassed + playerId
         val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
 
-        // Comprobamos si todos han descartado para romper el bucle
         if (newPassedSet.size == updatedPlayers.size) {
             return currentState.copy(
                 players = updatedPlayers,
@@ -659,8 +697,10 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             )
         }
 
-        // Si no, pasa el turno al siguiente jugador
-        return setNextPlayerTurn(currentState).copy(
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 1. Creamos un estado intermedio con TODA la información actualizada,
+        //    incluyendo quién acaba de descartar (newPassedSet).
+        val intermediateState = currentState.copy(
             players = updatedPlayers,
             deck = deck,
             discardPile = discardPile,
@@ -669,8 +709,11 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             discardCounts = newDiscardCounts,
             event = event,
             actionLog = newLog
-
         )
+
+        // 2. AHORA, llamamos a la nueva función de turno sobre este estado correcto.
+        return setNextPlayerTurn(intermediateState)
+        // --- FIN DE LA CORRECCIÓN ---
     }
 
     private fun findNextOpponent(currentState: GameState, fromPlayer: Player): Player? {
