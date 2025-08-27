@@ -896,7 +896,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
             // Creamos un resultado de "Paso" para el historial
-            val historyResult = LanceResult(lance = lancePhase, outcome = "Paso")
+            val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
             val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
 
             // Usamos endLanceAndAdvance para pasar limpiamente al siguiente lance (JUEGO_CHECK o FIN DE RONDA)

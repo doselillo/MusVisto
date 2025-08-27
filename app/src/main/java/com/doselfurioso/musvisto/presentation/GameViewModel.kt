@@ -96,18 +96,7 @@ class GameViewModel @Inject constructor(
         updateStateAndCheckAiTurn(newState)
     }
 
-    private fun handleGameEvent(event: GameEvent?) {
-        if (event == null) return
 
-        // Launch a separate coroutine to manage the event's lifecycle
-        viewModelScope.launch {
-            // The UI will show the event because it's in the state.
-            // We wait for its duration.
-            delay(3000)
-            // After the delay, we clear the event from the state.
-            _gameState.value = _gameState.value.copy(event = null)
-        }
-    }
 
     private fun processEndOfRound(roundEndState: GameState) {
         Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")
@@ -203,8 +192,6 @@ class GameViewModel @Inject constructor(
                         _gameState.value.copy(selectedCardsForDiscard = cardsToDiscard)
                 }
 
-                delay(1000)
-
                 val stateBeforeAiAction = _gameState.value
                 // Usamos la acción de la decisión para procesarla en la lógica del juego
                 val newState = gameLogic.processAction(
@@ -240,7 +227,7 @@ class GameViewModel @Inject constructor(
             if (phaseChanged) {
                 // La información del último anuncio está en `newState.transientAction`
                 // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
-                delay(1500)
+                delay(500)
 
                 // Pasado el tiempo, nos aseguramos de que el estado esté limpio
                 // antes de continuar.
@@ -350,20 +337,5 @@ class GameViewModel @Inject constructor(
         handleAiTurn()
     }
 
-    private fun handleTransientAction(transientAction: LastActionInfo?) {
-        if (transientAction == null) return
 
-        viewModelScope.launch {
-            // Esperamos un momento para que el jugador vea el estado final del lance.
-            delay(1000)
-
-            // Pasado el tiempo, si el estado no ha cambiado, limpiamos TODO.
-            if (_gameState.value.transientAction == transientAction) {
-                _gameState.value = _gameState.value.copy(
-                    transientAction = null,
-                    currentLanceActions = emptyMap() // <-- Limpiamos todos los anuncios a la vez
-                )
-            }
-        }
-    }
 }

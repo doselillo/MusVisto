@@ -934,7 +934,7 @@ fun RoundEndOverlay(
 fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
-    isPuntoPhase: Boolean, // <-- Necesitamos saber si se juega a Punto
+    isPuntoPhase: Boolean,
     modifier: Modifier = Modifier
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
@@ -950,8 +950,9 @@ fun LanceTracker(
             lances.forEach { lance ->
                 val isCurrent = (currentPhase == lance)
                 val result = history.find { it.lance == lance }
+                val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
-                if (result != null) {
+                if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
                         "No Querido" -> "No Querida"
@@ -960,26 +961,17 @@ fun LanceTracker(
                     }
                 }
 
-                // --- INICIO DE LAS NUEVAS REGLAS VISUALES ---
-
-                // 1. Determinar el nombre a mostrar (Juego o Punto)
                 val lanceName = if (lance == GamePhase.JUEGO && isPuntoPhase) {
                     "PUNTO"
                 } else {
                     lance.name
                 }
 
-                // 2. Determinar si el lance de Pares fue saltado
-                val isParesSkipped = lance == GamePhase.PARES && result?.outcome == "Paso" && !isCurrent
-
-                // 3. Decidir el color del texto
                 val textColor = when {
-                    isCurrent -> Color.Yellow // El lance actual siempre es amarillo
-                    isParesSkipped -> Color.DarkGray // Pares saltado es gris oscuro
-                    else -> Color.White // El resto, blanco
+                    isCurrent -> Color.Yellow
+                    wasSkipped && lance == GamePhase.PARES -> Color.DarkGray
+                    else -> Color.White
                 }
-
-                // --- FIN DE LAS NUEVAS REGLAS VISUALES ---
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
