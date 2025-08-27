@@ -435,6 +435,17 @@ fun GameScreen(
                     .padding(bottom = 180.dp, start = 32.dp, end = 32.dp) // Añadimos padding lateral
             )
 
+            if (gameState.isSelectingBet) {
+                Box(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    BetSelector(
+                        onBet = { amount -> gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId) },
+                        onCancel = { gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId) }
+                    )
+                }
+            }
 
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
                 GameOverOverlay(
@@ -584,6 +595,7 @@ fun ActionButtons(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+
                     val quieroAction = GameAction.Quiero
                     GameActionButton(
                         action = quieroAction,
@@ -607,10 +619,10 @@ fun ActionButtons(
                             onClick = { onActionClick(pasoAction, currentPlayerId) },
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class)
                         )
-                        val envidoAction = GameAction.Envido(2)
+                        val envidoAction = GameAction.ToggleBetSelector // <-- CAMBIA ESTO
                         GameActionButton(
                             action = envidoAction,
-                            onClick = { onActionClick(envidoAction, currentPlayerId) },
+                            onClick = { onActionClick(envidoAction, currentPlayerId) }, // Ahora envía la acción de mostrar el selector
                             isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class)
                         )
                         val ordagoAction = GameAction.Órdago
@@ -995,6 +1007,50 @@ fun LanceTracker(
             }
         }
 
+    }
+}
+
+@Composable
+fun BetSelector(
+    onBet: (Int) -> Unit,
+    onCancel: () -> Unit
+) {
+    var betAmount by remember { mutableStateOf(2) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(0.8f)
+            .padding(bottom = 180.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("¿Cuántos quieres envidar?", color = Color.White, fontSize = 18.sp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(onClick = { if (betAmount > 2) betAmount-- }) {
+                    Text("-", fontSize = 24.sp)
+                }
+                Text(betAmount.toString(), color = Color.Yellow, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Button(onClick = { betAmount++ }) {
+                    Text("+", fontSize = 24.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) {
+                    Text("Cancelar")
+                }
+                Button(onClick = { onBet(betAmount) }) {
+                    Text("¡Envidar!")
+                }
+            }
+        }
     }
 }
 

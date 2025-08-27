@@ -73,7 +73,24 @@ class GameViewModel @Inject constructor(
         return Pair(updatedPlayers, remainingDeck)
     }
 
+
     fun onAction(action: GameAction, playerId: String) {
+        when (action) {
+            is GameAction.ToggleBetSelector -> {
+                _gameState.value = _gameState.value.copy(isSelectingBet = true)
+                return
+            }
+            is GameAction.CancelBetSelection -> {
+                _gameState.value = _gameState.value.copy(isSelectingBet = false)
+                return
+            }
+            else -> {
+                if (_gameState.value.isSelectingBet) {
+                    _gameState.value = _gameState.value.copy(isSelectingBet = false)
+                }
+            }
+        }
+
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
@@ -89,10 +106,17 @@ class GameViewModel @Inject constructor(
             }
         }
 
-        // Obtenemos el nuevo estado desde la lógica pura
-        val newState = gameLogic.processAction(currentState, action, playerId)
+        val actionToProcess = if (currentState.currentTurnPlayerId == humanPlayerId) {
+            when (currentState.gamePhase) {
+                GamePhase.PARES_CHECK -> if (gameLogic.getHandPares(currentState.players.find { it.id == humanPlayerId }!!.hand).strength > 0) GameAction.Tengo else GameAction.NoTengo
+                GamePhase.JUEGO_CHECK -> if (gameLogic.getHandJuegoValue(currentState.players.find { it.id == humanPlayerId }!!.hand) >= 31) GameAction.Tengo else GameAction.NoTengo
+                else -> action
+            }
+        } else {
+            action
+        }
 
-        // El ViewModel ahora gestiona las transiciones
+        val newState = gameLogic.processAction(currentState, actionToProcess, playerId)
         updateStateAndCheckAiTurn(newState)
     }
 
@@ -337,5 +361,14 @@ class GameViewModel @Inject constructor(
         handleAiTurn()
     }
 
+    fun onBetAmountSelected(amount: Int) {
+        val currentState = _gameState.value
+        // Creamos la acción de envido con la cantidad seleccionada
+        val envidoAction = GameAction.Envido(amount)
+        // Procesamos la acción como si el jugador hubiera pulsado un botón con ese valor
+        val newState = gameLogic.processAction(currentState, envidoAction, humanPlayerId)
+        // Ocultamos el selector y actualizamos el estado del juego
+        updateStateAndCheckAiTurn(newState.copy(isSelectingBet = false))
+    }
 
 }

@@ -22,6 +22,8 @@ sealed class GameAction(
     // Acciones de declaración para los anuncios
     object Tengo : GameAction("Tengo", ActionType.CONFIRM, null)
     object NoTengo : GameAction("No tengo", ActionType.PASS, null)
+    object ToggleBetSelector : GameAction("Envido", ActionType.BET, R.drawable.ic_bet)
+    object CancelBetSelection : GameAction("Cancelar", ActionType.DENY, null)
 
     // Betting Actions
     object Paso : GameAction("Paso", ActionType.PASS, R.drawable.ic_pass)

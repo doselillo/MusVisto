@@ -239,7 +239,14 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         // ---- VALIDACIÓN INICIAL ----
         val player = currentState.players.find { it.id == playerId } ?: return currentState
         if (currentState.currentTurnPlayerId != playerId) return currentState
-        if (action !in currentState.availableActions && action !is GameAction.ConfirmDiscard) return currentState
+        val isActionAllowed = currentState.availableActions.any { it::class == action::class }
+        if (!isActionAllowed && action !is GameAction.ConfirmDiscard) {
+            // Excepción: Permitimos "Tengo" y "No Tengo" aunque no estén en la lista,
+            // ya que son acciones automáticas que el sistema debe procesar.
+            if (action !is GameAction.Tengo && action !is GameAction.NoTengo) {
+                return currentState
+            }
+        }
 
         // Validaciones específicas de lances...
         when (currentState.gamePhase) {
