@@ -102,7 +102,54 @@ fun GameScreen(
     ) {
 
         val screenWidth = maxWidth
-        val screenHeight = maxHeight
+
+        // --- INICIO DE LA NUEVA LÓGICA DE ESCALADO ---
+
+        // 1. Definimos los límites de la pantalla con los que vamos a trabajar.
+        //    - `minWidth`: El ancho de una pantalla muy pequeña (ej. 320dp).
+        //    - `maxWidth`: El ancho de una pantalla grande/tablet (ej. 800dp).
+        val minWidth = 320.dp
+        val maxWidth = 800.dp
+
+        // 2. Definimos los factores de escala que queremos en esos límites.
+        //    - En la pantalla más pequeña, queremos que todo se reduzca un 15% (escala de 0.85).
+        //    - En la pantalla más grande, queremos que todo aumente un 20% (escala de 1.2).
+        //    ¡ESTOS SON LOS VALORES QUE PUEDES AJUSTAR PARA EL "LOOK & FEEL"!
+        val minScale = 0.50f
+        val maxScale = 2f
+
+        // 3. Calculamos el progreso actual de la pantalla dentro de nuestro rango.
+        //    `coerceIn` asegura que el valor no se salga de los límites 0.0 a 1.0.
+        val progress = ((screenWidth - minWidth) / (maxWidth - minWidth)).coerceIn(0f, 1f)
+
+        // 4. Interpolamos para obtener nuestro factor de escala final.
+        //    Esta fórmula calcula el punto exacto entre `minScale` y `maxScale`
+        //    que corresponde al `progress` actual.
+        val scaleFactor = minScale + progress * (maxScale - minScale)
+
+        // --- FIN DE LA NUEVA LÓGICA DE ESCALADO ---
+
+        val dimens = remember(scaleFactor) {
+            ResponsiveDimens(
+                // Ahora usamos este nuevo `scaleFactor` más equilibrado.
+                // Podemos ser un poco más generosos con los límites de `coerceIn`.
+                cardWidth = (75.dp * scaleFactor).coerceIn(55.dp, 90.dp),
+                cardAspectRatio = 0.7f,
+                avatarSize = (85.dp * scaleFactor).coerceIn(60.dp, 100.dp),
+                handArcTranslationX = (150f * scaleFactor),
+                handArcTranslationY = (15f * scaleFactor),
+                handArcRotation = 5f,
+                defaultPadding = (16.dp * scaleFactor),
+                smallPadding = (8.dp * scaleFactor),
+                fontSizeLarge = (20.sp * scaleFactor),
+                fontSizeMedium = (15.sp * scaleFactor),
+                fontSizeSmall = (12.sp * scaleFactor),
+                // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
+                sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
+                actionButtonsVerticalOffset = (maxHeight * 0.22f).coerceIn(130.dp, 200.dp),
+                actionbuttonsSize = (120.dp * scaleFactor)
+            )
+        }
 
         if (gameState.players.size == 4) {
             val player = players[0]
@@ -148,28 +195,28 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 150.dp)
+                    .padding(start = dimens.smallPadding, top = dimens.defaultPadding)
             ) {
                 ActionAnnouncement(rivalLeft, gameState)
             }
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 12.dp, top = 150.dp)
+                    .padding(end = dimens.smallPadding, top = dimens.defaultPadding)
             ) {
                 ActionAnnouncement(rivalRight, gameState)
             }
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 50.dp, top = 110.dp)
+                    .padding(end = dimens.smallPadding, top = dimens.defaultPadding)
             ) {
                 ActionAnnouncement(partner, gameState)
             }
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 36.dp, bottom = 140.dp)
+                    .padding(start = dimens.smallPadding, bottom = dimens.defaultPadding)
             ) {
                 ActionAnnouncement(player, gameState)
             }
@@ -189,9 +236,11 @@ fun GameScreen(
                             modifier = Modifier.graphicsLayer { rotationZ = 180f },
                             cards = partner.hand.sortedByDescending { it.rank.value },
                             isDebugMode = isDebugMode,
-                            revealHand = gameState.revealAllHands
+                            revealHand = gameState.revealAllHands,
+                            dimens = dimens
                         )
-                    }
+                    },
+                    dimens = dimens
                 )
             }
 
@@ -199,7 +248,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 16.dp, bottom = 280.dp)
+                    .padding(start = dimens.smallPadding, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalLeft,
@@ -214,9 +263,11 @@ fun GameScreen(
                             cards = rivalLeft.hand.sortedByDescending { it.rank.value },
                             isDebugMode = isDebugMode,
                             revealHand = gameState.revealAllHands,
-                            rotate = true
+                            rotate = true,
+                            dimens = dimens
                         )
-                    }
+                    },
+                    dimens = dimens
                 )
             }
 
@@ -224,7 +275,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp, bottom = 280.dp)
+                    .padding(end = dimens.smallPadding, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalRight,
@@ -238,9 +289,11 @@ fun GameScreen(
                             cards = rivalRight.hand.sortedBy { it.rank.value },
                             isDebugMode = isDebugMode,
                             revealHand = gameState.revealAllHands,
-                            rotate = false
+                            rotate = false,
+                            dimens = dimens
                         )
-                    }
+                    },
+                    dimens = dimens
                 )
             }
 
@@ -261,9 +314,11 @@ fun GameScreen(
                             selectedCards = gameState.selectedCardsForDiscard,
                             gamePhase = gameState.gamePhase,
                             isMyTurn = isMyTurn,
-                            onCardClick = { card -> gameViewModel.onCardSelected(card) }
+                            onCardClick = { card -> gameViewModel.onCardSelected(card) },
+                            dimens = dimens
                         )
-                    }
+                    },
+                    dimens = dimens
                 )
             }
 
@@ -294,10 +349,11 @@ fun GameScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(
-                        bottom = 180.dp,
+                        bottom = dimens.actionButtonsVerticalOffset,
                         start = 32.dp,
                         end = 32.dp
-                    ) // Añadimos padding lateral
+                    ),
+                dimens = dimens
             )
 
             if (gameState.isSelectingBet) {
@@ -385,7 +441,8 @@ fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
 private fun GameActionButton(
     action: GameAction,
     onClick: () -> Unit,
-    isEnabled: Boolean
+    isEnabled: Boolean,
+    dimens: ResponsiveDimens
 ) {
     val buttonColors = when (action.actionType) {
         ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
@@ -410,16 +467,32 @@ private fun GameActionButton(
     ) {
         if (action.iconResId != null) {
 
-            if (action.actionType == ActionType.BET && isEnabled) Icon(
-                painter = painterResource(id = action.iconResId),
-                contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.IconSize),
-                tint = secondaryColor
-            ) else Icon(
+            if (action.actionType == ActionType.BET && isEnabled) {
+                // Get the TextUnit value (e.g., 15.sp * 1.5 = 22.5.sp)
+                val iconSizeSp =
+                    dimens.fontSizeMedium * 1.5f // Use 1.5f to ensure float multiplication
+
+                // Convert the sp value to Dp.
+                // While there isn't a direct .toDp() from sp, you can use the .value
+                // and treat it as a dp value if that's your design intent.
+                // Or, more accurately, if you want the size in Dp that sp would occupy,
+                // you'd use LocalDensity, but for icons, directly using the value as dp is common.
+                val iconSizeDp =
+                    iconSizeSp.value.dp // Takes the float value (e.g., 22.5f) and converts to Dp
+
+                Icon(
+                    painter = painterResource(id = action.iconResId),
+                    contentDescription = null,
+                    modifier = Modifier.size(iconSizeDp),
+                    tint = secondaryColor
+                )
+            }else{
+                    Icon(
                 painter = painterResource(id = action.iconResId),
                 contentDescription = null,
                 modifier = Modifier.size(ButtonDefaults.IconSize)
-            )
+                )
+            }
 
             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         }
@@ -443,7 +516,8 @@ fun ActionButtons(
     selectedCardCount: Int,
     isEnabled: Boolean,
     currentPlayerId: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dimens: ResponsiveDimens
 ) {
     val availableActionsMap = actions.associateBy {
         if (it is GameAction.Envido) GameAction.Envido::class else it::class
@@ -451,37 +525,40 @@ fun ActionButtons(
 
     // --- Layout principal que cambia según la fase del juego ---
     Box(
-        modifier = modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterEnd
+        modifier = modifier.size(dimens.actionbuttonsSize),
+        contentAlignment = Alignment.BottomEnd
     ) {
         when (gamePhase) {
             GamePhase.MUS -> {
                 // FASE MUS: Solo se muestran los botones de Mus
                 Row(
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                    modifier = Modifier.align(Alignment.BottomEnd),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     GameActionButton(
                         action = GameAction.Mus,
                         onClick = { onActionClick(GameAction.Mus, currentPlayerId) },
-                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Mus::class)
+                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Mus::class),
+                        dimens = dimens
                     )
                     GameActionButton(
                         action = GameAction.NoMus,
                         onClick = { onActionClick(GameAction.NoMus, currentPlayerId) },
-                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.NoMus::class)
+                        isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.NoMus::class),
+                        dimens = dimens
                     )
                 }
             }
 
             GamePhase.DISCARD -> {
                 // FASE DESCARTE: Solo se muestra el botón de descartar
-                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
                     val discardAction = GameAction.ConfirmDiscard
                     GameActionButton(
                         action = discardAction,
                         onClick = { onActionClick(discardAction, currentPlayerId) },
-                        isEnabled = isEnabled && selectedCardCount > 0
+                        isEnabled = isEnabled && selectedCardCount > 0,
+                        dimens = dimens
                     )
                 }
             }
@@ -493,7 +570,7 @@ fun ActionButtons(
                 Row(
                     modifier = Modifier.align(Alignment.BottomEnd),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
-                    verticalAlignment = Alignment.Bottom // <-- ESTA ES LA LÍNEA A CAMBIAR
+                    verticalAlignment = Alignment.Bottom
 
                 ) {
                     Column(
@@ -505,17 +582,15 @@ fun ActionButtons(
                         GameActionButton(
                             action = quieroAction,
                             onClick = { onActionClick(quieroAction, currentPlayerId) },
-                            isEnabled = isEnabled && availableActionsMap.containsKey(
-                                quieroAction::class
-                            )
+                            isEnabled = isEnabled && availableActionsMap.containsKey(quieroAction::class),
+                            dimens = dimens
                         )
                         val noQuieroAction = GameAction.NoQuiero
                         GameActionButton(
                             action = noQuieroAction,
                             onClick = { onActionClick(noQuieroAction, currentPlayerId) },
-                            isEnabled = isEnabled && availableActionsMap.containsKey(
-                                noQuieroAction::class
-                            )
+                            isEnabled = isEnabled && availableActionsMap.containsKey(noQuieroAction::class),
+                            dimens = dimens
                         )
                     }
                     Column(
@@ -526,7 +601,8 @@ fun ActionButtons(
                         GameActionButton(
                             action = pasoAction,
                             onClick = { onActionClick(pasoAction, currentPlayerId) },
-                            isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class)
+                            isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class),
+                            dimens = dimens
                         )
                         val envidoAction = GameAction.ToggleBetSelector // <-- CAMBIA ESTO
                         GameActionButton(
@@ -537,15 +613,15 @@ fun ActionButtons(
                                     currentPlayerId
                                 )
                             }, // Ahora envía la acción de mostrar el selector
-                            isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class)
+                            isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class),
+                            dimens = dimens
                         )
                         val ordagoAction = GameAction.Órdago
                         GameActionButton(
                             action = ordagoAction,
                             onClick = { onActionClick(ordagoAction, currentPlayerId) },
-                            isEnabled = isEnabled && availableActionsMap.containsKey(
-                                ordagoAction::class
-                            )
+                            isEnabled = isEnabled && availableActionsMap.containsKey(ordagoAction::class),
+                            dimens = dimens
                         )
                     }
                 }
@@ -555,7 +631,7 @@ fun ActionButtons(
 }
 //Composable for the back of a card without the Surface wrapper
 @Composable
-fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
+fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- ADD THIS PARAMETER
     Image(
         painter = painterResource(id = R.drawable.card_back),
         contentDescription = "Card back",
@@ -571,13 +647,14 @@ fun CardBack(modifier: Modifier = Modifier) { // <-- ADD THIS PARAMETER
 
 //Composable for a single card without the Surface wrapper
 @Composable
-fun GameCard(
+private fun GameCard(
     card: CardData,
     isSelected: Boolean,
     onClick: () -> Unit,
     gamePhase: GamePhase,
     isMyTurn: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dimens: ResponsiveDimens
 ) {
 
     Image(
@@ -599,25 +676,26 @@ fun GameCard(
 }
 
 @Composable
-fun PlayerAvatar(
+private fun PlayerAvatar(
     player: Player,
     isCurrentTurn: Boolean, // This will control the glow
     modifier: Modifier = Modifier,
     isMano: Boolean,
-    hasCutMus: Boolean
+    hasCutMus: Boolean,
+    dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
 
 
     Box(
-        modifier = modifier.size(80.dp),
+        modifier = modifier.size(dimens.avatarSize),
         contentAlignment = Alignment.Center
     ) {
         Image(
             painter = painterResource(id = player.avatarResId),
             contentDescription = "Avatar of ${player.name}",
             modifier = Modifier
-                .fillMaxSize() // El avatar ocupa todo el Box
+                .fillMaxSize()
                 .clip(CircleShape)
                 .border(4.dp, borderColor, CircleShape)
         )
@@ -629,7 +707,7 @@ fun PlayerAvatar(
                 contentDescription = "Indicador de Mano",
                 tint = Color.White,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd) // Lo colocamos en la esquina inferior derecha.
+                    .align(Alignment.BottomEnd)
                     .size(24.dp)
                     .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     .padding(4.dp)
@@ -642,7 +720,7 @@ fun PlayerAvatar(
                 contentDescription = "Indicador de Corta Mus",
                 tint = Color.White,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(Alignment.BottomStart)
                     .size(dimens.avatarSize / 3)
                     .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     .padding(4.dp)
@@ -732,12 +810,13 @@ fun ActionAnnouncement(
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun PlayerHandArc(
+private fun PlayerHandArc(
     cards: List<CardData>,
     selectedCards: Set<CardData>,
     gamePhase: GamePhase,
     isMyTurn: Boolean,
-    onCardClick: (CardData) -> Unit
+    onCardClick: (CardData) -> Unit,
+    dimens: ResponsiveDimens
 ) {
 
     Box(
@@ -770,18 +849,20 @@ fun PlayerHandArc(
                         this.translationY = translationY
                         this.translationX = translationX
                         this.clip = false
-                    }
+                    },
+                dimens = dimens
             )
         }
     }
 }
 
 @Composable
-fun PartnerHand(
+private fun PartnerHand(
     modifier: Modifier = Modifier,
     cards: List<CardData>,
     isDebugMode: Boolean,
-    revealHand: Boolean
+    revealHand: Boolean,
+    dimens: ResponsiveDimens
 ) {
     Row(modifier = modifier) {
         cards.forEach { card ->
@@ -792,18 +873,21 @@ fun PartnerHand(
                     isSelected = false,
                     gamePhase = GamePhase.PRE_GAME,
                     isMyTurn = false,
-                    onClick = {}
+                    onClick = {},
+                    dimens = dimens
                 )
             } else {
 
-                CardBack()
+                CardBack(
+                    dimens = dimens
+                )
             }
         }
     }
 }
 
 @Composable
-fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean, rotate: Boolean = false) {
+fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean, rotate: Boolean = false, dimens: ResponsiveDimens) {
     Box {
         repeat(cards.size) { index ->
             Box(
@@ -816,10 +900,13 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
                         gamePhase = GamePhase.PRE_GAME,
                         isMyTurn = false,
                         onClick = {},
-                        modifier = Modifier.graphicsLayer { if (rotate) rotationZ = 90f else rotationZ = 270f }
+                        modifier = Modifier.graphicsLayer {
+                            if (rotate) rotationZ = 90f else rotationZ = 270f
+                        },
+                        dimens = dimens
                     )
                 } else {
-                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f })
+                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f }, dimens = dimens)
                 }
             }
         }
@@ -833,14 +920,15 @@ fun VerticalPlayerArea(
     isCurrentTurn: Boolean,
     isMano: Boolean,
     handContent: @Composable () -> Unit,
-    hasCutMus: Boolean
+    hasCutMus: Boolean,
+    dimens: ResponsiveDimens
 
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens)
         handContent()
     }
 }
@@ -851,13 +939,14 @@ fun HorizontalPlayerArea(
     isCurrentTurn: Boolean,
     isMano: Boolean,
     handContent: @Composable () -> Unit,
-    hasCutMus: Boolean
+    hasCutMus: Boolean,
+    dimens: ResponsiveDimens
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens)
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }
@@ -1214,7 +1303,7 @@ fun BetSelector(
     }
 }
 
-private data class ResponsiveDimens(
+data class ResponsiveDimens(
     val cardWidth: Dp,
     val cardAspectRatio: Float,
     val avatarSize: Dp,
@@ -1225,7 +1314,10 @@ private data class ResponsiveDimens(
     val smallPadding: Dp,
     val fontSizeLarge: TextUnit,
     val fontSizeMedium: TextUnit,
-    val fontSizeSmall: TextUnit
+    val fontSizeSmall: TextUnit,
+    val sidePlayerVerticalOffset: Dp,
+    val actionButtonsVerticalOffset: Dp,
+    val actionbuttonsSize: Dp
 )
 
 
