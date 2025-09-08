@@ -148,7 +148,7 @@ fun GameScreen(
                 fontSizeSmall = (12.sp * scaleFactor),
                 // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
                 sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
-                actionButtonsVerticalOffset = (maxHeight * 0.22f).coerceIn(130.dp, 200.dp),
+                actionButtonsVerticalOffset = (maxHeight * 0.22f).coerceIn(130.dp, 220.dp),
                 actionbuttonsSize = (10.dp * scaleFactor).coerceIn(0.dp, 180.dp),
                 buttonVPadding = (10.dp * scaleFactor),
                 buttonHPadding = (10.dp * scaleFactor),
@@ -348,7 +348,7 @@ fun GameScreen(
 
             ActionButtons(
                 actions = gameState.availableActions,
-                gamePhase = gameState.gamePhase, // <-- Pasa la fase del juego
+                gamePhase = gameState.gamePhase,
                 onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
                 selectedCardCount = gameState.selectedCardsForDiscard.size,
                 isEnabled = isMyTurn,
@@ -902,7 +902,7 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
     Box {
         repeat(cards.size) { index ->
             Box(
-                modifier = Modifier.offset(y = (index * 50).dp)
+                modifier = Modifier.offset(y = (index * 75 * dimens.scaleFactor.value).dp)
             ) {
                 if (isDebugMode || revealHand) {
                     GameCard(
