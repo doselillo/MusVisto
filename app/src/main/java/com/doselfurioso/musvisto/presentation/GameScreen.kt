@@ -129,17 +129,19 @@ fun GameScreen(
 
         // --- FIN DE LA NUEVA LÓGICA DE ESCALADO ---
 
+
+
         val dimens = remember(scaleFactor) {
             ResponsiveDimens(
                 // Ahora usamos este nuevo `scaleFactor` más equilibrado.
                 // Podemos ser un poco más generosos con los límites de `coerceIn`.
-                cardWidth = (75.dp * scaleFactor).coerceIn(55.dp, 90.dp),
+                cardWidth = (100.dp * scaleFactor * scaleFactor).coerceIn(70.dp, 120.dp),
                 cardAspectRatio = 0.7f,
-                avatarSize = (85.dp * scaleFactor).coerceIn(60.dp, 100.dp),
+                avatarSize = (85.dp * scaleFactor).coerceIn(40.dp, 100.dp),
                 handArcTranslationX = (150f * scaleFactor),
                 handArcTranslationY = (15f * scaleFactor),
                 handArcRotation = 5f,
-                defaultPadding = (16.dp * scaleFactor),
+                defaultPadding = (32.dp * scaleFactor),
                 smallPadding = (8.dp * scaleFactor),
                 fontSizeLarge = (20.sp * scaleFactor),
                 fontSizeMedium = (15.sp * scaleFactor),
@@ -147,7 +149,11 @@ fun GameScreen(
                 // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
                 sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
                 actionButtonsVerticalOffset = (maxHeight * 0.22f).coerceIn(130.dp, 200.dp),
-                actionbuttonsSize = (120.dp * scaleFactor)
+                actionbuttonsSize = (10.dp * scaleFactor).coerceIn(0.dp, 180.dp),
+                buttonVPadding = (10.dp * scaleFactor),
+                buttonHPadding = (10.dp * scaleFactor),
+                scaleFactor = scaleFactor.dp // 0'6 small - 0'9 big screen
+
             )
         }
 
@@ -195,30 +201,30 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = dimens.smallPadding, top = dimens.defaultPadding)
+                    .padding(start = dimens.smallPadding * 2, top = dimens.defaultPadding * 6.5f)
             ) {
-                ActionAnnouncement(rivalLeft, gameState)
+                ActionAnnouncement(rivalLeft, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = dimens.smallPadding, top = dimens.defaultPadding)
+                    .padding(end = dimens.smallPadding * 2, top = dimens.defaultPadding * 6.5f)
             ) {
-                ActionAnnouncement(rivalRight, gameState)
+                ActionAnnouncement(rivalRight, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(end = dimens.smallPadding, top = dimens.defaultPadding)
+                    .padding(start = dimens.smallPadding * 4, top = dimens.defaultPadding * 4.5f)
             ) {
-                ActionAnnouncement(partner, gameState)
+                ActionAnnouncement(partner, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = dimens.smallPadding, bottom = dimens.defaultPadding)
+                    .padding(start = dimens.smallPadding * 4, bottom = dimens.defaultPadding * 6)
             ) {
-                ActionAnnouncement(player, gameState)
+                ActionAnnouncement(player, gameState, dimens)
             }
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(
@@ -335,7 +341,8 @@ fun GameScreen(
                 LanceTracker(
                     currentPhase = gameState.gamePhase,
                     history = gameState.roundHistory,
-                    isPuntoPhase = gameState.isPuntoPhase
+                    isPuntoPhase = gameState.isPuntoPhase,
+                    dimens = dimens
                 )
             }
 
@@ -463,14 +470,15 @@ private fun GameActionButton(
         onClick = onClick,
         colors = buttonColors,
         enabled = isEnabled,
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+        modifier = Modifier.defaultMinSize(minHeight = dimens.scaleFactor).height(48.dp * dimens.scaleFactor.value)
     ) {
         if (action.iconResId != null) {
 
             if (action.actionType == ActionType.BET && isEnabled) {
                 // Get the TextUnit value (e.g., 15.sp * 1.5 = 22.5.sp)
                 val iconSizeSp =
-                    dimens.fontSizeMedium * 1.5f // Use 1.5f to ensure float multiplication
+                    dimens.fontSizeMedium
 
                 // Convert the sp value to Dp.
                 // While there isn't a direct .toDp() from sp, you can use the .value
@@ -498,11 +506,11 @@ private fun GameActionButton(
         }
 
         if (action.actionType == ActionType.BET && isEnabled) {
-            Text(text = action.displayText, color = secondaryColor)
+            Text(text = action.displayText, color = secondaryColor, fontSize = dimens.fontSizeMedium)
         } else if (action.actionType == ActionType.DISCARD) {
-            Text(text = "Descartar")
+            Text(text = "Descartar", fontSize = dimens.fontSizeMedium)
         } else {
-            Text(text = action.displayText)
+            Text(text = action.displayText, fontSize = dimens.fontSizeMedium)
         }
     }
 }
@@ -525,15 +533,15 @@ fun ActionButtons(
 
     // --- Layout principal que cambia según la fase del juego ---
     Box(
-        modifier = modifier.size(dimens.actionbuttonsSize),
-        contentAlignment = Alignment.BottomEnd
+        modifier = modifier.fillMaxWidth().padding(top = dimens.buttonVPadding, bottom = dimens.buttonVPadding),
+        contentAlignment = Alignment.BottomCenter
     ) {
         when (gamePhase) {
             GamePhase.MUS -> {
                 // FASE MUS: Solo se muestran los botones de Mus
                 Row(
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value)
                 ) {
                     GameActionButton(
                         action = GameAction.Mus,
@@ -552,7 +560,7 @@ fun ActionButtons(
 
             GamePhase.DISCARD -> {
                 // FASE DESCARTE: Solo se muestra el botón de descartar
-                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                Box(modifier = Modifier.align(Alignment.BottomCenter)) {
                     val discardAction = GameAction.ConfirmDiscard
                     GameActionButton(
                         action = discardAction,
@@ -568,13 +576,13 @@ fun ActionButtons(
 
                 // Columna Izquierda: Respuestas
                 Row(
-                    modifier = Modifier.align(Alignment.BottomEnd),
+                    modifier = Modifier.align(Alignment.BottomCenter),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                     verticalAlignment = Alignment.Bottom
 
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
 
@@ -594,7 +602,7 @@ fun ActionButtons(
                         )
                     }
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         val pasoAction = GameAction.Paso
@@ -637,7 +645,7 @@ fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- A
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .width(dimens.cardWidth)
+            .width(dimens.cardWidth * dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
@@ -661,7 +669,7 @@ private fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier
-            .width(dimens.cardWidth)
+            .width(dimens.cardWidth * dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
@@ -757,7 +765,8 @@ fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
 @Composable
 fun ActionAnnouncement(
     player: Player,
-    gameState: GameState
+    gameState: GameState,
+    dimens: ResponsiveDimens
 ) {
     // 1. DETERMINAMOS LA ACCIÓN CORRECTA PARA ESTE JUGADOR
     //    Esta variable local 'actionToShow' será la única fuente de verdad para este anuncio.
@@ -791,18 +800,20 @@ fun ActionAnnouncement(
     ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier.padding(8.dp * dimens.scaleFactor.value)
         ) {
             if (actionToShow?.action is GameAction.ConfirmDiscard) Text(
                 text = ("Dame ${gameState.discardCounts[player.id]}"),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                fontSize = dimens.fontSizeMedium,
+                modifier = Modifier.padding(horizontal = 16.dp * dimens.scaleFactor.value, vertical = 8.dp * dimens.scaleFactor.value)
             ) else Text(
                 text = actionToShow?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                fontSize = dimens.fontSizeMedium,
+                modifier = Modifier.padding(horizontal = 16.dp * dimens.scaleFactor.value, vertical = 8.dp * dimens.scaleFactor.value)
             )
         }
     }
@@ -831,8 +842,8 @@ private fun PlayerHandArc(
 
             val centerOffset = index - (cardCount - 1) / 2f
             val rotation = centerOffset * 5f
-            val translationY = abs(centerOffset) * -15f
-            val translationX = centerOffset * 150f
+            val translationY = abs(centerOffset) * -1f
+            val translationX = centerOffset * 200f * dimens.scaleFactor.value
 
             GameCard(
                 card = card,
@@ -1188,12 +1199,13 @@ fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
     isPuntoPhase: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dimens: ResponsiveDimens
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
     Card(
-        modifier = modifier.width(IntrinsicSize.Max),
+        modifier = modifier.width(200.dp * dimens.scaleFactor.value),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
         Column(
@@ -1235,13 +1247,13 @@ fun LanceTracker(
                         text = lanceName,
                         color = textColor,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 16.sp
+                        fontSize = dimens.fontSizeMedium
                     )
                     if (resultText.isNotEmpty()) {
                         Text(
                             text = resultText,
                             color = Color.Gray,
-                            fontSize = 14.sp
+                            fontSize = dimens.fontSizeMedium
                         )
                     }
                 }
@@ -1317,7 +1329,8 @@ data class ResponsiveDimens(
     val fontSizeSmall: TextUnit,
     val sidePlayerVerticalOffset: Dp,
     val actionButtonsVerticalOffset: Dp,
-    val actionbuttonsSize: Dp
+    val actionbuttonsSize: Dp,
+    val buttonVPadding: Dp,
+    val buttonHPadding: Dp,
+    val scaleFactor: Dp
 )
-
-
