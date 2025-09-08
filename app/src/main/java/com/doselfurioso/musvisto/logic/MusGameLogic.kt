@@ -698,7 +698,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             )
         }
 
-        // --- INICIO DE LA CORRECCIÓN ---
         // 1. Creamos un estado intermedio con TODA la información actualizada,
         //    incluyendo quién acaba de descartar (newPassedSet).
         val intermediateState = currentState.copy(
@@ -714,7 +713,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         // 2. AHORA, llamamos a la nueva función de turno sobre este estado correcto.
         return setNextPlayerTurn(intermediateState)
-        // --- FIN DE LA CORRECCIÓN ---
     }
 
     private fun findNextOpponent(currentState: GameState, fromPlayer: Player): Player? {

@@ -226,9 +226,9 @@ class AILogic @Inject constructor(
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // REGLA 1: SI TIENES 3 FIGURAS (Sota, Caballo, Rey), tienes 30 puntos.
+        // REGLA 1: SI TIENES 3 FIGURAS (Rey), tienes 30 puntos.
         // Es una jugada muy fuerte para buscar 31 o 40. Descarta la 4ª carta.
-        val figures = hand.filter { it.rank.value in 10..12 }
+        val figures = hand.filter { it.rank.value in 12..12 }
         if (figures.size == 3) {
             val nonFigureCard = hand.first { it !in figures }
             return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
@@ -259,7 +259,6 @@ class AILogic @Inject constructor(
         // 1. Intentamos descartar todas las cartas que consideramos "malas" (puntuación negativa).
         var cardsToDiscard = sortedCards.filter { (cardScores[it] ?: 0) < 0 }.toSet()
 
-        // --- INICIO DE LA CORRECCIÓN ---
         // 2. REGLA OBLIGATORIA DE MUS: Si la estrategia no ha seleccionado ninguna carta para
         //    descartar (porque la mano es muy buena), FORZAMOS el descarte de la peor carta.
         if (cardsToDiscard.isEmpty()) {
