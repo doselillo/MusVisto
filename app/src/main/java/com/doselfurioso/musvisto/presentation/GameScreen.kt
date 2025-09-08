@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
+import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
@@ -342,7 +343,8 @@ fun GameScreen(
                     currentPhase = gameState.gamePhase,
                     history = gameState.roundHistory,
                     isPuntoPhase = gameState.isPuntoPhase,
-                    dimens = dimens
+                    dimens = dimens,
+                    currentBet = gameState.currentBet
                 )
             }
 
@@ -1199,6 +1201,7 @@ fun LanceTracker(
     currentPhase: GamePhase,
     history: List<LanceResult>,
     isPuntoPhase: Boolean,
+    currentBet: BetInfo?,
     modifier: Modifier = Modifier,
     dimens: ResponsiveDimens
 ) {
@@ -1217,7 +1220,9 @@ fun LanceTracker(
                 val result = history.find { it.lance == lance }
                 val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
-                if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
+                if (isCurrent && currentBet != null) {
+                    resultText = "En juego: ${currentBet.amount}"
+                } else if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
                         "No Querido" -> "No Querida"
