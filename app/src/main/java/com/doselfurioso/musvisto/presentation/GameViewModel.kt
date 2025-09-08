@@ -21,7 +21,7 @@ class GameViewModel @Inject constructor(
     private val aiLogic: AILogic
 ) : ViewModel() {
 
-    private val manualDealingEnabled = false
+    private val manualDealingEnabled = true
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -41,20 +41,20 @@ class GameViewModel @Inject constructor(
             "p1" to listOf( // Mano del Jugador Humano
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.SOTA),
-                Card(Suit.OROS, Rank.CABALLO)
+                Card(Suit.OROS, Rank.CUATRO),
+                Card(Suit.OROS, Rank.CUATRO)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.CUATRO),
-                Card(Suit.COPAS, Rank.CABALLO),
-                Card(Suit.COPAS, Rank.AS)
+                Card(Suit.COPAS, Rank.REY),
+                Card(Suit.COPAS, Rank.CINCO),
+                Card(Suit.COPAS, Rank.CINCO)
             ),
             "p3" to listOf( // Mano del Compañero
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.SOTA),
-                Card(Suit.OROS, Rank.CABALLO)
+                Card(Suit.OROS, Rank.CUATRO),
+                Card(Suit.OROS, Rank.CUATRO)
             ),
             "p4" to listOf( // Mano del Rival Derecho
                 Card(Suit.BASTOS, Rank.REY),

@@ -132,4 +132,43 @@ class MusGameLogicTest {
         val winner = gameLogic.getJuegoWinner(gameState)
         assertEquals("31 siempre debe ganar a 32, sin importar quién sea mano", playerWith31, winner)
     }
+
+    @Test
+    fun `score of a rejected bet is calculated correctly`() {
+        // Escenario: p1(A) envida 2. p2(B) sube a 5. p3(A), el siguiente en turno, rechaza.
+        // El equipo B debe ganar 2 puntos.
+
+        // 1. p1 (teamA) envida 2. El turno pasa a p2.
+        val initialState = GameState(
+            players = players,
+            currentTurnPlayerId = "p1",
+            gamePhase = GamePhase.GRANDE,
+            manoPlayerId = "p1",
+            // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
+        val stateAfterEnvido = gameLogic.processAction(
+            initialState,
+            GameAction.Envido(2), "p1"
+        )
+        assertEquals("p2", stateAfterEnvido.currentTurnPlayerId)
+
+        // 2. p2 (teamB) sube 3 más. El turno pasa al siguiente oponente, p3.
+        val stateAfterSubida = gameLogic.processAction(
+            stateAfterEnvido,
+            GameAction.Envido(3), "p2"
+        )
+        assertEquals("p3", stateAfterSubida.currentTurnPlayerId) // Verificamos que el turno es de p3
+        assertEquals(2, stateAfterSubida.currentBet?.pointsIfRejected)
+
+        // 3. p3 (teamA), el compañero de p1, rechaza. Ahora sí es el final del envite.
+        val finalState = gameLogic.processAction(
+            stateAfterSubida,
+            GameAction.NoQuiero, "p3"
+        )
+
+        // Verificamos que el equipo B ha ganado 2 puntos
+        assertEquals(2, finalState.score["teamB"])
+        assertEquals(0, finalState.score["teamA"])
+    }
 }

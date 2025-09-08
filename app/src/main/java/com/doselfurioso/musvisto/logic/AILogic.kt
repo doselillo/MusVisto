@@ -115,10 +115,9 @@ class AILogic @Inject constructor(
         decisionId: String,
         aiPlayer: Player
     ): GameAction {
-
         val currentBetAmount = gameState.currentBet?.amount ?: 0
 
-        // Lógica de respuesta a Órdago (sin cambios, ya era para casos desesperados)
+        // Lógica para responder a un ÓRDAGO (esta no cambia)
         if (gameState.currentBet?.isOrdago == true) {
             val opponentTeam = if(aiPlayer.team == "teamA") "teamB" else "teamA"
             if (adjustedStrength >= 95 || ((gameState.score[opponentTeam] ?: 0) - (gameState.score[aiPlayer.team] ?: 0) > 20)) {
@@ -128,31 +127,40 @@ class AILogic @Inject constructor(
             }
         }
 
-        // LÓGICA DE RESPUESTA (AHORA MÁS CONSERVADORA)
+        // --- LÓGICA DE RESPUESTA MEJORADA ---
         val advantage = adjustedStrength - currentBetAmount
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+
         val action = when {
-            // Solo subirá a órdago si la ventaja es total (>95)
-            advantage > 95 -> GameAction.Órdago
-            // Solo subirá la apuesta si la ventaja es muy grande (>85)
-            advantage > 85 -> GameAction.Envido(2) // Sube con un envite simple de 2
-            // El umbral para aceptar ("Quiero") ahora es más alto (>70)
+            // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
+            // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
+            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
+
+            // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta, pero de forma comedida.
+            advantage > 85 -> GameAction.Envido(2)
+
+            // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
             advantage > 70 -> GameAction.Quiero
-            // La probabilidad de "pagar por ver" es más baja
+
+            // REGLA 4: La probabilidad de "pagar por ver" con una mano mediocre es menor.
             advantage > 60 && rng.nextInt(100) < 20 -> GameAction.Quiero // 20% de probabilidad
+
             else -> GameAction.NoQuiero
         }
+        // --- FIN DE LA LÓGICA MEJORADA ---
 
         logger.log(
             DecisionLog(
                 decisionId = decisionId,
                 timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
+                playerId = aiPlayer.id,
                 phase = "RESPONSE",
                 hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("phaseScore" to adjustedStrength),
+                strengths = mapOf("phaseScore" to adjustedStrength, "advantage" to advantage),
                 chosenAction = action.toString(),
-                reason = "Response decision based on phase score",
-                details = mapOf("phase" to gameState.gamePhase.toString())
+                reason = "Response decision based on conservative advantage score",
+                details = mapOf("phase" to gameState.gamePhase.toString(), "currentBet" to currentBetAmount)
             )
         )
 

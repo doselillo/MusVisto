@@ -317,7 +317,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
-
+        val previousBetAmount = currentState.currentBet?.amount ?: 0
+        val pointsIfRejected = if (previousBetAmount == 0) 1 else previousBetAmount
         // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
         val eligiblePlayers = getEligiblePlayersForLance(currentState)
 
@@ -354,7 +355,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            respondingPlayerId = orderedEligibleOpponents.first()
+            respondingPlayerId = orderedEligibleOpponents.first(),
+            pointsIfRejected = pointsIfRejected
         )
 
         return currentState.copy(
@@ -397,12 +399,12 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         // Si ya no quedan miembros del equipo por responder, el rechazo es definitivo
         if (remainingResponders.isEmpty()) {
-            val bet = currentState.currentBet ?: return currentState
+            val bet = currentState.currentBet
             // Buscamos al jugador que lanzó el envite para saber a qué equipo darle los puntos
             val bettingPlayer = currentState.players.find { it.id == bet.bettingPlayerId } ?: return currentState
 
             // Calculamos los puntos: los que ya estaban acordados + 1 por el rechazo
-            val pointsWon = (currentState.agreedBets[currentState.gamePhase] ?: 0) + 1
+            val pointsWon = bet.pointsIfRejected
             val currentScore = currentState.score[bettingPlayer.team] ?: 0
             // Actualizamos el marcador EN ESTE MOMENTO
             val newScore = currentState.score + (bettingPlayer.team to currentScore + pointsWon)
@@ -485,7 +487,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     private fun handleOrdago(currentState: GameState, playerId: String): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
-
+        val previousBetAmount = currentState.currentBet?.amount ?: 0
+        val pointsIfRejected = if (previousBetAmount == 0) 1 else previousBetAmount
 
         // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
         val eligiblePlayers = getEligiblePlayersForLance(currentState)
@@ -524,7 +527,8 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             amount = 40,
             bettingPlayerId = playerId,
             respondingPlayerId = orderedEligibleOpponents.first(),
-            isOrdago = true // Marcamos la apuesta como un órdago
+            isOrdago = true, // Marcamos la apuesta como un órdago
+            pointsIfRejected = pointsIfRejected
         )
 
         return currentState.copy(
@@ -867,7 +871,6 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
     fun resolveDeclaration(currentState: GameState): GameState {
         val currentCheckPhase = currentState.gamePhase // Será PARES_CHECK o JUEGO_CHECK
 
-        // Determinamos qué jugada estamos comprobando
         val playersWithPlay = currentState.players.filter {
             if (currentCheckPhase == GamePhase.PARES_CHECK) {
                 getHandPares(it.hand).strength > 0
@@ -878,39 +881,52 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
         val teamsWithPlay = playersWithPlay.map { it.team }.distinct()
 
-        // CASO 1: Menos de 2 equipos tienen jugada -> Se salta la ronda de apuestas
+        // --- LÓGICA MEJORADA PARA JUEGO Y PUNTO ---
+
+        // CASO 1: Estamos en JUEGO_CHECK y NADIE tiene Juego -> Se juega al PUNTO
+        if (currentCheckPhase == GamePhase.JUEGO_CHECK && teamsWithPlay.isEmpty()) {
+            Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
+            // El turno es para la mano, y TODOS pueden hablar
+            return currentState.copy(
+                gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
+                isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
+                playersInLance = currentState.players.map { it.id }.toSet(), // Todos juegan
+                currentTurnPlayerId = currentState.manoPlayerId,
+                playersWhoPassed = emptySet(),
+                availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+            )
+        }
+
+        // CASO 2: Solo un equipo tiene jugada (sea Pares o Juego) -> Se salta la ronda de apuestas
         if (teamsWithPlay.size < 2) {
             val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
             Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
-            // Creamos un resultado de "Skipped" para el historial
             val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
             val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
 
-            // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ ---
-            // En lugar de llamar a endLanceAndAdvance, que puede causar bucles,
-            // simplemente calculamos la siguiente fase y devolvemos un estado limpio.
             val nextPhase = advanceToNextPhase(lancePhase)
             return stateWithHistory.copy(
                 gamePhase = nextPhase,
                 currentTurnPlayerId = stateWithHistory.manoPlayerId,
+                isPuntoPhase = false, // Nos aseguramos de resetear la bandera de Punto
                 playersWhoPassed = emptySet(),
                 isNewLance = true,
                 currentLanceActions = emptyMap(),
-                availableActions = if (nextPhase == GamePhase.PARES_CHECK || nextPhase == GamePhase.JUEGO_CHECK) emptyList()
+                availableActions = if (nextPhase == GamePhase.JUEGO_CHECK) emptyList()
                 else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
             )
         }
 
-        // CASO 2: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas
+        // CASO 3: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas normal
         val bettingPhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
 
-        // El turno es para el primer jugador en orden que SÍ tiene jugada
         val firstPlayerToBet = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
             .first { it in playersWithPlay }
 
         return currentState.copy(
             gamePhase = bettingPhase,
+            isPuntoPhase = false, // Nos aseguramos de que no se está jugando a Punto
             playersInLance = playersWithPlay.map { it.id }.toSet(),
             currentTurnPlayerId = firstPlayerToBet.id,
             playersWhoPassed = emptySet(),
