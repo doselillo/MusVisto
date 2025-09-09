@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -237,7 +239,8 @@ fun GameScreen(
                     player = partner,
                     isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
                     isMano = gameState.manoPlayerId == partner.id,
-                    hasCutMus = gameState.noMusPlayer == partner.id, // <-- AÑADE ESTO
+                    hasCutMus = gameState.noMusPlayer == partner.id,
+                    activeGesture = gameState.activeGesture,
                     handContent = {
                         PartnerHand(
                             modifier = Modifier.graphicsLayer { rotationZ = 180f },
@@ -261,7 +264,8 @@ fun GameScreen(
                     player = rivalLeft,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
                     isMano = gameState.manoPlayerId == rivalLeft.id,
-                    hasCutMus = gameState.noMusPlayer == rivalLeft.id, // <-- AÑADE ESTO
+                    hasCutMus = gameState.noMusPlayer == rivalLeft.id,
+                    activeGesture = gameState.activeGesture,
                     handContent = {
                         SideOpponentHandStacked(
                             modifier = Modifier
@@ -288,7 +292,8 @@ fun GameScreen(
                     player = rivalRight,
                     isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
                     isMano = gameState.manoPlayerId == rivalRight.id,
-                    hasCutMus = gameState.noMusPlayer == rivalRight.id, // <-- AÑADE ESTO
+                    hasCutMus = gameState.noMusPlayer == rivalRight.id,
+                    activeGesture = gameState.activeGesture,
                     handContent = {
                         SideOpponentHandStacked(
                             modifier = Modifier
@@ -308,13 +313,28 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp, start = 32.dp)
+                    .padding(bottom = 32.dp * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
             ) {
+                IconButton(
+                    onClick = { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart) // Alineado arriba y al centro del área
+                        .size(50.dp * dimens.scaleFactor.value)
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                ) {
+                    Text(
+                        text = "Seña",
+                        color = Color.White,
+                        fontSize = dimens.fontSizeLarge
+                    )
+                }
+
                 HorizontalPlayerArea(
                     player = player,
                     isCurrentTurn = isMyTurn,
                     isMano = gameState.manoPlayerId == player.id,
-                    hasCutMus = gameState.noMusPlayer == player.id, // <-- AÑADE ESTO
+                    hasCutMus = gameState.noMusPlayer == player.id,
+                    activeGesture = gameState.activeGesture,
                     handContent = {
                         PlayerHandArc(
                             cards = player.hand.sortedByDescending { it.rank.value },
@@ -692,6 +712,7 @@ private fun PlayerAvatar(
     modifier: Modifier = Modifier,
     isMano: Boolean,
     hasCutMus: Boolean,
+    activeGestureResId: Int?,
     dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
@@ -709,6 +730,22 @@ private fun PlayerAvatar(
                 .clip(CircleShape)
                 .border(4.dp, borderColor, CircleShape)
         )
+        AnimatedVisibility(
+            visible = activeGestureResId != null,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut()
+        ) {
+            if (activeGestureResId != null) {
+                Image(
+                    painter = painterResource(id = activeGestureResId),
+                    contentDescription = "Seña",
+                    modifier = Modifier
+                        .fillMaxSize(0.8f) // El icono ocupa el 80% del avatar
+                        .clip(CircleShape)
+                )
+            }
+        }
+
 
         // Si el jugador es "mano", mostramos el icono superpuesto.
         if (isMano) {
@@ -932,8 +969,9 @@ fun VerticalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit,
+    handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
+    activeGesture: Pair<String, Int>?,
     dimens: ResponsiveDimens
 
 ) {
@@ -941,7 +979,11 @@ fun VerticalPlayerArea(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens)
+        PlayerAvatar(player = player,
+            isCurrentTurn = isCurrentTurn,
+            isMano = isMano, hasCutMus = hasCutMus,
+            dimens = dimens,
+            activeGestureResId = if (activeGesture?.first == player.id) activeGesture.second else null,)
         handContent()
     }
 }
@@ -951,15 +993,16 @@ fun HorizontalPlayerArea(
     player: Player,
     isCurrentTurn: Boolean,
     isMano: Boolean,
-    handContent: @Composable () -> Unit,
+    handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
+    activeGesture: Pair<String, Int>?,
     dimens: ResponsiveDimens
 ) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens,activeGestureResId = if (activeGesture?.first == player.id) activeGesture.second else null)
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }

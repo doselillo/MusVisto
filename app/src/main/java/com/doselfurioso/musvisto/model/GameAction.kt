@@ -32,6 +32,7 @@ sealed class GameAction(
     object NoQuiero : GameAction("No Quiero", ActionType.DENY, R.drawable.ic_close)
     object Órdago : GameAction("Órdago", ActionType.ULTIMATE, R.drawable.ic_ordago)
 
+    object ShowGesture : GameAction("Pasar Seña", ActionType.PASS, null)
 
     data class LogAction(val text: String) : GameAction(text, ActionType.PASS, null)
 

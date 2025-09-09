@@ -40,7 +40,8 @@ data class GameState(
     val scoreEvents: List<Pair<String, ScoreDetail>> = emptyList(),
     val ordagoInfo: OrdagoInfo? = null,
     val isSelectingBet: Boolean = false,
-    val playersInLance: Set<String> = emptySet()
+    val playersInLance: Set<String> = emptySet(),
+    val activeGesture: Pair<String, Int>? = null
 )
 
 data class ScoreDetail(val reason: String, val points: Int)

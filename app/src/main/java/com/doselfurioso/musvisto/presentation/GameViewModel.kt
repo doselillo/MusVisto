@@ -41,8 +41,8 @@ class GameViewModel @Inject constructor(
             "p1" to listOf( // Mano del Jugador Humano
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.CUATRO),
-                Card(Suit.OROS, Rank.CUATRO)
+                Card(Suit.OROS, Rank.CABALLO),
+                Card(Suit.OROS, Rank.AS)
             ),
             "p2" to listOf( // Mano del Rival Izquierdo
                 Card(Suit.COPAS, Rank.REY),
@@ -89,6 +89,29 @@ class GameViewModel @Inject constructor(
                     _gameState.value = _gameState.value.copy(isSelectingBet = false)
                 }
             }
+        }
+
+        if (action is GameAction.ShowGesture) {
+            val player = _gameState.value.players.find { it.id == playerId } ?: return
+            val gestureResId = determineGesture(player)
+
+            // Si el jugador ya tiene una seña activa, la quitamos
+            if (_gameState.value.activeGesture?.first == playerId) {
+                _gameState.value = _gameState.value.copy(activeGesture = null)
+                return
+            }
+
+            if (gestureResId != null) {
+                viewModelScope.launch {
+                    _gameState.value = _gameState.value.copy(activeGesture = Pair(playerId, gestureResId))
+                    delay(2500) // Duración de la seña
+                    // Solo quitamos la seña si sigue siendo la misma que activamos
+                    if (_gameState.value.activeGesture?.first == playerId) {
+                        _gameState.value = _gameState.value.copy(activeGesture = null)
+                    }
+                }
+            }
+            return // Importante para detener la ejecución aquí
         }
 
         val currentState = _gameState.value
@@ -359,6 +382,7 @@ class GameViewModel @Inject constructor(
         )
         // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
         handleAiTurn()
+        triggerAiGestures()
     }
 
     fun onBetAmountSelected(amount: Int) {
@@ -369,6 +393,88 @@ class GameViewModel @Inject constructor(
         val newState = gameLogic.processAction(currentState, envidoAction, humanPlayerId)
         // Ocultamos el selector y actualizamos el estado del juego
         updateStateAndCheckAiTurn(newState.copy(isSelectingBet = false))
+    }
+
+    private fun determineGesture(player: Player): Int? {
+        val hand = player.hand
+        if (hand.isEmpty()) return null
+
+        // --- Lógica de Conteo de Cartas Clave ---
+        // Recuerda que los Treses cuentan como Reyes y los Doses como Ases para los pares.
+        val reyesCount = hand.count { it.rank == Rank.REY || it.rank == Rank.TRES }
+        val asesCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
+
+        val paresPlay = gameLogic.getHandPares(hand)
+        val juegoValue = gameLogic.getHandJuegoValue(hand)
+
+        // --- Comprobación de Señas por Orden de Prioridad ---
+
+
+        // 1. Señas de Duples (dos pares)
+        if (paresPlay is ParesPlay.Duples) {
+            // Para saber si son altos o bajos, miramos el par más bajo.
+            // Si el par bajo es Sota o superior, son Duples Altos.
+            if (paresPlay.lowPair.value >= Rank.SOTA.value) {
+                return R.drawable.duples_altos // Seña: Duples Altos
+            } else {
+                return R.drawable.duples_bajos // Seña: Duples Bajos
+            }
+        }
+
+        // 2. Seña de 31 de Juego - La mejor jugada de Juego
+        if (juegoValue == 31) {
+            return R.drawable.sena_31 // Seña: 31
+        }
+
+        // 3. Señas de Medias (3 cartas iguales) - Son las más raras y específicas
+        if (reyesCount >= 3) {
+            return R.drawable.reyes_3 // Seña: Tres Reyes
+        }
+        if (asesCount >= 3) {
+            return R.drawable.ases_3  // Seña: Tres Ases
+        }
+
+        // 4. Señas de Pares (dos cartas iguales)
+        if (reyesCount == 2) {
+            return R.drawable.reyes_2 // Seña: Dos Reyes
+        }
+        if (asesCount == 2) {
+            return R.drawable.ases_2  // Seña: Dos Ases
+        }
+
+        // 5. Seña de Ciega (no llevar nada)
+        // Se considera "ciega" si no se tiene ni Pares ni Juego (valor < 31)
+        if (paresPlay is ParesPlay.NoPares && juegoValue < 31) {
+            return R.drawable.ciega // Seña: Ciega
+        }
+
+        // Si no se cumple ninguna de las condiciones anteriores, no hay seña que pasar.
+        return null
+    }
+
+    private fun triggerAiGestures() {
+        viewModelScope.launch {
+            val currentState = _gameState.value
+            // La IA solo pasa señas si su compañero es el jugador humano
+            val aiPlayersWithHumanPartner = currentState.players.filter {
+                it.isAi && currentState.players.any { p -> p.id == humanPlayerId && p.team == it.team }
+            }
+
+            // Esperamos un poco para que no sea instantáneo
+            delay(2000)
+
+            for (aiPlayer in aiPlayersWithHumanPartner) {
+                // 70% de probabilidad de que la IA decida pasar una seña
+                if (kotlin.random.Random.nextFloat() < 0.70f) {
+                    val gestureResId = determineGesture(aiPlayer)
+                    if (gestureResId != null) {
+                        onAction(GameAction.ShowGesture, aiPlayer.id)
+                        // Pequeña pausa por si varias IAs quisieran pasar seña
+                        delay(500)
+                    }
+                }
+            }
+        }
     }
 
 }
