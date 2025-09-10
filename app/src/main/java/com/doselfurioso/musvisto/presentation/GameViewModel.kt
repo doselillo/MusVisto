@@ -53,7 +53,7 @@ class GameViewModel @Inject constructor(
             "p3" to listOf( // Mano del Compañero
                 Card(Suit.OROS, Rank.REY),
                 Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.CUATRO),
+                Card(Suit.OROS, Rank.SOTA),
                 Card(Suit.OROS, Rank.CUATRO)
             ),
             "p4" to listOf( // Mano del Rival Derecho
@@ -104,7 +104,7 @@ class GameViewModel @Inject constructor(
             if (gestureResId != null) {
                 viewModelScope.launch {
                     _gameState.value = _gameState.value.copy(activeGesture = Pair(playerId, gestureResId))
-                    delay(2500) // Duración de la seña
+                    delay(250) // Duración de la seña
                     // Solo quitamos la seña si sigue siendo la misma que activamos
                     if (_gameState.value.activeGesture?.first == playerId) {
                         _gameState.value = _gameState.value.copy(activeGesture = null)
@@ -455,15 +455,21 @@ class GameViewModel @Inject constructor(
     private fun triggerAiGestures() {
         viewModelScope.launch {
             val currentState = _gameState.value
-            // La IA solo pasa señas si su compañero es el jugador humano
-            val aiPlayersWithHumanPartner = currentState.players.filter {
-                it.isAi && currentState.players.any { p -> p.id == humanPlayerId && p.team == it.team }
+
+            // --- INICIO DE LA CORRECCIÓN ---
+            // Ahora seleccionamos a las IAs cuyo compañero TAMBIÉN es una IA.
+            val aiPlayersWithAiPartners = currentState.players.filter { aiPlayer ->
+                aiPlayer.isAi && currentState.players.any { partner ->
+                    partner.id != aiPlayer.id && partner.team == aiPlayer.team && partner.isAi
+                }
             }
+            // --- FIN DE LA CORRECCIÓN ---
 
             // Esperamos un poco para que no sea instantáneo
             delay(2000)
 
-            for (aiPlayer in aiPlayersWithHumanPartner) {
+            // El resto de la función itera sobre la nueva lista
+            for (aiPlayer in aiPlayersWithAiPartners) {
                 // 70% de probabilidad de que la IA decida pasar una seña
                 if (kotlin.random.Random.nextFloat() < 0.70f) {
                     val gestureResId = determineGesture(aiPlayer)

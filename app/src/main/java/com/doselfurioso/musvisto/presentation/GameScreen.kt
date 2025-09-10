@@ -2,6 +2,7 @@ package com.doselfurioso.musvisto.presentation
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -37,7 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -732,16 +735,18 @@ private fun PlayerAvatar(
         )
         AnimatedVisibility(
             visible = activeGestureResId != null,
-            enter = fadeIn() + scaleIn(),
+            enter = EnterTransition.None,
             exit = fadeOut() + scaleOut()
         ) {
             if (activeGestureResId != null) {
-                Image(
+                Icon(
                     painter = painterResource(id = activeGestureResId),
                     contentDescription = "Seña",
+                    tint = Color.LightGray,
                     modifier = Modifier
-                        .fillMaxSize(0.8f) // El icono ocupa el 80% del avatar
+                        .fillMaxSize(0.9f)
                         .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.1f), CircleShape)
                 )
             }
         }
