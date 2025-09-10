@@ -29,7 +29,6 @@ data class AIDecision(val action: GameAction, val cardsToDiscard: Set<Card> = em
 @Singleton
 class AILogic @Inject constructor(
     private val gameLogic: MusGameLogic,
-    private val logger: AILogger,
     /** Inyectable para tests; por defecto Random.Default */
     private val rng: kotlin.random.Random = kotlin.random.Random.Default
 ) {
@@ -68,25 +67,6 @@ class AILogic @Inject constructor(
         val adjustedChica = (gestureAdjustedStrength.chica + riskFactor).coerceIn(0, 100)
         val adjustedPares = (gestureAdjustedStrength.pares + riskFactor).coerceIn(0, 100)
         val adjustedJuego = (gestureAdjustedStrength.juego + riskFactor).coerceIn(0, 100)
-
-        // --- FIN DE LA MODIFICACIÓN ---
-
-        // Log (ahora incluye el risk factor y las fuerzas ajustadas)
-        logger.log(
-            DecisionLog(
-                decisionId = decisionId,
-                playerId = aiPlayer.id,
-                phase = "EVALUATE_WITH_RISK",
-                hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf(
-                    "grande" to adjustedGrande, "chica" to adjustedChica,
-                    "pares" to adjustedPares, "juego" to adjustedJuego
-                ),
-                chosenAction = "EVALUATED",
-                reason = "Hand evaluated with risk factor",
-                details = mapOf("scoreDiff" to scoreDifference, "riskFactor" to riskFactor)
-            )
-        )
 
         // --- LÓGICA DE DECISIÓN PRINCIPAL ---
         // Si hay una apuesta activa, la IA responde usando su fuerza ajustada
@@ -202,23 +182,6 @@ class AILogic @Inject constructor(
         }
         // --- FIN DE LA LÓGICA MEJORADA ---
 
-        logger.log(
-            DecisionLog(
-                decisionId = decisionId,
-                timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id,
-                phase = "RESPONSE",
-                hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("phaseScore" to adjustedStrength, "advantage" to advantage),
-                chosenAction = action.toString(),
-                reason = "Response decision based on conservative advantage score",
-                details = mapOf(
-                    "phase" to gameState.gamePhase.toString(),
-                    "currentBet" to currentBetAmount
-                )
-            )
-        )
-
         return action
     }
 
@@ -240,20 +203,6 @@ class AILogic @Inject constructor(
             baseStrength.chica >= (85 - riskFactor)
         ) GameAction.NoMus else GameAction.Mus
 
-        logger.log(
-            DecisionLog(
-                decisionId = decisionId,
-                timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                phase = "MUS",
-                hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("juego" to baseStrength.juego, "pares" to baseStrength.pares),
-                chosenAction = action.toString(),
-                reason = "Mus decision using thresholds",
-                details = mapOf("juego" to baseStrength.juego, "pares" to baseStrength.pares)
-            )
-        )
-
         return action
     }
 
@@ -264,17 +213,6 @@ class AILogic @Inject constructor(
         decisionId: String
     ): AIDecision {
         val hand = aiPlayer.hand
-        logger.log(
-            DecisionLog(
-                decisionId = decisionId,
-                timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id,
-                phase = "DISCARD",
-                hand = hand.map { cardToShortString(it) },
-                chosenAction = "EVALUATING_DISCARD",
-                reason = "Applying advanced discard strategy."
-            )
-        )
 
         // Si por alguna razón la mano está vacía, no se descarta nada.
         if (hand.isEmpty()) {
@@ -358,23 +296,6 @@ class AILogic @Inject constructor(
             adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(2) // Farol más probable si la mano no es malísima
             else -> GameAction.Paso
         }
-
-        logger.log(
-            DecisionLog(
-                decisionId = decisionId,
-                timestamp = System.currentTimeMillis(),
-                playerId = aiPlayer.id ?: aiPlayer.name ?: "unknown",
-                phase = phase.toString(),
-                hand = aiPlayer.hand.map { cardToShortString(it) },
-                strengths = mapOf("phaseScore" to adjustedStrength),
-                chosenAction = action.toString(),
-                reason = "Initial bet evaluated",
-                details = mapOf(
-                    "phaseScore" to adjustedStrength,
-                    "phaseLimit:" to ">85 o >60+15%random"
-                )
-            )
-        )
 
         return action
     }

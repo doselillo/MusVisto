@@ -6,9 +6,6 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.random.Random
 
-class TestAILogger : AILogger {
-    override fun log(decision: DecisionLog) { /* No hace nada */ }
-}
 
 class AILogicTest {
 
@@ -20,7 +17,7 @@ class AILogicTest {
     @Before
     fun setUp() {
         gameLogic = MusGameLogic { Random.Default }
-        aiLogic = AILogic(gameLogic, TestAILogger())
+        aiLogic = AILogic(gameLogic)
         testPlayer = Player(id = "ai1", name = "IA Test", team = "teamB", avatarResId = 0, isAi = true)
         opponentPlayer = Player(id = "p1", name = "Humano", team = "teamA", avatarResId = 0)
     }
