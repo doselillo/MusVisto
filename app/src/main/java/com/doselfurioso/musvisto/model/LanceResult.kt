@@ -1,6 +1,8 @@
 package com.doselfurioso.musvisto.model
 
-// Representa el resultado final de un lance en la ronda.
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class LanceResult(
     val lance: GamePhase,
     val outcome: String, // "Paso", "Querido", "No Querido"

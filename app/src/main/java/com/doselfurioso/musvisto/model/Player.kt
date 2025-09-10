@@ -1,5 +1,8 @@
 package com.doselfurioso.musvisto.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class Player(
     val id: String, // In the future, this will be the unique user ID
     val name: String,

@@ -1,14 +1,17 @@
 package com.doselfurioso.musvisto.model
 
-// Defines the game phases or "lances".
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+
+@Serializable
 enum class GamePhase {
     PRE_GAME, MUS, DISCARD, GRANDE, CHICA, PARES_CHECK, PARES, JUEGO_CHECK, JUEGO, ROUND_OVER, GAME_OVER
 }
-
+@Serializable
 enum class GameEvent {
     DISCARD_PILE_SHUFFLED
 }
-
+@Serializable
 data class GameState(
     val players: List<Player> = emptyList(),
     val deck: List<Card> = emptyList(),
@@ -17,7 +20,7 @@ data class GameState(
     val gamePhase: GamePhase = GamePhase.PRE_GAME,
     val isPuntoPhase: Boolean = false,
     val score: Map<String, Int> = mapOf("teamA" to 0, "teamB" to 0),
-    val availableActions: List<GameAction> = emptyList(),
+    @Transient val availableActions: List<GameAction> = emptyList(),
     val playersWhoPassed: Set<String> = emptySet(),
     val currentBet: BetInfo? = null,
     val agreedBets: Map<GamePhase, Int> = emptyMap(),
@@ -25,27 +28,39 @@ data class GameState(
     val selectedCardsForDiscard: Set<Card> = emptySet(),
     val winningTeam: String? = null,
     val manoPlayerId: String = "",
-    val lastAction: LastActionInfo? = null,
+    @Transient val lastAction: LastActionInfo? = null,
     val event: GameEvent? = null,
     val betInitiatorTeam: String? = null,
     val playersPendingResponse: List<String> = emptyList(),
     val revealAllHands: Boolean = false,
     val roundHistory: List<LanceResult> = emptyList(),
-    val actionLog: List<LastActionInfo> = emptyList(),
+    @Transient val actionLog: List<LastActionInfo> = emptyList(),
     val noMusPlayer: String? = null,
     val isNewLance: Boolean = true,
-    val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
-    val transientAction: LastActionInfo? = null,
+    @Transient val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
+    @Transient val transientAction: LastActionInfo? = null,
     val scoreBreakdown: ScoreBreakdown? = null,
-    val scoreEvents: List<Pair<String, ScoreDetail>> = emptyList(),
+    val scoreEvents: List<ScoreEventInfo> = emptyList(),
     val ordagoInfo: OrdagoInfo? = null,
-    val isSelectingBet: Boolean = false,
+    @Transient val isSelectingBet: Boolean = false,
+    val activeGesture: ActiveGestureInfo? = null,
     val playersInLance: Set<String> = emptySet()
 )
 
+@Serializable
 data class ScoreDetail(val reason: String, val points: Int)
+
+@Serializable
 data class ScoreBreakdown(
     val teamAScoreDetails: List<ScoreDetail> = emptyList(),
     val teamBScoreDetails: List<ScoreDetail> = emptyList()
 )
+
+@Serializable
 data class OrdagoInfo(val winnerId: String, val lance: GamePhase)
+
+@Serializable
+data class ActiveGestureInfo(val playerId: String, val gestureResId: Int)
+
+@Serializable
+data class ScoreEventInfo(val teamId: String, val detail: ScoreDetail)
