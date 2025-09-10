@@ -1,6 +1,7 @@
 package com.doselfurioso.musvisto.logic
 
 import android.util.Log
+import com.doselfurioso.musvisto.R
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,10 +44,17 @@ class AILogic @Inject constructor(
     // ---------------- Public entry point ----------------
     fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision {
         val decisionId = UUID.randomUUID().toString()
+        // 1. Evaluamos la fuerza base de la mano (como antes)
+        val baseStrength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
 
-        // --- CÁLCULO DEL RISK FACTOR ---
+        // 2. ¡NUEVO! Ajustamos la fuerza basándonos en las señas que la IA ve.
+        val gestureAdjustedStrength =
+            adjustStrengthsBasedOnGestures(baseStrength, gameState, aiPlayer)
+
+        // 3. Calculamos el factor de riesgo (como antes)
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
-        val scoreDifference = (gameState.score[aiPlayer.team] ?: 0) - (gameState.score[opponentTeam] ?: 0)
+        val scoreDifference =
+            (gameState.score[aiPlayer.team] ?: 0) - (gameState.score[opponentTeam] ?: 0)
         val riskFactor = when {
             scoreDifference < -20 -> 15  // Perdiendo por mucho: muy agresivo
             scoreDifference < -10 -> 10  // Perdiendo: algo agresivo
@@ -55,14 +63,13 @@ class AILogic @Inject constructor(
             else -> 0 // Marcador igualado: juego estándar
         }
 
-        // Evaluamos la fuerza base de la mano
-        val baseStrength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
+        // 4. APLICAMOS EL RISK FACTOR a las fuerzas ya ajustadas por las señas.
+        val adjustedGrande = (gestureAdjustedStrength.grande + riskFactor).coerceIn(0, 100)
+        val adjustedChica = (gestureAdjustedStrength.chica + riskFactor).coerceIn(0, 100)
+        val adjustedPares = (gestureAdjustedStrength.pares + riskFactor).coerceIn(0, 100)
+        val adjustedJuego = (gestureAdjustedStrength.juego + riskFactor).coerceIn(0, 100)
 
-        // APLICAMOS EL RISK FACTOR: Creamos la fuerza ajustada para cada lance
-        val adjustedGrande = (baseStrength.grande + riskFactor).coerceIn(0, 100)
-        val adjustedChica = (baseStrength.chica + riskFactor).coerceIn(0, 100)
-        val adjustedPares = (baseStrength.pares + riskFactor).coerceIn(0, 100)
-        val adjustedJuego = (baseStrength.juego + riskFactor).coerceIn(0, 100)
+        // --- FIN DE LA MODIFICACIÓN ---
 
         // Log (ahora incluye el risk factor y las fuerzas ajustadas)
         logger.log(
@@ -96,14 +103,57 @@ class AILogic @Inject constructor(
 
         // Si no, la IA toma la iniciativa
         return when (gameState.gamePhase) {
-            GamePhase.MUS -> AIDecision(decideMus(baseStrength, decisionId, aiPlayer, riskFactor)) // El Mus se decide con la fuerza base
+            GamePhase.MUS -> AIDecision(
+                decideMus(
+                    gestureAdjustedStrength,
+                    decisionId,
+                    aiPlayer,
+                    riskFactor
+                )
+            ) // El Mus se decide con la fuerza base
             GamePhase.DISCARD -> decideDiscard(aiPlayer, decisionId)
             GamePhase.PARES_CHECK -> AIDecision(if (baseStrength.pares > 0) GameAction.Tengo else GameAction.NoTengo)
             GamePhase.JUEGO_CHECK -> AIDecision(if (baseStrength.juego > 0) GameAction.Tengo else GameAction.NoTengo)
-            GamePhase.GRANDE -> AIDecision(decideInitialBet(adjustedGrande, decisionId, aiPlayer, GamePhase.GRANDE, gameState))
-            GamePhase.CHICA -> AIDecision(decideInitialBet(adjustedChica, decisionId, aiPlayer, GamePhase.CHICA, gameState))
-            GamePhase.PARES -> AIDecision(decideInitialBet(adjustedPares, decisionId, aiPlayer, GamePhase.PARES, gameState))
-            GamePhase.JUEGO -> AIDecision(decideInitialBet(adjustedJuego, decisionId, aiPlayer, GamePhase.JUEGO, gameState))
+            GamePhase.GRANDE -> AIDecision(
+                decideInitialBet(
+                    adjustedGrande,
+                    decisionId,
+                    aiPlayer,
+                    GamePhase.GRANDE,
+                    gameState
+                )
+            )
+
+            GamePhase.CHICA -> AIDecision(
+                decideInitialBet(
+                    adjustedChica,
+                    decisionId,
+                    aiPlayer,
+                    GamePhase.CHICA,
+                    gameState
+                )
+            )
+
+            GamePhase.PARES -> AIDecision(
+                decideInitialBet(
+                    adjustedPares,
+                    decisionId,
+                    aiPlayer,
+                    GamePhase.PARES,
+                    gameState
+                )
+            )
+
+            GamePhase.JUEGO -> AIDecision(
+                decideInitialBet(
+                    adjustedJuego,
+                    decisionId,
+                    aiPlayer,
+                    GamePhase.JUEGO,
+                    gameState
+                )
+            )
+
             else -> AIDecision(GameAction.Paso)
         }
     }
@@ -119,8 +169,10 @@ class AILogic @Inject constructor(
 
         // Lógica para responder a un ÓRDAGO (esta no cambia)
         if (gameState.currentBet?.isOrdago == true) {
-            val opponentTeam = if(aiPlayer.team == "teamA") "teamB" else "teamA"
-            if (adjustedStrength >= 95 || ((gameState.score[opponentTeam] ?: 0) - (gameState.score[aiPlayer.team] ?: 0) > 20)) {
+            val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+            if (adjustedStrength >= 95 || ((gameState.score[opponentTeam]
+                    ?: 0) - (gameState.score[aiPlayer.team] ?: 0) > 20)
+            ) {
                 return GameAction.Quiero
             } else {
                 return GameAction.NoQuiero
@@ -160,7 +212,10 @@ class AILogic @Inject constructor(
                 strengths = mapOf("phaseScore" to adjustedStrength, "advantage" to advantage),
                 chosenAction = action.toString(),
                 reason = "Response decision based on conservative advantage score",
-                details = mapOf("phase" to gameState.gamePhase.toString(), "currentBet" to currentBetAmount)
+                details = mapOf(
+                    "phase" to gameState.gamePhase.toString(),
+                    "currentBet" to currentBetAmount
+                )
             )
         )
 
@@ -179,10 +234,11 @@ class AILogic @Inject constructor(
         val juegoThreshold = 70 - riskFactor
         val paresThreshold = 65 - riskFactor
 
-        val action  = if (baseStrength.juego >= juegoThreshold ||
+        val action = if (baseStrength.juego >= juegoThreshold ||
             baseStrength.pares >= paresThreshold ||
             baseStrength.grande >= (85 - riskFactor) ||
-            baseStrength.chica >= (85 - riskFactor)) GameAction.NoMus else GameAction.Mus
+            baseStrength.chica >= (85 - riskFactor)
+        ) GameAction.NoMus else GameAction.Mus
 
         logger.log(
             DecisionLog(
@@ -280,6 +336,7 @@ class AILogic @Inject constructor(
 
         return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
     }
+
     // ---------------- Apuesta inicial (instrumentado) ----------------
     private fun decideInitialBet(
         adjustedStrength: Int,
@@ -297,7 +354,9 @@ class AILogic @Inject constructor(
             adjustedStrength > 90 -> GameAction.Envido(rng.nextInt(3) + 3)
             adjustedStrength > 75 -> GameAction.Envido(2)
             adjustedStrength > 55 && rng.nextInt(100) < 50 -> GameAction.Envido(2) // 50% de probabilidad
-            adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(2) // Farol más probable si la mano no es malísima
+            adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(
+                2
+            ) // Farol más probable si la mano no es malísima
             else -> GameAction.Paso
         }
 
@@ -311,7 +370,10 @@ class AILogic @Inject constructor(
                 strengths = mapOf("phaseScore" to adjustedStrength),
                 chosenAction = action.toString(),
                 reason = "Initial bet evaluated",
-                details = mapOf("phaseScore" to adjustedStrength, "phaseLimit:" to ">85 o >60+15%random")
+                details = mapOf(
+                    "phaseScore" to adjustedStrength,
+                    "phaseLimit:" to ">85 o >60+15%random"
+                )
             )
         )
 
@@ -358,8 +420,10 @@ class AILogic @Inject constructor(
         }
 
         // JUEGO
-        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
-        val playerPosition = orderedPlayers.indexOfFirst { it.id == player.id }.takeIf { it != -1 } ?: 0 // 0=mano, 3=postre
+        val orderedPlayers =
+            gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playerPosition = orderedPlayers.indexOfFirst { it.id == player.id }.takeIf { it != -1 }
+            ?: 0 // 0=mano, 3=postre
 
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         val baseStrength = when (juegoValue) {
@@ -436,5 +500,101 @@ class AILogic @Inject constructor(
         }
         val s = card.suit?.name?.firstOrNull()?.toString() ?: "?"
         return "$r$s"
+    }
+
+    private sealed class GestureMeaning {
+        data class Pares(val play: ParesPlay) : GestureMeaning()
+        data class Juego(val value: Int) : GestureMeaning()
+        object Ciega : GestureMeaning()
+    }
+
+    private fun getGestureMeaning(gestureResId: Int): GestureMeaning? {
+        return when (gestureResId) {
+            // Para las señas de pares, asumimos una jugada representativa fuerte.
+            R.drawable.duples_altos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.REY, Rank.REY))
+            R.drawable.duples_bajos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.SOTA, Rank.AS))
+            R.drawable.reyes_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.REY))
+            R.drawable.ases_2 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.AS))
+            R.drawable.reyes_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.REY))
+            R.drawable.ases_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.AS))
+
+            R.drawable.sena_31 -> GestureMeaning.Juego(31)
+            R.drawable.ciega -> GestureMeaning.Ciega
+
+            else -> null
+        }
+    }
+
+    private fun adjustStrengthsBasedOnGestures(
+        baseStrength: HandStrength,
+        gameState: GameState,
+        aiPlayer: Player
+    ): HandStrength {
+        val activeGesture = gameState.activeGesture ?: return baseStrength
+        val gesturerId = activeGesture.first
+        val gestureResId = activeGesture.second
+
+        if (gesturerId == aiPlayer.id) return baseStrength
+
+        val gesturer = gameState.players.find { it.id == gesturerId } ?: return baseStrength
+        val gestureMeaning = getGestureMeaning(gestureResId) ?: return baseStrength
+
+        var adjustedStrength = baseStrength
+
+        // CASO 1: LA SEÑA ES DE UN COMPAÑERO
+        if (gesturer.team == aiPlayer.team) {
+            adjustedStrength = when (gestureMeaning) {
+                is GestureMeaning.Pares -> baseStrength.copy(pares = 100)
+                is GestureMeaning.Juego -> baseStrength.copy(juego = 100)
+                is GestureMeaning.Ciega -> baseStrength
+            }
+            Log.d("AILogic", "IA (${aiPlayer.name}) vio seña del compañero. Confianza AUMENTADA.")
+        }
+        // CASO 2: LA SEÑA ES DE UN OPONENTE (INTERCEPCIÓN)
+        else {
+            if (rng.nextFloat() < 0.40f) { // 40% de probabilidad de interceptar
+                val myHand = aiPlayer.hand
+                val amIMano = gameState.manoPlayerId == aiPlayer.id
+                val isOpponentMano = gameState.manoPlayerId == gesturer.id
+
+                when (gestureMeaning) {
+                    is GestureMeaning.Juego -> {
+                        val myJuegoValue = gameLogic.getHandJuegoValue(myHand)
+                        if (gestureMeaning.value == 31) {
+                            if (myJuegoValue == 31 && amIMano) {
+                                Log.w("AILogic", "IA (${aiPlayer.name}) interceptó 31, pero tiene 31 y es MANO. ¡No se asusta!")
+                                adjustedStrength = baseStrength.copy(juego = 100)
+                            } else {
+                                Log.w("AILogic", "IA (${aiPlayer.name}) interceptó 31 y es VULNERABLE. Confianza REDUCIDA.")
+                                adjustedStrength = baseStrength.copy(juego = 0)
+                            }
+                        }
+                    }
+                    is GestureMeaning.Pares -> {
+                        val myParesPlay = gameLogic.getHandPares(myHand)
+                        val opponentParesPlay = gestureMeaning.play
+                        if (opponentParesPlay.strength > myParesPlay.strength) {
+                            adjustedStrength = baseStrength.copy(pares = 0)
+                        } else if (opponentParesPlay.strength == myParesPlay.strength && isOpponentMano) {
+                            adjustedStrength = baseStrength.copy(pares = 0)
+                        }
+                    }
+                    // --- INICIO DE LA LÓGICA CORREGIDA ---
+                    is GestureMeaning.Ciega -> {
+                        // Si el rival va ciego, es una oportunidad para ser más agresivo
+                        // en los lances de Grande y Chica, sabiendo que uno de los
+                        // oponentes tiene una mano probablemente débil en esos lances.
+                        // El bonus es moderado, porque su compañero aún puede tener una buena mano.
+                        Log.w("AILogic", "IA (${aiPlayer.name}) interceptó seña de CIEGA. Aumenta confianza en Grande y Chica.")
+                        adjustedStrength = baseStrength.copy(
+                            grande = (baseStrength.grande + 15).coerceIn(0, 100),
+                            chica = (baseStrength.chica + 15).coerceIn(0, 100)
+                        )
+                    }
+                    // --- FIN DE LA LÓGICA CORREGIDA ---
+                }
+            }
+        }
+        return adjustedStrength
     }
 }
