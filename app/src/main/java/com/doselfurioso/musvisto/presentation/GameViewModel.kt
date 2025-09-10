@@ -103,6 +103,16 @@ class GameViewModel @Inject constructor(
             }
         }
 
+        if (action is GameAction.TogglePauseMenu) {
+            _gameState.value = _gameState.value.copy(isPaused = !_gameState.value.isPaused)
+            return
+        }
+
+        if (_gameState.value.isPaused) {
+            // Permitimos que NewGame funcione incluso en pausa
+            if (action !is GameAction.NewGame) return
+        }
+
         if (action is GameAction.ShowGesture) {
             val player = _gameState.value.players.find { it.id == playerId } ?: return
             val gestureResId = determineGesture(player)

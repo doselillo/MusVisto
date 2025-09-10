@@ -44,7 +44,8 @@ data class GameState(
     val ordagoInfo: OrdagoInfo? = null,
     @Transient val isSelectingBet: Boolean = false,
     val activeGesture: ActiveGestureInfo? = null,
-    val playersInLance: Set<String> = emptySet()
+    val playersInLance: Set<String> = emptySet(),
+    @Transient val isPaused: Boolean = false
 )
 
 @Serializable

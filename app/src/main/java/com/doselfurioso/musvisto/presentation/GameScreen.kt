@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -98,6 +99,7 @@ fun GameScreen(
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
     val gameLogic: MusGameLogic = hiltViewModel<GameViewModel>().gameLogic
+
 
     BoxWithConstraints(
         modifier = Modifier
@@ -160,6 +162,20 @@ fun GameScreen(
 
             )
         }
+
+    Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+        if (gameState.isPaused) {
+            // Como estamos en GameScreen, tenemos acceso a todo lo necesario
+
+            PauseMenuOverlay(
+                onAction = gameViewModel::onAction,
+                humanPlayerId = gameViewModel.humanPlayerId,
+                dimensions = dimens
+            )
+        }
+    }
+
+
 
         if (gameState.players.size == 4) {
             val player = players[0]
@@ -331,6 +347,24 @@ fun GameScreen(
                         fontSize = dimens.fontSizeLarge
                     )
                 }
+
+                IconButton(
+                    onClick = { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
+                    modifier = Modifier
+                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor, start = 70.dp * scaleFactor)
+                        .align(Alignment.BottomStart) // Alineado arriba y al centro del área
+                        .size(50.dp * dimens.scaleFactor.value)
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_pause), // Cambia este icono por uno de pausa si lo tienes
+                        contentDescription = "Pausa",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(48.dp * scaleFactor)
+                    )
+                }
+
+
 
                 HorizontalPlayerArea(
                     player = player,
@@ -1362,6 +1396,50 @@ fun BetSelector(
                 }
                 Button(onClick = { onBet(betAmount) }) {
                     Text("¡Envidar!")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PauseMenuOverlay(
+    onAction: (GameAction, String) -> Unit,
+    humanPlayerId: String,
+    dimensions: ResponsiveDimens
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.8f))
+            .clickable(enabled = false, onClick = {}), // Bloquea los clics al juego
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier.padding(dimensions.defaultPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(dimensions.defaultPadding)
+            ) {
+                Text(
+                    text = "PAUSA",
+                    fontSize = dimensions.fontSizeLarge.times(1.5f),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                // Botón para reanudar el juego
+                Button(onClick = { onAction(GameAction.TogglePauseMenu, humanPlayerId) }) {
+                    Text("Reanudar", fontSize = dimensions.fontSizeMedium)
+                }
+                // Botón para empezar una nueva partida
+                Button(
+                    onClick = { onAction(GameAction.NewGame, humanPlayerId) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) {
+                    Text("Nueva Partida", fontSize = dimensions.fontSizeMedium)
                 }
             }
         }

@@ -36,6 +36,8 @@ sealed class GameAction(
 
     object ShowGesture : GameAction("Pasar Seña", ActionType.PASS, null)
 
+    object TogglePauseMenu : GameAction("Pausa", ActionType.PASS, R.drawable.ic_pause)
+
     data class LogAction(val text: String) : GameAction(text, ActionType.PASS, null)
 
 
