@@ -620,11 +620,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
         val currentPlayerId = currentState.currentTurnPlayerId ?: return currentState
         val currentIndex = players.indexOfFirst { it.id == currentPlayerId }
         if (currentIndex == -1) return currentState // Medida de seguridad
-
-        // --- INICIO DE LA CORRECCIÓN DEFINITIVA ---
-        // Para mover el turno en sentido antihorario (a la derecha) en una lista
-        // que representa los asientos en sentido horario, debemos iterar hacia ATRÁS en el array.
-        // Esta es la lógica correcta para el Mus.
+        
         for (i in 1 until players.size) {
             val nextIndex = (currentIndex - i + players.size) % players.size
             val nextPlayer = players[nextIndex]

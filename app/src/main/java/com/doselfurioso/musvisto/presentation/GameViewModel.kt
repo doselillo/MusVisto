@@ -34,26 +34,18 @@ class GameViewModel @Inject constructor(
     val humanPlayerId = "p1"
 
     init {
-        val savedGame = gameRepository.loadGameState()
-        if (savedGame != null) {
-            Log.d("GameViewModel", "Partida guardada encontrada. Cargando...")
-            _gameState.value = recalculateTransientState(savedGame)
-            handleAiTurn()
+        val savedData = gameRepository.loadState()
+        if (savedData != null) {
+            Log.d("GameViewModel", "Datos guardados encontrados. Reanudando con marcador.")
+            val score = mapOf("teamA" to savedData.teamAScore, "teamB" to savedData.teamBScore)
+            // Pasamos el ID del último "mano" para que la rotación continúe correctamente
+            startNewGame(score, savedData.lastManoPlayerId)
         } else {
-            Log.d("GameViewModel", "No se encontró partida guardada. Empezando una nueva.")
-            startNewGame(null)
+            Log.d("GameViewModel", "No se encontraron datos. Empezando partida nueva.")
+            // Empezamos una partida de cero, sin marcador ni mano previo
+            startNewGame(null, null)
         }
     }
-    private fun recalculateTransientState(loadedState: GameState): GameState {
-        val actions = when (loadedState.gamePhase) {
-            GamePhase.MUS -> listOf(GameAction.Mus, GameAction.NoMus)
-            GamePhase.DISCARD -> listOf(GameAction.ConfirmDiscard)
-            GamePhase.ROUND_OVER, GamePhase.GAME_OVER -> emptyList()
-            else -> listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-        }
-        return loadedState.copy(availableActions = actions)
-    }
-
 
     private fun dealManualHands(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
         // Define aquí las manos que quieres probar
@@ -137,12 +129,12 @@ class GameViewModel @Inject constructor(
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
-                startNewGame(_gameState.value)
+                startNewGame(currentState.score, currentState.manoPlayerId)
                 return
             }
             is GameAction.NewGame -> {
-                gameRepository.deleteGameState()
-                startNewGame(null)
+                gameRepository.deleteState() // Borra el estado guardado
+                startNewGame(null, null)     // Inicia una partida desde cero
                 return
             }
             else -> {
@@ -184,10 +176,19 @@ class GameViewModel @Inject constructor(
         )
         Log.d("MusVistoTest", "FINAL SCORE: $newScore")
 
+        val stateToSave = SaveState(
+            teamAScore = newScore["teamA"] ?: 0,
+            teamBScore = newScore["teamB"] ?: 0,
+            lastManoPlayerId = roundEndState.manoPlayerId
+        )
+
+        gameRepository.saveState(stateToSave)
+
         val scoreToWin = 40
         val winner = if (newScore["teamA"]!! >= scoreToWin) "teamA" else if (newScore["teamB"]!! >= scoreToWin) "teamB" else null
 
         if (winner != null) {
+            gameRepository.deleteState()
             _gameState.value = stateWithBreakdown.copy(
                 score = newScore,
                 gamePhase = GamePhase.GAME_OVER,
@@ -315,7 +316,6 @@ class GameViewModel @Inject constructor(
                 handleAiTurn()
             }
         }
-        gameRepository.saveGameState(newState)
     }
     private fun handleDeclarationSequence(currentState: GameState) {
         viewModelScope.launch {
@@ -353,56 +353,41 @@ class GameViewModel @Inject constructor(
     }
 
 
-    private fun startNewGame(previousState: GameState?) {
-        val score = previousState?.score ?: mapOf("teamA" to 0, "teamB" to 0)
+    private fun startNewGame(initialScore: Map<String, Int>?, lastManoPlayerId: String?) {
+        val score = initialScore ?: mapOf("teamA" to 0, "teamB" to 0)
 
-        // El orden de los jugadores en la lista es FIJO y representa su asiento en la mesa
-        val players = previousState?.players?.map { it.copy(hand = emptyList()) } ?: listOf(
-            Player(id = "p1", name = "Ana", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-            Player(id = "p4", name = "Luis", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-            Player(id = "p3", name = "Sara", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-            Player(id = "p2", name = "Juan", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
-        )
+        val players = _gameState.value.players.ifEmpty {
+            listOf(
+                Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
+                Player(id = "p4", name = "Rival Der.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+                Player(id = "p3", name = "Compañero", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
+                Player(id = "p2", name = "Rival Izq.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
+            )
+        }
 
-        // Se calcula la nueva "mano" rotando desde la anterior
-        val newManoId = previousState?.let {
-            val lastManoIndex = it.players.indexOfFirst { p -> p.id == it.manoPlayerId }.takeIf { it != -1 } ?: -1
+        val newManoId = if (lastManoPlayerId != null) {
+            val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }
             val nextManoIndex = (lastManoIndex - 1 + players.size) % players.size
             players[nextManoIndex].id
-        } ?: players.first().id // Para la primera partida, la mano es p1
-
+        } else {
+            players.first().id // Para la primera partida de todas
+        }
 
         val initialDeck = gameLogic.createDeck()
         val shuffledDeck = gameLogic.shuffleDeck(initialDeck)
 
-        // Se reparten las cartas
-        val (updatedPlayers, remainingDeck) = if (manualDealingEnabled) {
-            dealManualHands(players, shuffledDeck)
-        } else {
-            gameLogic.dealCards(players, shuffledDeck, newManoId)
-        }
-        // Se crea el nuevo estado del juego
+        val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
+
         _gameState.value = GameState(
             players = updatedPlayers,
             deck = remainingDeck,
             score = score,
             manoPlayerId = newManoId,
-            currentTurnPlayerId = newManoId, // <-- La ronda EMPIEZA con la mano
+            currentTurnPlayerId = newManoId,
             gamePhase = GamePhase.MUS,
-            availableActions = listOf(GameAction.Mus, GameAction.NoMus),
-            lastAction = null,
-            playersWhoPassed = emptySet(),
-            currentBet = null,
-            agreedBets = emptyMap(),
-            isPuntoPhase = false,
-            discardCounts = emptyMap(),
-            selectedCardsForDiscard = emptySet(),
-            revealAllHands = false,
-            roundHistory = emptyList(),
-            scoreEvents = emptyList(),
-            actionLog = emptyList()
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
-        // Inmediatamente después de establecer el estado, comprobamos si le toca a una IA
+
         handleAiTurn()
         triggerAiGestures()
     }

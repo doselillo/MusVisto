@@ -205,28 +205,28 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 16.dp * scaleFactor, top = 208.dp * scaleFactor)
+                    .padding(start = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
             ) {
                 ActionAnnouncement(rivalLeft, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 16.dp * scaleFactor, top = 208.dp * scaleFactor)
+                    .padding(end = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
             ) {
                 ActionAnnouncement(rivalRight, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 40.dp * scaleFactor, top = 144.dp * scaleFactor)
+                    .padding(start = 40.dp * scaleFactor, top = 170.dp * scaleFactor)
             ) {
                 ActionAnnouncement(partner, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 32.dp * scaleFactor, bottom = 192.dp * scaleFactor)
+                    .padding(start = 32.dp * scaleFactor, bottom = 240.dp * scaleFactor)
             ) {
                 ActionAnnouncement(player, gameState, dimens)
             }
