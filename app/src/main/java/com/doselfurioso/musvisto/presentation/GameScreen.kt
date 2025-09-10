@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -98,7 +99,6 @@ fun GameScreen(
     val players = gameState.players
     val gameLogic: MusGameLogic = hiltViewModel<GameViewModel>().gameLogic
 
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -139,7 +139,7 @@ fun GameScreen(
             ResponsiveDimens(
                 // Ahora usamos este nuevo `scaleFactor` más equilibrado.
                 // Podemos ser un poco más generosos con los límites de `coerceIn`.
-                cardWidth = (100.dp * scaleFactor * scaleFactor).coerceIn(70.dp, 120.dp),
+                cardWidth = (300.dp * scaleFactor * scaleFactor).coerceIn(70.dp, 120.dp),
                 cardAspectRatio = 0.7f,
                 avatarSize = (85.dp * scaleFactor).coerceIn(40.dp, 100.dp),
                 handArcTranslationX = (150f * scaleFactor),
@@ -205,28 +205,28 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = dimens.smallPadding * 2, top = dimens.defaultPadding * 6.5f)
+                    .padding(start = 16.dp * scaleFactor, top = 208.dp * scaleFactor)
             ) {
                 ActionAnnouncement(rivalLeft, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = dimens.smallPadding * 2, top = dimens.defaultPadding * 6.5f)
+                    .padding(end = 16.dp * scaleFactor, top = 208.dp * scaleFactor)
             ) {
                 ActionAnnouncement(rivalRight, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = dimens.smallPadding * 4, top = dimens.defaultPadding * 4.5f)
+                    .padding(start = 40.dp * scaleFactor, top = 144.dp * scaleFactor)
             ) {
                 ActionAnnouncement(partner, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = dimens.smallPadding * 4, bottom = dimens.defaultPadding * 6)
+                    .padding(start = 32.dp * scaleFactor, bottom = 192.dp * scaleFactor)
             ) {
                 ActionAnnouncement(player, gameState, dimens)
             }
@@ -234,7 +234,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 32.dp)
+                    .padding(top = 80.dp * dimens.scaleFactor.value)
             ) {
                 HorizontalPlayerArea(
                     player = partner,
@@ -259,7 +259,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = dimens.smallPadding, bottom = dimens.sidePlayerVerticalOffset)
+                    .padding(start = dimens.defaultPadding * scaleFactor, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalLeft,
@@ -287,7 +287,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = dimens.smallPadding, bottom = dimens.sidePlayerVerticalOffset)
+                    .padding(end = dimens.defaultPadding * scaleFactor, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalRight,
@@ -314,14 +314,16 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
+                    .padding(bottom = 48.dp * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
             ) {
                 IconButton(
                     onClick = { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
                     modifier = Modifier
+                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor)
                         .align(Alignment.BottomStart) // Alineado arriba y al centro del área
                         .size(50.dp * dimens.scaleFactor.value)
                         .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+
                 ) {
                     Text(
                         text = "Seña",
@@ -668,7 +670,7 @@ fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- A
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .width(dimens.cardWidth * dimens.scaleFactor.value)
+            .width(dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
@@ -692,7 +694,7 @@ private fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier
-            .width(dimens.cardWidth * dimens.scaleFactor.value)
+            .width(dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
