@@ -1,15 +1,18 @@
 package com.doselfurioso.musvisto.model
 
-// Defines the suits and ranks of the Spanish deck.
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class Suit {
     OROS, COPAS, ESPADAS, BASTOS
 }
 
+@Serializable
 enum class Rank(val value: Int) {
     AS(1), DOS(1), TRES(12), CUATRO(4),
     CINCO(5), SEIS(6), SIETE(7), SOTA(10),
     CABALLO(11), REY(12)
 }
 
-// The data class for a single card.
+@Serializable
 data class Card(val suit: Suit, val rank: Rank)

@@ -531,8 +531,8 @@ class AILogic @Inject constructor(
         aiPlayer: Player
     ): HandStrength {
         val activeGesture = gameState.activeGesture ?: return baseStrength
-        val gesturerId = activeGesture.first
-        val gestureResId = activeGesture.second
+        val gesturerId = activeGesture.playerId
+        val gestureResId = activeGesture.gestureResId
 
         if (gesturerId == aiPlayer.id) return baseStrength
 

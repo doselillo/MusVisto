@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -38,9 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -55,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
+import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.BetInfo
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
@@ -976,7 +974,7 @@ fun VerticalPlayerArea(
     isMano: Boolean,
     handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
-    activeGesture: Pair<String, Int>?,
+    activeGesture: ActiveGestureInfo?,
     dimens: ResponsiveDimens
 
 ) {
@@ -988,7 +986,7 @@ fun VerticalPlayerArea(
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
-            activeGestureResId = if (activeGesture?.first == player.id) activeGesture.second else null,)
+            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,)
         handContent()
     }
 }
@@ -1000,14 +998,14 @@ fun HorizontalPlayerArea(
     isMano: Boolean,
     handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
-    activeGesture: Pair<String, Int>?,
+    activeGesture: ActiveGestureInfo?,
     dimens: ResponsiveDimens
 ) {
     Row(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens,activeGestureResId = if (activeGesture?.first == player.id) activeGesture.second else null)
+        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens,activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }

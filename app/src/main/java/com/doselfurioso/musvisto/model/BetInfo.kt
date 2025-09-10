@@ -1,5 +1,8 @@
 package com.doselfurioso.musvisto.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class BetInfo(
     val amount: Int,
     val bettingPlayerId: String,

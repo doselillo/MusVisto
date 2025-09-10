@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +19,8 @@ import javax.inject.Inject
 @HiltViewModel
 class GameViewModel @Inject constructor(
     internal val gameLogic: MusGameLogic,
-    private val aiLogic: AILogic
+    private val aiLogic: AILogic,
+    private val gameRepository: GameRepository
 ) : ViewModel() {
 
     private val manualDealingEnabled = true
@@ -32,8 +34,26 @@ class GameViewModel @Inject constructor(
     val humanPlayerId = "p1"
 
     init {
-        startNewGame(null)
+        val savedGame = gameRepository.loadGameState()
+        if (savedGame != null) {
+            Log.d("GameViewModel", "Partida guardada encontrada. Cargando...")
+            _gameState.value = recalculateTransientState(savedGame)
+            handleAiTurn()
+        } else {
+            Log.d("GameViewModel", "No se encontró partida guardada. Empezando una nueva.")
+            startNewGame(null)
+        }
     }
+    private fun recalculateTransientState(loadedState: GameState): GameState {
+        val actions = when (loadedState.gamePhase) {
+            GamePhase.MUS -> listOf(GameAction.Mus, GameAction.NoMus)
+            GamePhase.DISCARD -> listOf(GameAction.ConfirmDiscard)
+            GamePhase.ROUND_OVER, GamePhase.GAME_OVER -> emptyList()
+            else -> listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        }
+        return loadedState.copy(availableActions = actions)
+    }
+
 
     private fun dealManualHands(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
         // Define aquí las manos que quieres probar
@@ -96,17 +116,17 @@ class GameViewModel @Inject constructor(
             val gestureResId = determineGesture(player)
 
             // Si el jugador ya tiene una seña activa, la quitamos
-            if (_gameState.value.activeGesture?.first == playerId) {
+            if (_gameState.value.activeGesture?.playerId == playerId) {
                 _gameState.value = _gameState.value.copy(activeGesture = null)
                 return
             }
 
             if (gestureResId != null) {
                 viewModelScope.launch {
-                    _gameState.value = _gameState.value.copy(activeGesture = Pair(playerId, gestureResId))
+                    _gameState.value = _gameState.value.copy(activeGesture = ActiveGestureInfo(playerId, gestureResId))
                     delay(250) // Duración de la seña
                     // Solo quitamos la seña si sigue siendo la misma que activamos
-                    if (_gameState.value.activeGesture?.first == playerId) {
+                    if (_gameState.value.activeGesture?.playerId == playerId) {
                         _gameState.value = _gameState.value.copy(activeGesture = null)
                     }
                 }
@@ -121,6 +141,7 @@ class GameViewModel @Inject constructor(
                 return
             }
             is GameAction.NewGame -> {
+                gameRepository.deleteGameState()
                 startNewGame(null)
                 return
             }
@@ -294,6 +315,7 @@ class GameViewModel @Inject constructor(
                 handleAiTurn()
             }
         }
+        gameRepository.saveGameState(newState)
     }
     private fun handleDeclarationSequence(currentState: GameState) {
         viewModelScope.launch {

@@ -1,12 +1,14 @@
 package com.doselfurioso.musvisto.model
 
 import com.doselfurioso.musvisto.R // Importa tus recursos
+import kotlinx.serialization.Serializable
 
 // Un enum para definir el tipo de color del botón
 enum class ActionType {
     PASS, BET, CONFIRM, DENY, ULTIMATE, DISCARD
 }
 
+@Serializable
 sealed class GameAction(
     val displayText: String,
     val actionType: ActionType,
