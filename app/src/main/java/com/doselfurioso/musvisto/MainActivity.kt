@@ -10,8 +10,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.viewModels
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.doselfurioso.musvisto.presentation.GameScreen
 import com.doselfurioso.musvisto.presentation.GameViewModel
+import com.doselfurioso.musvisto.presentation.GesturesScreen
+import com.doselfurioso.musvisto.presentation.MainMenuScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -23,10 +28,29 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            // Here we tell the activity to display our GameScreen
-            GameScreen()
+            MusVistoTheme {
+                AppNavigation()
+            }
         }
 
+    }
+}
+
+
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "main_menu") {
+        composable("main_menu") {
+            MainMenuScreen(navController = navController)
+        }
+        composable("game_screen") {
+            GameScreen() // Hilt se encarga de proveer el ViewModel aquí
+        }
+        composable("gestures_screen") {
+            GesturesScreen(navController = navController)
+        }
     }
 }
 
@@ -45,3 +69,4 @@ fun GreetingPreview() {
         Greeting("Android")
     }
 }
+

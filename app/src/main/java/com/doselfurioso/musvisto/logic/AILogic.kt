@@ -346,17 +346,16 @@ class AILogic @Inject constructor(
         gameState: GameState // Necesitamos el estado del juego
     ): GameAction {
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val pointDifference = (gameState.score[aiPlayer.team] ?: 0) - (gameState.score[opponentTeam] ?: 0)
         val opponentScore = gameState.score[opponentTeam] ?: 0
-        if (adjustedStrength > 98 && opponentScore > 30) {
+        if (adjustedStrength > 98 && opponentScore > 30 && pointDifference > 6 + rng.nextInt(-2, 2)) {
             return GameAction.Órdago
         }
         val action = when {
             adjustedStrength > 90 -> GameAction.Envido(rng.nextInt(3) + 3)
             adjustedStrength > 75 -> GameAction.Envido(2)
             adjustedStrength > 55 && rng.nextInt(100) < 50 -> GameAction.Envido(2) // 50% de probabilidad
-            adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(
-                2
-            ) // Farol más probable si la mano no es malísima
+            adjustedStrength > 40 && rng.nextInt(100) < (5 + (adjustedStrength / 5)) -> GameAction.Envido(2) // Farol más probable si la mano no es malísima
             else -> GameAction.Paso
         }
 
@@ -382,27 +381,36 @@ class AILogic @Inject constructor(
 
     // ---------------- Evaluación de mano ----------------
     private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): HandStrength {
-        // GRANDE: preferimos 3 y Rey
+        if (hand.isEmpty()) return HandStrength(0, 0, 0, 0)
+
         val topCardsCount = hand.count { it.rank.value == 12 } // Reyes
+        val sortedHand = hand.sortedByDescending { it.rank.value }
         var grandeStrength = when (topCardsCount) {
             0 -> hand.maxOf { it.rank.value } * 4 // Si no hay reyes, puntúa bajo
-            1 -> 50 + hand.maxOf { it.rank.value } // Con un rey, es decente
-            2 -> 70 + hand.maxOf { it.rank.value } // Con dos, es fuerte
+            1 -> 40 + hand.maxOf { it.rank.value } // Con un rey, es decente
+            2 -> 65 + hand.maxOf { it.rank.value } // Con dos, es fuerte
             3 -> 90 // Con tres, es muy fuerte
             4 -> 100 // Con cuatro, es casi seguro ganar
             else -> 0
+        }
+        if (topCardsCount < 2) {
+            grandeStrength += (sortedHand.first().rank.value * 2)
         }
 
         // CHICA: Lógica mejorada que valora múltiples cartas bajas
         val lowCardsCount = hand.count { it.rank.value == 1 } // Ases y Doses
         var chicaStrength = when (lowCardsCount) {
             0 -> (12 - hand.minOf { it.rank.value }) * 4 // Sin Ases/Doses, puntúa bajo
-            1 -> 60 + (5 - hand.minOf { it.rank.value }) // Con una, es decente
-            2 -> 80 // Con dos, es fuerte
-            3 -> 95 // Con tres, es muy fuerte
+            1 -> 40 + (5 - hand.minOf { it.rank.value }) // Con una, es decente
+            2 -> 65 // Con dos, es fuerte
+            3 -> 90 // Con tres, es muy fuerte
             4 -> 100 // Con cuatro, es imbatible
             else -> 0
         }
+        if (lowCardsCount < 2) {
+            chicaStrength += ((12 - sortedHand.last().rank.value) * 1.5).toInt()
+        }
+
         // PARES: reutiliza lógica de gameLogic si existe
         val paresPlay = gameLogic.getHandPares(hand)
         val paresStrength = when (paresPlay) {

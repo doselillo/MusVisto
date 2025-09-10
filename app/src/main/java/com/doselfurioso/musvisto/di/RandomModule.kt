@@ -1,4 +1,6 @@
-package com.doselillo.musvisto.di
+/*
+
+package com.doselfurioso.musvisto.di
 
 import dagger.Module
 import dagger.Provides
@@ -17,3 +19,5 @@ object RandomModule {
         return Random(System.currentTimeMillis())
     }
 }
+
+ */
