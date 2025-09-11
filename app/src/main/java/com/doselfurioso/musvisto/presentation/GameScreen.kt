@@ -232,14 +232,14 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 40.dp * scaleFactor, top = 170.dp * scaleFactor)
+                    .padding(start = 24.dp * scaleFactor, top = 170.dp * scaleFactor)
             ) {
                 ActionAnnouncement(partner, gameState, dimens)
             }
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 32.dp * scaleFactor, bottom = 240.dp * scaleFactor)
+                    .padding(start = 32.dp * scaleFactor, bottom = 250.dp * scaleFactor)
             ) {
                 ActionAnnouncement(player, gameState, dimens)
             }
@@ -348,7 +348,7 @@ fun GameScreen(
                 IconButton(
                     onClick = { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
                     modifier = Modifier
-                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor, start = 70.dp * scaleFactor)
+                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor, start = 80.dp * scaleFactor)
                         .align(Alignment.BottomStart) // Alineado arriba y al centro del área
                         .size(50.dp * dimens.scaleFactor.value)
                         .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
@@ -701,7 +701,7 @@ fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- A
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .width(dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value)
+            .width((dimens.cardWidth - 10.dp)* dimens.scaleFactor.value * dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
             .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
@@ -725,7 +725,7 @@ private fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier
-            .width(dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value)
+            .width((dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value) + 10.dp)
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
@@ -791,8 +791,8 @@ private fun PlayerAvatar(
                 tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(24.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .size(dimens.avatarSize / 3)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
                     .padding(4.dp)
             )
         }
@@ -805,7 +805,7 @@ private fun PlayerAvatar(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .size(dimens.avatarSize / 3)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
                     .padding(4.dp)
             )
         }
@@ -875,20 +875,20 @@ fun ActionAnnouncement(
     ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
-            modifier = Modifier.padding(8.dp * dimens.scaleFactor.value)
+            modifier = Modifier.padding(4.dp * dimens.scaleFactor.value)
         ) {
             if (actionToShow?.action is GameAction.ConfirmDiscard) Text(
                 text = ("Dame ${gameState.discardCounts[player.id]}"),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 16.dp * dimens.scaleFactor.value, vertical = 8.dp * dimens.scaleFactor.value)
+                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor.value, vertical = 1.dp * dimens.scaleFactor.value)
             ) else Text(
                 text = actionToShow?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 16.dp * dimens.scaleFactor.value, vertical = 8.dp * dimens.scaleFactor.value)
+                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor.value, vertical = 1.dp * dimens.scaleFactor.value)
             )
         }
     }
