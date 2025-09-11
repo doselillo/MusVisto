@@ -1,91 +1,144 @@
-// En presentation/MainMenuScreen.kt
+// Ubicación: app/src/main/java/com/doselfurioso/musvisto/presentation/MainMenuScreen.kt
+
 package com.doselfurioso.musvisto.presentation
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.compose.runtime.getValue
-
+import com.doselfurioso.musvisto.R
 
 @Composable
 fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
-
     val hasSavedGame by viewModel.hasSavedGame.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.checkSavedGame()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    // Definimos los colores del tema del juego para reutilizarlos
+    val gameGreenBackground = Color(0xFF006A4E)
+    val buttonGreenColor = Color(0xFF6A994E)
+    val titleColor = Color.White
+
+    // Usamos un Box para poder poner una imagen de fondo si quisiéramos en el futuro
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Mus Visto",
-            fontSize = 40.sp,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.headlineLarge
-        )
-        Spacer(modifier = Modifier.height(64.dp))
+        // Fondo de color verde tapete
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = gameGreenBackground
+        ) {}
 
-        // --- LÓGICA DE BOTONES CONDICIONALES ---
-        if (hasSavedGame) {
-            // Si hay partida guardada, mostramos "Continuar" y "Nueva Partida"
-            Button(
-                onClick = { navController.navigate("game_screen") },
-                modifier = Modifier.fillMaxWidth(0.7f).height(50.dp)
-            ) {
-                Text("Continuar", fontSize = 18.sp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                contentDescription = "Logo de Mus Visto",
+                modifier = Modifier.size(120.dp)
+            )
+
+            Text(
+                text = "Mus Visto",
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Bold,
+                color = titleColor, // Texto en color blanco
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(64.dp))
+
+            // Lógica de botones condicionales con el nuevo estilo
+            if (hasSavedGame) {
+                // Si hay partida guardada
+                StyledMenuButton(
+                    text = "Continuar",
+                    onClick = { navController.navigate("game_screen") }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                StyledMenuButton(
+                    text = "Nueva Partida",
+                    onClick = {
+                        viewModel.startNewGame()
+                        navController.navigate("game_screen")
+                    }
+                )
+            } else {
+                // Si no hay partida guardada
+                StyledMenuButton(
+                    text = "Jugar",
+                    onClick = { navController.navigate("game_screen") }
+                )
             }
+
             Spacer(modifier = Modifier.height(16.dp))
+
+            StyledMenuButton(
+                text = "Ver Señas",
+                onClick = { navController.navigate("gestures_screen") }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Botón de opciones deshabilitado con estilo coherente
+            /*
             Button(
-                onClick = {
-                    viewModel.startNewGame() // Borra los datos guardados
-                    navController.navigate("game_screen")
-                },
-                modifier = Modifier.fillMaxWidth(0.7f).height(50.dp)
+                onClick = { /* Próximamente */ },
+                enabled = false,
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .height(50.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = Color.DarkGray.copy(alpha = 0.5f),
+                    disabledContentColor = Color.White.copy(alpha = 0.7f)
+                )
             ) {
-                Text("Nueva Partida", fontSize = 18.sp)
+                Text("Opciones", fontSize = 18.sp)
             }
-        } else {
-            // Si no hay partida, solo mostramos "Jugar"
-            Button(
-                onClick = { navController.navigate("game_screen") },
-                modifier = Modifier.fillMaxWidth(0.7f).height(50.dp)
-            ) {
-                Text("Jugar", fontSize = 18.sp)
-            }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { navController.navigate("gestures_screen") },
-            modifier = Modifier.fillMaxWidth(0.7f).height(50.dp)
-        ) {
-            Text("Ver Señas", fontSize = 18.sp)
+             */
         }
-        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
 
-        Button(
-            onClick = { /* Próximamente */ },
-            enabled = false,
-            modifier = Modifier.fillMaxWidth(0.7f).height(50.dp)
-        ) {
-            Text("Opciones", fontSize = 18.sp)
-        }
+// Creamos un Composable reutilizable para los botones del menú y mantener el código limpio
+@Composable
+private fun StyledMenuButton(text: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth(0.7f)
+            .height(50.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF6A994E), // Verde del botón de "Mus"
+            contentColor = Color.White
+        )
+    ) {
+        Text(text, fontSize = 18.sp)
     }
 }
