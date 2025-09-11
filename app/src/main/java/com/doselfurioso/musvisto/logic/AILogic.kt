@@ -3,8 +3,6 @@ package com.doselfurioso.musvisto.logic
 import android.util.Log
 import com.doselfurioso.musvisto.R
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
@@ -26,11 +24,11 @@ data class AIDecision(val action: GameAction, val cardsToDiscard: Set<Card> = em
  *
  * Si tu GameAction.Discard usa otro formato, adapta el retorno en decideDiscard.
  */
-@Singleton
-class AILogic @Inject constructor(
+
+class AILogic constructor(
     private val gameLogic: MusGameLogic,
     /** Inyectable para tests; por defecto Random.Default */
-    private val rng: kotlin.random.Random = kotlin.random.Random.Default
+    private val rng: kotlin.random.Random
 ) {
 
     private data class HandStrength(
@@ -249,7 +247,7 @@ class AILogic @Inject constructor(
                 2 -> score += 40
             }
             if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
-            if (card.rank.value in 4..7 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
+            if (card.rank.value in 4..11 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
             cardScores[card] = score
         }
 

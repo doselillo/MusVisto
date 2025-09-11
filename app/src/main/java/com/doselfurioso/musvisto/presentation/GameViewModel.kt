@@ -8,16 +8,14 @@ import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class GameViewModel @Inject constructor(
+
+class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
     private val aiLogic: AILogic,
     private val gameRepository: GameRepository

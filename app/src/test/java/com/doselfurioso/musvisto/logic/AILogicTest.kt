@@ -16,8 +16,13 @@ class AILogicTest {
 
     @Before
     fun setUp() {
-        gameLogic = MusGameLogic { Random.Default }
-        aiLogic = AILogic(gameLogic)
+        // Creamos las dependencias que necesitan las clases bajo test
+        val random = Random.Default
+        gameLogic = MusGameLogic(random)
+
+        // Ahora instanciamos AILogic con todas sus dependencias
+        aiLogic = AILogic(gameLogic, random)
+
         testPlayer = Player(id = "ai1", name = "IA Test", team = "teamB", avatarResId = 0, isAi = true)
         opponentPlayer = Player(id = "p1", name = "Humano", team = "teamA", avatarResId = 0)
     }

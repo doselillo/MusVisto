@@ -40,7 +40,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,8 +48,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
@@ -93,12 +90,12 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun GameScreen(
-    gameViewModel: GameViewModel = viewModel()
-) {
+    gameViewModel: GameViewModel
+){
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
-    val gameLogic: MusGameLogic = hiltViewModel<GameViewModel>().gameLogic
+    val gameLogic: MusGameLogic = gameViewModel.gameLogic
 
 
     BoxWithConstraints(

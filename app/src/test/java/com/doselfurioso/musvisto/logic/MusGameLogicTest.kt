@@ -22,7 +22,7 @@ class MusGameLogicTest {
         // Para los tests, creamos un proveedor simple que devuelve una instancia estándar de Random.
         // Esto soluciona el error `TODO()` que hacía que todos los tests fallaran.
         val randomProvider = Provider<Random> { Random.Default }
-        gameLogic = MusGameLogic(randomProvider)
+        gameLogic = MusGameLogic(Random.Default)
 
         players = listOf(
             Player(id = "p1", name = "Ana", team = "teamA", avatarResId = 0),

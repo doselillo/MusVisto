@@ -2,12 +2,10 @@ package com.doselfurioso.musvisto.logic
 
 import android.util.Log
 import com.doselfurioso.musvisto.model.*
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.random.Random
 
-@Singleton
-class MusGameLogic @Inject constructor(private val random: javax.inject.Provider<Random>){
+
+class MusGameLogic constructor(private val random: Random){
 
 
     // Creates a standard 40-card Spanish deck.
@@ -21,7 +19,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
 
     // Shuffles the deck randomly.
     fun shuffleDeck(deck: List<Card>): List<Card> {
-        return deck.shuffled(random.get())
+        return deck.shuffled(random)
     }
 
     fun dealCards(players: List<Player>, deck: List<Card>, manoId: String): Pair<List<Player>, List<Card>> {
@@ -656,7 +654,7 @@ class MusGameLogic @Inject constructor(private val random: javax.inject.Provider
             Log.d("MusVistoTest", "Deck empty! Shuffling discard pile of ${discardPile.size} cards.")
             event = GameEvent.DISCARD_PILE_SHUFFLED
             val fromOldDeck = deck
-            deck = discardPile.shuffled(random.get())
+            deck = discardPile.shuffled(random)
             discardPile = emptyList()
             val neededFromNewDeck = cardsNeeded - fromOldDeck.size
             newCards = fromOldDeck + deck.take(neededFromNewDeck)
