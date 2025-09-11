@@ -367,9 +367,9 @@ class GameViewModel constructor(
         val players = _gameState.value.players.ifEmpty {
             listOf(
                 Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-                Player(id = "p4", name = "Rival Der.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+                Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
                 Player(id = "p3", name = "Compañero", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-                Player(id = "p2", name = "Rival Izq.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
+                Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
             )
         }
 
