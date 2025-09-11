@@ -20,10 +20,25 @@ import com.doselfurioso.musvisto.presentation.GameScreen
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
 import com.doselfurioso.musvisto.presentation.MainMenuScreen
+import com.doselfurioso.musvisto.presentation.MainMenuViewModel
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
+
+    private val gameRepository by lazy { GameRepository(applicationContext) }
+
+    private val mainMenuViewModelFactory by lazy {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(MainMenuViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return MainMenuViewModel(gameRepository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+    }
 
     private val gameViewModelFactory by lazy {
         object : ViewModelProvider.Factory {
@@ -46,22 +61,28 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MusVistoTheme {
-                AppNavigation(factory = gameViewModelFactory)
+                AppNavigation(factory = gameViewModelFactory,
+                    mainMenuFactory = mainMenuViewModelFactory)
             }
         }
     }
 }
 
 @Composable
-fun AppNavigation(factory: ViewModelProvider.Factory) {
+fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewModelProvider.Factory) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "main_menu") {
         composable("main_menu") {
-            MainMenuScreen(navController = navController)
+            MainMenuScreen(
+                navController = navController,
+                viewModel = viewModel(factory = mainMenuFactory)
+            )
         }
         composable("game_screen") {
             // Esta línea ahora funcionará porque las dependencias de 'viewModel' están en el proyecto
-            GameScreen(gameViewModel = viewModel(factory = factory))
+            GameScreen(gameViewModel = viewModel(factory = factory),
+                navController = navController,
+            )
         }
         composable("gestures_screen") {
             GesturesScreen(navController = navController)

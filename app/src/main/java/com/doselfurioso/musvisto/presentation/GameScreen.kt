@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.navigation.NavController
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
@@ -90,7 +90,8 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun GameScreen(
-    gameViewModel: GameViewModel
+    gameViewModel: GameViewModel,
+    navController: NavController
 ){
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
@@ -162,9 +163,8 @@ fun GameScreen(
 
     Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
         if (gameState.isPaused) {
-            // Como estamos en GameScreen, tenemos acceso a todo lo necesario
-
             PauseMenuOverlay(
+                navController = navController,
                 onAction = gameViewModel::onAction,
                 humanPlayerId = gameViewModel.humanPlayerId,
                 dimensions = dimens
@@ -1401,6 +1401,7 @@ fun BetSelector(
 
 @Composable
 fun PauseMenuOverlay(
+    navController: NavController,
     onAction: (GameAction, String) -> Unit,
     humanPlayerId: String,
     dimensions: ResponsiveDimens
@@ -1437,6 +1438,13 @@ fun PauseMenuOverlay(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
                 ) {
                     Text("Nueva Partida", fontSize = dimensions.fontSizeMedium)
+                }
+
+                Button(
+                    onClick = { navController.popBackStack() }, // Vuelve a la pantalla anterior (el menú)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                ) {
+                    Text("Volver al Menú", fontSize = dimensions.fontSizeMedium)
                 }
             }
         }
