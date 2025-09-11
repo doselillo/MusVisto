@@ -56,17 +56,9 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.ic_app),
                 contentDescription = "Logo de Mus Visto",
                 modifier = Modifier.size(120.dp)
-            )
-
-            Text(
-                text = "Mus Visto",
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold,
-                color = titleColor, // Texto en color blanco
-                modifier = Modifier.padding(top = 8.dp)
             )
 
             Spacer(modifier = Modifier.height(64.dp))
@@ -97,7 +89,7 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             StyledMenuButton(
-                text = "Ver Señas",
+                text = "Señas",
                 onClick = { navController.navigate("gestures_screen") }
             )
 

@@ -199,7 +199,7 @@ fun GameScreen(
                     else -> gameState.availableActions
                 }
             }
-
+/*
             IconButton(
                 onClick = { gameViewModel.onToggleDebugMode() },
                 modifier = Modifier
@@ -213,6 +213,8 @@ fun GameScreen(
                     tint = Color.White.copy(alpha = 0.7f),
                 )
             }
+
+ */
 
             // --- ANUNCIOS DE ACCIÓN ---
             Box(
