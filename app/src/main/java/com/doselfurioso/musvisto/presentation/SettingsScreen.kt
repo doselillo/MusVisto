@@ -17,16 +17,6 @@ import androidx.navigation.NavController
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavController) {
-    var clickCount by remember { mutableStateOf(0) }
-
-    // El acceso secreto: si el usuario toca 7 veces, navega a la pantalla de logs.
-    LaunchedEffect(clickCount) {
-        if (clickCount >= 7) {
-            navController.navigate("debug_log_screen")
-            clickCount = 0 // Resetea el contador
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -45,20 +35,9 @@ fun SettingsScreen(navController: NavController) {
             verticalArrangement = Arrangement.Center
         ) {
             Text("Mus Visto", style = MaterialTheme.typography.headlineMedium)
-
-            // Texto de la versión con el detector de clics
             Text(
                 text = "Versión 1.0.0-beta1",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray,
-                modifier = Modifier.clickable { clickCount++ }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                "Toca 7 veces en el número de versión para abrir el menú de depuración.",
-                textAlign = TextAlign.Center,
                 color = Color.Gray
             )
         }
