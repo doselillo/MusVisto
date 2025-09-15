@@ -15,16 +15,12 @@ import com.doselfurioso.musvisto.model.Rank
 data class AIDecision(val action: GameAction, val cardsToDiscard: Set<Card> = emptySet())
 
 /**
- * Clase AILogic limpia y sin reflexión.
+ * Clase AILogic
  *
  * Requiere:
  *  - MusGameLogic con getHandPares(hand) y getHandJuegoValue(hand)
  *  - GameState, Player, Card, GameAction, GamePhase, ParesPlay definidos en tu proyecto
- *  - AILogger para logging (puedes pasar null si no quieres logging: ajustar constructor)
- *
- * Si tu GameAction.Discard usa otro formato, adapta el retorno en decideDiscard.
  */
-
 class AILogic constructor(
     private val gameLogic: MusGameLogic,
     /** Inyectable para tests; por defecto Random.Default */
@@ -44,7 +40,7 @@ class AILogic constructor(
         // 1. Evaluamos la fuerza base de la mano (como antes)
         val baseStrength = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
 
-        // 2. ¡NUEVO! Ajustamos la fuerza basándonos en las señas que la IA ve.
+        // 2. Ajustamos la fuerza basándonos en las señas que la IA ve.
         val gestureAdjustedStrength =
             adjustStrengthsBasedOnGestures(baseStrength, gameState, aiPlayer)
 
@@ -84,7 +80,6 @@ class AILogic constructor(
             GamePhase.MUS -> AIDecision(
                 decideMus(
                     gestureAdjustedStrength,
-                    decisionId,
                     aiPlayer,
                     riskFactor
                 )
@@ -185,23 +180,25 @@ class AILogic constructor(
 
     // ---------------- Mus / NoMus ----------------
     private fun decideMus(
-        baseStrength: HandStrength,
-        decisionId: String,
+        adjustedStrength: HandStrength, // Usa la fuerza ajustada por señas
         aiPlayer: Player,
-        riskFactor: Int // Recibimos el riskFactor para un pequeño ajuste
+        riskFactor: Int
     ): GameAction {
-        // Si la IA está desesperada (riskFactor alto), será más propensa a cortar el Mus
-        // con manos peores, buscando un golpe de suerte.
-        val juegoThreshold = 70 - riskFactor
-        val paresThreshold = 65 - riskFactor
+        val paresPlay = gameLogic.getHandPares(aiPlayer.hand)
+        // Condición más estricta para cortar: solo si tienes Duples o Medias seguras.
+        if (paresPlay is ParesPlay.Duples || paresPlay is ParesPlay.Medias) {
+            return GameAction.NoMus
+        }
 
-        val action = if (baseStrength.juego >= juegoThreshold ||
-            baseStrength.pares >= paresThreshold ||
-            baseStrength.grande >= (85 - riskFactor) ||
-            baseStrength.chica >= (85 - riskFactor)
+        // Usa la fuerza ajustada por señas para decidir
+        val juegoThreshold = 75 - riskFactor
+        val paresThreshold = 70 - riskFactor
+
+        return if (adjustedStrength.juego >= juegoThreshold ||
+            adjustedStrength.pares >= paresThreshold ||
+            adjustedStrength.grande >= (90 - riskFactor) ||
+            adjustedStrength.chica >= (90 - riskFactor)
         ) GameAction.NoMus else GameAction.Mus
-
-        return action
     }
 
     // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
