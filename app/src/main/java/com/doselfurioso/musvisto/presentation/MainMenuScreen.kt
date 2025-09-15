@@ -95,6 +95,19 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Button(
+                onClick = { navController.navigate("settings_screen") }, // <-- CAMBIO AQUÍ
+                enabled = true, // <-- CAMBIO AQUÍ
+                modifier = Modifier.fillMaxWidth(0.7f).height(50.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = Color.DarkGray.copy(alpha = 0.5f),
+                    disabledContentColor = Color.White.copy(alpha = 0.7f)
+                )
+            ) {
+                Text("Opciones", fontSize = 18.sp)
+            }
+
             // Botón de opciones deshabilitado con estilo coherente
             /*
             Button(

@@ -125,6 +125,7 @@ class AILogic constructor(
         logBuilder.appendLine(actionLog)
         logBuilder.appendLine("================ END AI DECISION [$decisionId] ================\n")
         Log.d(TAG, logBuilder.toString())
+        DebugLogger.log(TAG, logBuilder.toString())
         return decision
     }
 
