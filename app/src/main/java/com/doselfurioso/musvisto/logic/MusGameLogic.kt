@@ -406,6 +406,8 @@ class MusGameLogic constructor(private val random: Random){
             val currentScore = currentState.score[bettingPlayer.team] ?: 0
             // Actualizamos el marcador EN ESTE MOMENTO
             val newScore = currentState.score + (bettingPlayer.team to currentScore + pointsWon)
+            val reason = "${currentState.gamePhase.name} No Querida"
+            val scoreEvent = ScoreEventInfo(bettingPlayer.team, ScoreDetail(reason, pointsWon))
 
             Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")
 
@@ -413,7 +415,8 @@ class MusGameLogic constructor(private val random: Random){
             val resolvedState = currentState.copy(
                 betInitiatorTeam = null,
                 playersPendingResponse = emptyList(),
-                score = newScore // <-- Guardamos el nuevo marcador
+                score = newScore, // <-- Guardamos el nuevo marcador,
+                scoreEvents = currentState.scoreEvents + scoreEvent // <-- y añadimos el evento de puntuación
             )
             // Y avanzamos al siguiente lance
             return endLanceAndAdvance(resolvedState) { this }
@@ -731,6 +734,14 @@ class MusGameLogic constructor(private val random: Random){
         val teamADetails = mutableListOf<ScoreDetail>()
         val teamBDetails = mutableListOf<ScoreDetail>()
         val historyMap = currentState.roundHistory.associateBy { it.lance }
+
+        currentState.scoreEvents.forEach { event ->
+            if (event.teamId == "teamA") {
+                teamADetails.add(event.detail)
+            } else {
+                teamBDetails.add(event.detail)
+            }
+        }
 
         // 1. PUNTUACIÓN DE LANCES CON APUESTAS ACEPTADAS O PASADOS
         listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.JUEGO, GamePhase.PARES).forEach { lance ->

@@ -216,22 +216,19 @@ class AILogic constructor(
         aiPlayer: Player,
         riskFactor: Int
     ): Pair<GameAction, String> {
-        val paresPlay = gameLogic.getHandPares(aiPlayer.hand)
-        if (paresPlay is ParesPlay.Duples || paresPlay is ParesPlay.Medias) {
-            return Pair(GameAction.NoMus, "Reason: Has strong pairs (Duples/Medias)")
-        }
+        // --- LÓGICA DE CORTAR MUS MEJORADA ---
+        // Ya no se basa en el tipo de jugada, sino en la fuerza calculada.
+        val paresCutThreshold = 75 - riskFactor // Umbral para cortar por pares
+        val juegoCutThreshold = 75 - riskFactor
+        val grandeCutThreshold = 85 - riskFactor
+        val chicaCutThreshold = 85 - riskFactor
 
-        val juegoThreshold = 75 - riskFactor
-        val paresThreshold = 70 - riskFactor
-        val grandeThreshold = 90 - riskFactor
-        val chicaThreshold = 90 - riskFactor
+        if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold")
+        if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold")
+        if (strength.grande >= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeCutThreshold")
+        if (strength.chica >= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaCutThreshold")
 
-        if (strength.juego >= juegoThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoThreshold")
-        if (strength.pares >= paresThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresThreshold")
-        if (strength.grande >= grandeThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeThreshold")
-        if (strength.chica >= chicaThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaThreshold")
-
-        return Pair(GameAction.Mus, "Reason: No strength exceeds thresholds to cut mus")
+        return Pair(GameAction.Mus, "Reason: No strength exceeds thresholds to cut mus (treshold - riskfactor) Grande/Chica = 85. Pares/Juego = 75")
     }
 
 
@@ -525,9 +522,18 @@ class AILogic constructor(
             if (gesturer.team == aiPlayer.team && gesturer.id != aiPlayer.id) {
                 val gestureName = gestureIdToName(gesture.gestureResId)
                 logBuilder.appendLine("   - (Offensive) Partner ${gesturer.name} has '$gestureName'. Merging strength.")
-                when (getGestureMeaning(gesture.gestureResId)) {
-                    is GestureMeaning.Pares -> teamStrength = teamStrength.copy(pares = max(teamStrength.pares, 100))
-                    is GestureMeaning.Juego -> teamStrength = teamStrength.copy(juego = max(teamStrength.juego, 100))
+
+                // --- LÓGICA DE FUSIÓN CORREGIDA ---
+                when (val meaning = getGestureMeaning(gesture.gestureResId)) {
+                    is GestureMeaning.Pares -> {
+                        val gestureStrength = getParesPlayStrength(meaning.play, false) // Calcula la fuerza de la seña
+                        teamStrength = teamStrength.copy(pares = max(teamStrength.pares, gestureStrength))
+                        logBuilder.appendLine("     -> Partner Pares Strength is ~$gestureStrength. Team Pares Strength is now ${teamStrength.pares}.")
+                    }
+                    is GestureMeaning.Juego -> {
+                        teamStrength = teamStrength.copy(juego = max(teamStrength.juego, 100))
+                        logBuilder.appendLine("     -> Partner Juego Strength is 100. Team Juego Strength is now ${teamStrength.juego}.")
+                    }
                     else -> {}
                 }
             }
@@ -576,6 +582,28 @@ class AILogic constructor(
             logBuilder.appendLine("   -> Strength not adjusted by gestures.")
         }
         return finalAdjustedStrength
+    }
+
+    private fun getParesPlayStrength(paresPlay: ParesPlay, isMano: Boolean): Int {
+        var strength = when (paresPlay) {
+            is ParesPlay.Duples -> 100
+            is ParesPlay.Medias -> 60 + (getPairingRankValue(paresPlay.rank) * 2)
+            is ParesPlay.Pares -> 20 + (getPairingRankValue(paresPlay.rank) * 3)
+            is ParesPlay.NoPares -> 0
+        }
+        if (isMano && paresPlay !is ParesPlay.NoPares) {
+            strength += 15
+        }
+        return strength.coerceIn(0, 100)
+    }
+
+    // --- NUEVA FUNCIÓN HELPER PARA OBTENER EL VALOR DE UN RANGO ---
+    private fun getPairingRankValue(rank: Rank): Int {
+        return when (rank) {
+            Rank.TRES -> 12 // Rey
+            Rank.DOS -> 1   // As
+            else -> rank.value
+        }
     }
 }
 
