@@ -44,6 +44,7 @@ data class GameState(
     val ordagoInfo: OrdagoInfo? = null,
     @Transient val isSelectingBet: Boolean = false,
     val activeGesture: ActiveGestureInfo? = null,
+    val knownGestures: Map<String, ActiveGestureInfo> = emptyMap(),
     val playersInLance: Set<String> = emptySet(),
     @Transient val isPaused: Boolean = false
 )

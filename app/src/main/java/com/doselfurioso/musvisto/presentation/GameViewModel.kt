@@ -23,6 +23,8 @@ class GameViewModel constructor(
 
     private val manualDealingEnabled = true
 
+    private val TAG = "GameViewModelDebug"
+
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
@@ -113,25 +115,41 @@ class GameViewModel constructor(
 
         if (action is GameAction.ShowGesture) {
             val player = _gameState.value.players.find { it.id == playerId } ?: return
-            val gestureResId = determineGesture(player)
 
-            // Si el jugador ya tiene una seña activa, la quitamos
+            // Si el jugador está intentando desactivar su propia seña
             if (_gameState.value.activeGesture?.playerId == playerId) {
                 _gameState.value = _gameState.value.copy(activeGesture = null)
+                Log.d(TAG, "Player ${player.name} hid their gesture.")
                 return
             }
 
+            val gestureResId = determineGesture(player)
             if (gestureResId != null) {
+                val gestureName = gestureIdToName(gestureResId)
+                Log.d(TAG, "Player ${player.name} is showing gesture: '$gestureName'")
+
+                val newGesture = ActiveGestureInfo(playerId, gestureResId)
+                val updatedKnownGestures = _gameState.value.knownGestures + (playerId to newGesture)
+
+                _gameState.value = _gameState.value.copy(
+                    activeGesture = newGesture,
+                    knownGestures = updatedKnownGestures
+                )
+
+                // --- TEMPORIZADOR PARA LA PARTE VISUAL ---
+                // La seña visual desaparecerá después de 1.5 segundos,
+                // pero la IA la seguirá recordando en 'knownGestures'.
                 viewModelScope.launch {
-                    _gameState.value = _gameState.value.copy(activeGesture = ActiveGestureInfo(playerId, gestureResId))
-                    delay(250) // Duración de la seña
-                    // Solo quitamos la seña si sigue siendo la misma que activamos
-                    if (_gameState.value.activeGesture?.playerId == playerId) {
+                    delay(300)
+                    // Solo borra la seña si sigue siendo la misma que se activó
+                    if (_gameState.value.activeGesture == newGesture) {
                         _gameState.value = _gameState.value.copy(activeGesture = null)
                     }
                 }
+            } else {
+                Log.d(TAG, "Player ${player.name} tried to show a gesture, but has none.")
             }
-            return // Importante para detener la ejecución aquí
+            return
         }
 
         val currentState = _gameState.value
@@ -164,7 +182,19 @@ class GameViewModel constructor(
         updateStateAndCheckAiTurn(newState)
     }
 
-
+    private fun gestureIdToName(gestureResId: Int): String {
+        return when (gestureResId) {
+            R.drawable.reyes_2 -> "Dos Reyes"
+            R.drawable.reyes_3 -> "Tres Reyes"
+            R.drawable.ases_2 -> "Dos Ases"
+            R.drawable.ases_3 -> "Tres Ases"
+            R.drawable.sena_31 -> "31 de Juego"
+            R.drawable.ciega -> "Ciega"
+            R.drawable.duples_altos -> "Duples Altos"
+            R.drawable.duples_bajos -> "Duples Bajos"
+            else -> "Unknown Gesture"
+        }
+    }
 
     private fun processEndOfRound(roundEndState: GameState) {
         Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")

@@ -440,7 +440,8 @@ class MusGameLogic constructor(private val random: Random){
                 playersWhoPassed = emptySet(),
                 currentTurnPlayerId = newState.manoPlayerId,
                 isNewLance = true,
-                currentLanceActions = emptyMap()
+                currentLanceActions = emptyMap(),
+                knownGestures = emptyMap()
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
