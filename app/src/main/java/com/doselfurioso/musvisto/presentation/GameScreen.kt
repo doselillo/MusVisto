@@ -139,7 +139,7 @@ fun GameScreen(
             ResponsiveDimens(
                 // Ahora usamos este nuevo `scaleFactor` más equilibrado.
                 // Podemos ser un poco más generosos con los límites de `coerceIn`.
-                cardWidth = (300.dp * scaleFactor * scaleFactor).coerceIn(70.dp, 120.dp),
+                cardWidth = (180.dp * scaleFactor).coerceIn(70.dp, 120.dp),
                 cardAspectRatio = 0.7f,
                 avatarSize = (85.dp * scaleFactor).coerceIn(40.dp, 100.dp),
                 handArcTranslationX = (150f * scaleFactor),
@@ -152,11 +152,11 @@ fun GameScreen(
                 fontSizeSmall = (12.sp * scaleFactor),
                 // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
                 sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
-                actionButtonsVerticalOffset = (maxHeight * 0.22f).coerceIn(130.dp, 220.dp),
+                actionButtonsVerticalOffset = (maxHeight * 0.30f).coerceIn(130.dp, 220.dp),
                 actionbuttonsSize = (10.dp * scaleFactor).coerceIn(0.dp, 180.dp),
                 buttonVPadding = (10.dp * scaleFactor),
                 buttonHPadding = (10.dp * scaleFactor),
-                scaleFactor = scaleFactor.dp // 0'6 small - 0'9 big screen
+                scaleFactor = scaleFactor.dp// 0'6 small - 0'9 big screen
 
             )
         }
@@ -241,7 +241,7 @@ fun GameScreen(
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 32.dp * scaleFactor, bottom = 250.dp * scaleFactor)
+                    .padding(start = 32.dp * scaleFactor, bottom = 270.dp * scaleFactor)
             ) {
                 ActionAnnouncement(player, gameState, dimens)
             }
@@ -249,7 +249,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 80.dp * dimens.scaleFactor.value)
+                    .padding(top = 80.dp * dimens.scaleFactor.value * dimens.scaleFactor.value)
             ) {
                 HorizontalPlayerArea(
                     player = partner,
@@ -274,7 +274,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = dimens.defaultPadding * scaleFactor, bottom = dimens.sidePlayerVerticalOffset)
+                    .padding(start = dimens.defaultPadding, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalLeft,
@@ -302,7 +302,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = dimens.defaultPadding * scaleFactor, bottom = dimens.sidePlayerVerticalOffset)
+                    .padding(end = dimens.defaultPadding, bottom = dimens.sidePlayerVerticalOffset)
             ) {
                 VerticalPlayerArea(
                     player = rivalRight,
@@ -329,7 +329,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
+                    .padding(bottom = 48.dp * dimens.scaleFactor.value * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
             ) {
                 IconButton(
                     onClick = { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
