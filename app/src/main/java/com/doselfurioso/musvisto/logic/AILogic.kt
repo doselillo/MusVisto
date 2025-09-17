@@ -457,7 +457,7 @@ class AILogic constructor(
 
             if (juegoValue == 31 && !isMano) {
                 juegoStrength -= 15
-                explanation.appendLine("     - Penalización por tener 31 sin ser mano -> -30 pts")
+                explanation.appendLine("     - Penalización por tener 31 sin ser mano -> -15 pts")
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
