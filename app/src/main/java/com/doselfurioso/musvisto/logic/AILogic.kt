@@ -332,18 +332,37 @@ class AILogic constructor(
         // --- CÁLCULO DE GRANDE (LÓGICA MEJORADA) ---
         explanation.appendLine("   - Grande:")
         val reyes = hand.filter { it.rank == Rank.REY || it.rank == Rank.TRES }
-        val nonReyes = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }.sortedByDescending { getCardGrandeValue(it) }
+        val nonReyes = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }
+            .sortedByDescending { getCardGrandeValue(it) }
         var grandeStrength = 0
 
         when (reyes.size) {
-            4 -> { grandeStrength = 100; explanation.appendLine("     - 4 Reyes -> 100 pts (max)") }
-            3 -> { grandeStrength = 90; explanation.appendLine("     - 3 Reyes -> 90 pts") }
-            2 -> { grandeStrength = 65; explanation.appendLine("     - 2 Reyes -> 65 pts") }
-            1 -> { grandeStrength = 40; explanation.appendLine("     - 1 Rey -> 40 pts") }
+            4 -> {
+                grandeStrength = 100; explanation.appendLine("     - 4 Reyes -> 100 pts (max)")
+            }
+
+            3 -> {
+                grandeStrength = 90; explanation.appendLine("     - 3 Reyes -> 90 pts")
+            }
+
+            2 -> {
+                grandeStrength = 65; explanation.appendLine("     - 2 Reyes -> 65 pts")
+            }
+
+            1 -> {
+                grandeStrength = 40; explanation.appendLine("     - 1 Rey -> 40 pts")
+            }
+
             0 -> {
                 val highestCard = sortedHand.first()
                 grandeStrength = getCardGrandeValue(highestCard) * 2
-                explanation.appendLine("     - No Reyes, base por carta más alta (${cardToShortString(highestCard)}) -> $grandeStrength pts")
+                explanation.appendLine(
+                    "     - No Reyes, base por carta más alta (${
+                        cardToShortString(
+                            highestCard
+                        )
+                    }) -> $grandeStrength pts"
+                )
             }
         }
         // Bonus "Kicker" por figuras si ya hay una buena base
@@ -361,11 +380,26 @@ class AILogic constructor(
         var chicaStrength = 0
         explanation.appendLine("   - Chica:")
         when (lowCardsCount) {
-            4 -> { chicaStrength = 100; explanation.appendLine("     - 4 Ases/Doses -> 100 pts (max)") }
-            3 -> { chicaStrength = 90; explanation.appendLine("     - 3 Ases/Doses -> 90 pts") }
-            2 -> { chicaStrength = 65; explanation.appendLine("     - 2 Ases/Doses -> 65 pts") }
-            1 -> { chicaStrength = 40; explanation.appendLine("     - 1 As/Dos -> 40 pts") }
-            else -> { chicaStrength = (12 - hand.minOf { it.rank.value }) * 4; explanation.appendLine("     - No Ases/Doses, base = (12 - ${hand.minOf{it.rank.value}}) * 4 -> $chicaStrength pts") }
+            4 -> {
+                chicaStrength = 100; explanation.appendLine("     - 4 Ases/Doses -> 100 pts (max)")
+            }
+
+            3 -> {
+                chicaStrength = 90; explanation.appendLine("     - 3 Ases/Doses -> 90 pts")
+            }
+
+            2 -> {
+                chicaStrength = 65; explanation.appendLine("     - 2 Ases/Doses -> 65 pts")
+            }
+
+            1 -> {
+                chicaStrength = 40; explanation.appendLine("     - 1 As/Dos -> 40 pts")
+            }
+
+            else -> {
+                chicaStrength =
+                    (12 - hand.minOf { it.rank.value }) * 4; explanation.appendLine("     - No Ases/Doses, base = (12 - ${hand.minOf { it.rank.value }}) * 4 -> $chicaStrength pts")
+            }
         }
         if (lowCardsCount < 2) {
             val bonus = ((12 - sortedHand.last().rank.value) * 1.5).toInt()
@@ -377,14 +411,21 @@ class AILogic constructor(
         val paresPlay = gameLogic.getHandPares(hand)
         var paresStrength = 0
         explanation.appendLine("   - Pares:")
-        val isMano = gameState.manoPlayerId == player.id
+        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        // 2. Encontramos la posición del jugador actual EN ESA LISTA (0=mano, 1=segundo, etc.)
+        val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
+        val isMano = playerPositionInTurn == 0
 
         when (paresPlay) {
-            is ParesPlay.Duples -> { paresStrength = 100; explanation.appendLine("     - Duples -> 100 pts (max)") }
+            is ParesPlay.Duples -> {
+                paresStrength = 100; explanation.appendLine("     - Duples -> 100 pts (max)")
+            }
+
             is ParesPlay.Medias -> {
                 paresStrength = 60 + (getPairingRank(paresPlay.rank).value * 2)
                 explanation.appendLine("     - Medias de ${paresPlay.rank.name} -> $paresStrength pts")
             }
+
             is ParesPlay.Pares -> {
                 // El valor del par es ahora el factor principal
                 val rankValue = getPairingRank(paresPlay.rank)
@@ -395,36 +436,59 @@ class AILogic constructor(
                     explanation.appendLine("     - Bonus por ser Mano -> +15 pts")
                 }
             }
-            is ParesPlay.NoPares -> { paresStrength = 0; explanation.appendLine("     - No Pares -> 0 pts") }
+
+            is ParesPlay.NoPares -> {
+                paresStrength = 0; explanation.appendLine("     - No Pares -> 0 pts")
+            }
         }
 
         // --- CÁLCULO DE JUEGO ---
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         var juegoStrength = 0
-        explanation.appendLine("   - Juego (Valor total: $juegoValue):")
-        val baseJuegoStrength = when (juegoValue) {
-            31 -> 97; 32 -> 70; 40 -> 69; 37 -> 60; 36 -> 55; 35 -> 50; 34 -> 40; 33 -> 30;
-            else -> if (juegoValue > 32) 65 else if (juegoValue < 31) 0 else 0
-        }
-        juegoStrength = baseJuegoStrength
-        explanation.appendLine("     - Base por valor $juegoValue -> $juegoStrength pts")
+        explanation.appendLine("   - Juego (Valor: $juegoValue, Es Mano: $isMano):")
+        explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}):")
 
-        val playerPosition = gameState.players.indexOfFirst { it.id == player.id }.takeIf { it != -1 } ?: 0
-        val positionBonus = (3 - playerPosition).coerceIn(0, 3)
-        if (positionBonus > 0) {
-            juegoStrength += positionBonus
-            explanation.appendLine("     - Bonus por posición de mano -> +$positionBonus pts")
+        if (juegoValue >= 31) {
+            // Lógica para JUEGO (sin cambios)
+            val baseJuegoStrength = when (juegoValue) {
+                31 -> 95; 32 -> 65; 40 -> 68; 37 -> 60; else -> 50
+            }
+            juegoStrength = baseJuegoStrength
+            explanation.appendLine("     - JUEGO: Base por valor $juegoValue -> $juegoStrength pts")
+
+            if (juegoValue == 31 && !isMano) {
+                juegoStrength -= 15
+                explanation.appendLine("     - Penalización por tener 31 sin ser mano -> -30 pts")
+            }
+        } else {
+            // --- NUEVA LÓGICA PARA PUNTO ---
+            if (gameState.isPuntoPhase) {
+                // La fuerza se basa en qué tan cerca está de 30 (la mejor jugada de punto)
+                val basePuntoStrength = (juegoValue - 4) * 3 // Mapea el rango 4-30 a una escala de ~0-78
+                juegoStrength = basePuntoStrength
+                explanation.appendLine("     - PUNTO: Base por valor $juegoValue -> $juegoStrength pts")
+
+                // Bonus muy significativo por ser mano, ya que es la principal ventaja
+                if (isMano) {
+                    juegoStrength += 20
+                    explanation.appendLine("     - Bonus por ser Mano a Punto -> +20 pts")
+                }
+            } else {
+                juegoStrength = 0
+                explanation.appendLine("     - No tiene Juego (y no es lance de Punto) -> 0 pts")
+            }
         }
 
         val finalStrength = HandStrength(
-            grande = grandeStrength.coerceIn(0, 100),
-            chica = chicaStrength.coerceIn(0, 100),
-            pares = paresStrength.coerceIn(0, 100),
+            grande = 0, // Placeholder
+            chica = 0,  // Placeholder
+            pares = 0,  // Placeholder
             juego = juegoStrength.coerceIn(0, 100)
         )
 
         return EvaluationResult(finalStrength, explanation.toString())
     }
+
 
 
     // ---------------- Helpers ----------------
