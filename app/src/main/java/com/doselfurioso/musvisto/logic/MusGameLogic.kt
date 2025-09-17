@@ -383,8 +383,7 @@ class MusGameLogic constructor(private val random: Random){
             playersPendingResponse = emptyList(),
             agreedBets = currentState.agreedBets + (currentState.gamePhase to bet.amount)
         )
-
-        Log.d("MusVistoTest", "APUESTA ACEPTADA por valor de ${bet.amount}. Se resolverá al final de la ronda.")
+        
         return endLanceAndAdvance(resolvedState) { this }
     }
 
@@ -623,18 +622,26 @@ class MusGameLogic constructor(private val random: Random){
         val currentIndex = players.indexOfFirst { it.id == currentPlayerId }
         if (currentIndex == -1) return currentState // Medida de seguridad
 
-        for (i in 1 until players.size) {
+        val eligiblePlayerIds = if (currentState.playersInLance.isNotEmpty()) {
+            currentState.playersInLance
+        } else {
+            // Si no es un lance restringido (como Grande/Chica), todos pueden jugar.
+            players.map { it.id }.toSet()
+        }
+
+        // 2. Busca al siguiente jugador en el orden de turno
+        for (i in 1..players.size) {
             val nextIndex = (currentIndex - i + players.size) % players.size
             val nextPlayer = players[nextIndex]
 
-            // Buscamos al primer jugador que todavía no haya actuado en esta fase
-            if (nextPlayer.id !in currentState.playersWhoPassed) {
+            // 3. ...que sea ELEGIBLE para este lance Y que no haya pasado ya.
+            if (nextPlayer.id in eligiblePlayerIds && nextPlayer.id !in currentState.playersWhoPassed) {
                 return currentState.copy(currentTurnPlayerId = nextPlayer.id)
             }
         }
-        // --- FIN DE LA CORRECCIÓN DEFINITIVA ---
+        // --- FIN DE LA CORRECCIÓN ---
 
-        // Si el bucle termina, significa que todos han actuado.
+        // Si el bucle termina, significa que todos los jugadores elegibles han actuado.
         return currentState
     }
 

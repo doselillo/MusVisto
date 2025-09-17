@@ -119,8 +119,8 @@ fun GameScreen(
         //    - En la pantalla más pequeña, queremos que todo se reduzca un 15% (escala de 0.85).
         //    - En la pantalla más grande, queremos que todo aumente un 20% (escala de 1.2).
         //    ¡ESTOS SON LOS VALORES QUE PUEDES AJUSTAR PARA EL "LOOK & FEEL"!
-        val minScale = 0.50f
-        val maxScale = 2f
+        val minScale = 0.75f
+        val maxScale = 1.25f
 
         // 3. Calculamos el progreso actual de la pantalla dentro de nuestro rango.
         //    `coerceIn` asegura que el valor no se salga de los límites 0.0 a 1.0.
@@ -139,12 +139,13 @@ fun GameScreen(
             ResponsiveDimens(
                 // Ahora usamos este nuevo `scaleFactor` más equilibrado.
                 // Podemos ser un poco más generosos con los límites de `coerceIn`.
-                cardWidth = (180.dp * scaleFactor).coerceIn(70.dp, 120.dp),
+                cardWidth = (80.dp * scaleFactor).coerceIn(50.dp, 120.dp),
+                cardBackWidth = (80.dp * scaleFactor).coerceIn(50.dp, 120.dp),
                 cardAspectRatio = 0.7f,
-                avatarSize = (85.dp * scaleFactor).coerceIn(40.dp, 100.dp),
+                avatarSize = (80.dp * scaleFactor).coerceIn(40.dp, 100.dp),
                 handArcTranslationX = (150f * scaleFactor),
                 handArcTranslationY = (15f * scaleFactor),
-                handArcRotation = 5f,
+                handArcRotation = (5f * scaleFactor),
                 defaultPadding = (32.dp * scaleFactor),
                 smallPadding = (8.dp * scaleFactor),
                 fontSizeLarge = (20.sp * scaleFactor),
@@ -153,7 +154,7 @@ fun GameScreen(
                 // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
                 sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
                 actionButtonsVerticalOffset = (maxHeight * 0.30f).coerceIn(130.dp, 220.dp),
-                actionbuttonsSize = (10.dp * scaleFactor).coerceIn(0.dp, 180.dp),
+                actionbuttonsSize = (5.dp * scaleFactor).coerceIn(0.dp, 180.dp),
                 buttonVPadding = (10.dp * scaleFactor),
                 buttonHPadding = (10.dp * scaleFactor),
                 scaleFactor = scaleFactor.dp// 0'6 small - 0'9 big screen
@@ -216,35 +217,7 @@ fun GameScreen(
 
  */
 
-            // --- ANUNCIOS DE ACCIÓN ---
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(rivalLeft, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(rivalRight, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 24.dp * scaleFactor, top = 170.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(partner, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 32.dp * scaleFactor, bottom = 270.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(player, gameState, dimens)
-            }
+
             // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
             Box(
                 modifier = Modifier
@@ -385,6 +358,36 @@ fun GameScreen(
                 )
             }
 
+            // --- ANUNCIOS DE ACCIÓN ---
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 16.dp * scaleFactor, top = 230.dp * scaleFactor)
+            ) {
+                ActionAnnouncement(rivalLeft, gameState, dimens)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 16.dp * scaleFactor, top = 230.dp * scaleFactor)
+            ) {
+                ActionAnnouncement(rivalRight, gameState, dimens)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 24.dp * scaleFactor, top = 150.dp * scaleFactor)
+            ) {
+                ActionAnnouncement(partner, gameState, dimens)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 32.dp * scaleFactor, bottom = 270.dp * scaleFactor)
+            ) {
+                ActionAnnouncement(player, gameState, dimens)
+            }
+
             // INFO CENTRAL Y BOTONES
             // Dentro del Column central en GameScreen
             Column(
@@ -478,7 +481,8 @@ fun GameScreen(
                             GameAction.Continue,
                             gameViewModel.humanPlayerId
                         )
-                    }
+                    },
+                    dimens = dimens
                 )
             }
         }
@@ -703,9 +707,8 @@ fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- A
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .width((dimens.cardWidth - 10.dp)* dimens.scaleFactor.value * dimens.scaleFactor.value)
+            .width((dimens.cardBackWidth)* dimens.scaleFactor.value)
             .aspectRatio(dimens.cardAspectRatio)
-            .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
             .bottomBorder(1.dp, Color.Black.copy(alpha = 0.5f))
     )
@@ -727,7 +730,7 @@ private fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier
-            .width((dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value) + 10.dp)
+            .width(dimens.cardWidth)
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
@@ -979,7 +982,10 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
     Box {
         repeat(cards.size) { index ->
             Box(
-                modifier = Modifier.offset(y = (index * 75 * dimens.scaleFactor.value).dp)
+                modifier = Modifier.offset(y = (index * 50 * dimens.scaleFactor.value).dp)
+                    .graphicsLayer {
+                        if (rotate) rotationZ = 90f else rotationZ = 270f
+                    }
             ) {
                 if (isDebugMode || revealHand) {
                     GameCard(
@@ -988,13 +994,10 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
                         gamePhase = GamePhase.PRE_GAME,
                         isMyTurn = false,
                         onClick = {},
-                        modifier = Modifier.graphicsLayer {
-                            if (rotate) rotationZ = 90f else rotationZ = 270f
-                        },
                         dimens = dimens
                     )
                 } else {
-                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f }, dimens = dimens)
+                    CardBack(dimens = dimens)
                 }
             }
         }
@@ -1015,7 +1018,7 @@ fun VerticalPlayerArea(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         PlayerAvatar(player = player,
             isCurrentTurn = isCurrentTurn,
@@ -1133,44 +1136,13 @@ fun GameEventNotification(event: GameEvent?) {
     }
 }
 
-@Composable
-fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
-    // Usamos una Columna para que cada resultado de lance tenga su propia línea.
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        history.forEach { result ->
-            // Creamos el texto descriptivo basado en el resultado del lance
-            val lanceName = result.lance.name.replace('_', ' ')
-            val outcomeText = when (result.outcome) {
-                "Paso" -> "$lanceName: en Paso"
-                "Querido" -> "$lanceName: vale ${result.amount}"
-                "No Querido" -> "$lanceName: No Querida"
-                else -> ""
-            }
-            Text(
-                text = outcomeText,
-                color = Color.White.copy(alpha = 0.8f),
-                fontWeight = FontWeight.Normal,
-                fontSize = 14.sp,
-                modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-        }
-    }
-}
-
 // En: GameScreen.kt
 // Reemplaza la función RoundEndOverlay entera por esta
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
-    onContinueClick: () -> Unit
+    onContinueClick: () -> Unit,
+    dimens: ResponsiveDimens
 ) {
     // La Card ahora es el elemento principal, sin un Box que ocupe toda la pantalla
     Card(
@@ -1199,7 +1171,7 @@ fun RoundEndOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "NOSOTROS",
-                        fontSize = 14.sp,
+                        fontSize = dimens.fontSizeMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -1209,7 +1181,7 @@ fun RoundEndOverlay(
                             modifier = Modifier.width(150.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
                             Text(
                                 "+${detail.points}",
                                 color = Color.White,
@@ -1236,7 +1208,7 @@ fun RoundEndOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "ELLOS",
-                        fontSize = 14.sp,
+                        fontSize = dimens.fontSizeMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -1246,7 +1218,7 @@ fun RoundEndOverlay(
                             modifier = Modifier.width(150.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
                             Text(
                                 "+${detail.points}",
                                 color = Color.White,
@@ -1455,6 +1427,7 @@ fun PauseMenuOverlay(
 
 data class ResponsiveDimens(
     val cardWidth: Dp,
+    val cardBackWidth: Dp,
     val cardAspectRatio: Float,
     val avatarSize: Dp,
     val handArcTranslationX: Float,
