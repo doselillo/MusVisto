@@ -334,7 +334,10 @@ class GameViewModel constructor(
             if (phaseChanged) {
                 // La información del último anuncio está en `newState.transientAction`
                 // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
-                delay(1000)
+                delay(500)
+                _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
+                delay(500)
+
 
                 // Pasado el tiempo, nos aseguramos de que el estado esté limpio
                 // antes de continuar.
