@@ -188,6 +188,8 @@ class AILogic constructor(
         val advantage = adjustedStrength - currentBetAmount
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
+        val myTeamScore = gameState.score[aiPlayer.team]
+        val scoreDifference = myTeamScore?.minus(opponentScore)
 
         val action = when {
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
@@ -195,7 +197,7 @@ class AILogic constructor(
             advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta, pero de forma comedida.
-            advantage > 85 -> GameAction.Envido(2)
+            advantage > 85 -> GameAction.Envido(rng.nextInt(2, 5))
 
             // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
             advantage > 70 -> GameAction.Quiero
@@ -237,6 +239,26 @@ class AILogic constructor(
         aiPlayer: Player,
         gameState: GameState
     ): Pair<GameAction, String> {
+        val opponentTeam = if (aiPlayer.team == "teamB") "teamA" else "teamB"
+        val myTeamScore = gameState.score[aiPlayer.team] ?: 0
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        val scoreDifference = myTeamScore - opponentScore
+
+        // --- Estrategias de Órdago ---
+        // 1. Confianza Absoluta: Mano casi perfecta
+        if (strength > 95 && scoreDifference < -20) {
+            return Pair(GameAction.Órdago, "Reason: Overwhelming strength ($strength > 95)")
+        }
+        // 2. Desesperación: Perdiendo por mucho con una mano decente
+        if (scoreDifference < -20 && strength > 70) {
+            return Pair(GameAction.Órdago, "Reason: Desperation move (score diff $scoreDifference, strength $strength > 70)")
+        }
+        // 3. Cerrar la Partida: A punto de ganar con una mano fuerte
+        if (myTeamScore >= 35 && opponentScore >=35 && strength > 85) {
+            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Closing the game (score $myTeamScore, strength $strength > 85)")
+        }
+
+        // --- Lógica de Envites Normales (sin cambios) ---
         val betThreshold = 80
         val bluffThreshold = 60
         val bluffChance = 5 + (strength / 10)
@@ -246,10 +268,10 @@ class AILogic constructor(
             return Pair(GameAction.Envido(amount), "Reason: Strength $strength > bet threshold $betThreshold")
         }
         if (strength > bluffThreshold && rng.nextInt(100) < bluffChance) {
-            return Pair(GameAction.Envido(2), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
+            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
         }
 
-        return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
+        return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds")
     }
 
     // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
