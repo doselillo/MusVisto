@@ -194,7 +194,7 @@ class AILogic constructor(
         val action = when {
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
-            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
+            advantage > 95 && (currentBetAmount > 10 && opponentScore > 30 && scoreDifference!! <= -20) -> GameAction.Órdago
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta, pero de forma comedida.
             advantage > 85 -> GameAction.Envido(rng.nextInt(2, 5))
