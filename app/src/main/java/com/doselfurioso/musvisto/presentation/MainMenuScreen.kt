@@ -13,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +32,15 @@ import com.doselfurioso.musvisto.BuildConfig
 @Composable
 fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
     val hasSavedGame by viewModel.hasSavedGame.collectAsState()
+    var optionsClickCount by remember { mutableStateOf(0) }
+
+    // Este efecto se activa cada vez que 'optionsClickCount' cambia.
+    LaunchedEffect(optionsClickCount) {
+        if (optionsClickCount >= 5) {
+            navController.navigate("debug_log_screen")
+            optionsClickCount = 0 // Resetea el contador
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.checkSavedGame()
@@ -96,6 +108,22 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             )
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    optionsClickCount++ // Incrementa el contador secreto
+                    //navController.navigate("debug_log_screen") // Navega a la pantalla de ajustes
+                },
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(0.7f).height(50.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.DarkGray.copy(alpha = 0.8f),
+                    contentColor = Color.White.copy(alpha = 0.9f)
+                )
+            ) {
+                Text("Opciones", fontSize = 18.sp)
+            }
 
             // Botón de opciones deshabilitado con estilo coherente
             /*

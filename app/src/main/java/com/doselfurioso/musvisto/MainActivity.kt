@@ -16,11 +16,13 @@ import androidx.navigation.compose.rememberNavController
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
+import com.doselfurioso.musvisto.presentation.DebugLogScreen
 import com.doselfurioso.musvisto.presentation.GameScreen
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
 import com.doselfurioso.musvisto.presentation.MainMenuScreen
 import com.doselfurioso.musvisto.presentation.MainMenuViewModel
+import com.doselfurioso.musvisto.presentation.SettingsScreen
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
 import kotlin.random.Random
 
@@ -87,6 +89,13 @@ fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewMode
         composable("gestures_screen") {
             GesturesScreen(navController = navController)
         }
+        composable("settings_screen") {
+            SettingsScreen(navController = navController)
+        }
+        composable("debug_log_screen") {
+            DebugLogScreen(navController = navController)
+        }
+
     }
 }
 
