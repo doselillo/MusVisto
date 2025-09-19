@@ -244,18 +244,17 @@ class AILogic constructor(
         val opponentScore = gameState.score[opponentTeam] ?: 0
         val scoreDifference = myTeamScore - opponentScore
 
-        // --- Estrategias de Órdago ---
-        // 1. Confianza Absoluta: Mano casi perfecta
-        if (strength > 95 && scoreDifference < -20) {
-            return Pair(GameAction.Órdago, "Reason: Overwhelming strength ($strength > 95)")
+        // 1. Desesperación: Perdiendo por mucho con una mano buena.
+        if (strength > 75 && scoreDifference > 15 && opponentScore > 25) {
+            return Pair(GameAction.Órdago, "Reason: Desperation move (score diff $scoreDifference, strength $strength > 75)")
         }
-        // 2. Desesperación: Perdiendo por mucho con una mano decente
-        if (scoreDifference < -20 && strength > 70) {
-            return Pair(GameAction.Órdago, "Reason: Desperation move (score diff $scoreDifference, strength $strength > 70)")
+        // 2. Bloquear Victoria Rival: El rival está a punto de ganar y tenemos una mano fuerte para detenerlo.
+        if (opponentScore >= 30 && strength > 80 && scoreDifference > 10) {
+            return Pair(GameAction.Órdago, "Reason: Blocking opponent win (opponent score ${opponentScore}, strength $strength > 80)")
         }
-        // 3. Cerrar la Partida: A punto de ganar con una mano fuerte
-        if (myTeamScore >= 35 && opponentScore >=35 && strength > 85) {
-            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Closing the game (score $myTeamScore, strength $strength > 85)")
+        // 3. Cerrar la Partida: A punto de ganar con una mano muy fuerte.
+        if (opponentScore > 35 && myTeamScore < 35 && strength > 50) {
+            return Pair(GameAction.Órdago, "Reason: Closing the game (my score ${myTeamScore}, strength $strength > 90)")
         }
 
         // --- Lógica de Envites Normales (sin cambios) ---
