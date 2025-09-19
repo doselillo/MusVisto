@@ -105,7 +105,7 @@ class AILogic constructor(
                     actionLog = ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
                 }
                 GamePhase.DISCARD -> {
-                    decision = decideDiscard(aiPlayer)
+                    decision = decideDiscard(aiPlayer, gameState)
                     actionLog = ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
                 }
                 else -> {
@@ -188,14 +188,16 @@ class AILogic constructor(
         val advantage = adjustedStrength - currentBetAmount
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
+        val myTeamScore = gameState.score[aiPlayer.team]
+        val scoreDifference = myTeamScore?.minus(opponentScore)
 
         val action = when {
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
-            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
+            advantage > 95 && (currentBetAmount > 10 && opponentScore > 30 && scoreDifference!! <= -20) -> GameAction.Órdago
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta, pero de forma comedida.
-            advantage > 85 -> GameAction.Envido(2)
+            advantage > 85 -> GameAction.Envido(rng.nextInt(2, 5))
 
             // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
             advantage > 70 -> GameAction.Quiero
@@ -237,6 +239,25 @@ class AILogic constructor(
         aiPlayer: Player,
         gameState: GameState
     ): Pair<GameAction, String> {
+        val opponentTeam = if (aiPlayer.team == "teamB") "teamA" else "teamB"
+        val myTeamScore = gameState.score[aiPlayer.team] ?: 0
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        val scoreDifference = myTeamScore - opponentScore
+
+        // 1. Desesperación: Perdiendo por mucho con una mano buena.
+        if (strength > 75 && scoreDifference > 15 && opponentScore > 25) {
+            return Pair(GameAction.Órdago, "Reason: Desperation move (score diff $scoreDifference, strength $strength > 75)")
+        }
+        // 2. Bloquear Victoria Rival: El rival está a punto de ganar y tenemos una mano fuerte para detenerlo.
+        if (opponentScore >= 30 && strength > 80 && scoreDifference > 10) {
+            return Pair(GameAction.Órdago, "Reason: Blocking opponent win (opponent score ${opponentScore}, strength $strength > 80)")
+        }
+        // 3. Cerrar la Partida: A punto de ganar con una mano muy fuerte.
+        if (opponentScore > 35 && myTeamScore < 35 && strength > 50) {
+            return Pair(GameAction.Órdago, "Reason: Closing the game (my score ${myTeamScore}, strength $strength > 90)")
+        }
+
+        // --- Lógica de Envites Normales (sin cambios) ---
         val betThreshold = 80
         val bluffThreshold = 60
         val bluffChance = 5 + (strength / 10)
@@ -246,77 +267,66 @@ class AILogic constructor(
             return Pair(GameAction.Envido(amount), "Reason: Strength $strength > bet threshold $betThreshold")
         }
         if (strength > bluffThreshold && rng.nextInt(100) < bluffChance) {
-            return Pair(GameAction.Envido(2), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
+            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
         }
 
-        return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
+        return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds")
     }
 
     // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
 
-    fun decideDiscard(
-        aiPlayer: Player
-    ): AIDecision {
+    fun decideDiscard(aiPlayer: Player, gameState: GameState): AIDecision {
         val hand = aiPlayer.hand
-
-        // Si por alguna razón la mano está vacía, no se descarta nada.
         if (hand.isEmpty()) {
             return AIDecision(GameAction.ConfirmDiscard, emptySet())
         }
 
+        val cardsToKeep = mutableSetOf<Card>()
+        val handPares = gameLogic.getHandPares(hand)
         val juegoValue = gameLogic.getHandJuegoValue(hand)
 
-        // REGLA 0: Si tienes 31, estás obligado a descartar una carta,
-        // así que tira la que menos valor tenga para la Grande (la de menor rango).
-        if (juegoValue == 31) {
-            val cardToDiscard = hand.minByOrNull { it.rank.value }!!
-            return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
+        // --- NUEVA LÓGICA BASADA EN TUS REGLAS ---
+
+        // Regla 1: Medias (Trío) -> Nos quedamos el trío y descartamos la cuarta carta.
+        if (handPares is ParesPlay.Medias) {
+            cardsToKeep.addAll(hand.filter { getPairingRank(it.rank) == handPares.rank })
+        }
+        // Regla 2: Duples (Dos Pares) o 31 de Juego -> Consideramos la mano "hecha".
+        else if (handPares is ParesPlay.Duples || juegoValue == 31) {
+            cardsToKeep.addAll(hand) // Marcamos las 4 para conservarlas inicialmente.
+        }
+        // Regla 3 (Default): No hay jugada hecha -> Conservar solo Reyes y Treses.
+        else {
+            cardsToKeep.addAll(hand.filter { it.rank == Rank.REY || it.rank == Rank.TRES })
         }
 
-        // REGLA 1: SI TIENES 3 FIGURAS (Rey), tienes 30 puntos.
-        // Es una jugada muy fuerte para buscar 31 o 40. Descarta la 4ª carta.
-        val figures = hand.filter { it.rank.value in 12..12 }
-        if (figures.size == 3) {
-            val nonFigureCard = hand.first { it !in figures }
-            return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
-        }
+        var cardsToDiscard = hand.toSet() - cardsToKeep
 
-        // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
-        val cardScores = mutableMapOf<Card, Int>()
-        val rankCounts = hand.groupingBy { it.rank }.eachCount()
+        // --- LÓGICA DE SEGURIDAD Y AJUSTES FINALES ---
 
-        for (card in hand) {
-            var score = 0
-            if (card.rank == Rank.REY || card.rank == Rank.TRES) score += 50
-            when (rankCounts[card.rank] ?: 0) {
-                4 -> score += 100
-                3 -> score += 80
-                2 -> score += 40
+        // Si con las reglas anteriores no se descarta nada (ej. mano con 4 Reyes o Duples),
+        // forzamos el descarte de la peor carta de las que habíamos decidido conservar.
+        if (cardsToDiscard.isEmpty() && hand.isNotEmpty()) {
+            val worstCardToKeep = cardsToKeep.minByOrNull {
+                // La peor carta es la que no es Rey y tiene el valor más bajo
+                if (getPairingRankValue(it.rank) == 12){ 100 }
+                else if(getPairingRankValue(it.rank) <= 2) { 10 }
+                else {  it.rank.value }
             }
-            if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
-            if (card.rank.value in 4..11 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
-            cardScores[card] = score
+            if (worstCardToKeep != null) {
+                cardsToDiscard = setOf(worstCardToKeep)
+            }
         }
 
-        // Ordenamos las cartas de peor a mejor según su puntuación.
-        val sortedCards = hand.sortedBy { cardScores[it] }
-
-        // --- DECISIÓN FINAL DE DESCARTE (CORREGIDA) ---
-
-        // 1. Intentamos descartar todas las cartas que consideramos "malas" (puntuación negativa).
-        var cardsToDiscard = sortedCards.filter { (cardScores[it] ?: 0) < 0 }.toSet()
-
-        // 2. REGLA OBLIGATORIA DE MUS: Si la estrategia no ha seleccionado ninguna carta para
-        //    descartar (porque la mano es muy buena), FORZAMOS el descarte de la peor carta.
-        if (cardsToDiscard.isEmpty()) {
-            // 'sortedCards' está ordenada por puntuación de PEOR a MEJOR.
-            // La peor carta es la primera de la lista.
-            val worstCard = sortedCards.first()
-            Log.d("AILogic", "Forcing discard of the worst card: ${cardToShortString(worstCard)}")
-            cardsToDiscard = setOf(worstCard)
+        // Regla final: si tenemos 31, estamos obligados a descartar UNA SOLA carta, la de menos valor.
+        if (juegoValue == 31) {
+            val worstCard = hand.minByOrNull { it.rank.value }
+            if (worstCard != null) {
+                cardsToDiscard = setOf(worstCard)
+            }
         }
-        // --- FIN DE LA CORRECCIÓN ---
 
+        Log.d(TAG, "AI ${aiPlayer.name} decided to discard ${cardsToDiscard.size} cards: ${cardsToDiscard.joinToString { cardToShortString(it) }} based on expert rules.")
         return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
     }
 
