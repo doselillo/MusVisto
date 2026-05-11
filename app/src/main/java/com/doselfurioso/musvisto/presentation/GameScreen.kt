@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -123,17 +125,18 @@ fun GameScreen(
 
         val dimens = remember(scaleFactor) {
             ResponsiveDimens(
-                cardWidth           = (88.dp * scaleFactor).coerceIn(48.dp, 120.dp),
-                cardBackWidth       = (88.dp * scaleFactor).coerceIn(48.dp, 120.dp),
+                cardWidth           = (120.dp * scaleFactor).coerceIn(48.dp, 120.dp),
+                cardBackWidth       = (72.dp * scaleFactor).coerceIn(48.dp, 120.dp),
                 cardAspectRatio     = 0.7f,
-                avatarSize          = (68.dp * scaleFactor).coerceIn(36.dp, 90.dp),
+                avatarSize          = (100.dp * scaleFactor).coerceIn(52.dp, 150.dp),
                 handArcTranslationX = 150f * scaleFactor,
                 handArcTranslationY = 15f * scaleFactor,
                 handArcRotation     = 5f * scaleFactor,
+                largePadding        = (24.dp * scaleFactor).coerceIn(12.dp, 36.dp),
                 defaultPadding      = (12.dp * scaleFactor).coerceIn(6.dp, 24.dp),
                 smallPadding        = (6.dp * scaleFactor).coerceIn(3.dp, 10.dp),
-                fontSizeLarge       = (16.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
-                fontSizeMedium      = (13.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
+                fontSizeLarge       = (20.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
+                fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
                 fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
                 sidePlayerVerticalOffset    = 0.dp,
                 actionButtonsVerticalOffset = 0.dp,
@@ -172,7 +175,8 @@ fun GameScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(2f),
+                        .weight(2f)
+                        .padding(top = dimens.defaultPadding * 2),
                     contentAlignment = Alignment.Center
                 ) {
                     HorizontalPlayerArea(
@@ -190,7 +194,9 @@ fun GameScreen(
                                 dimens = dimens
                             )
                         },
-                        dimens = dimens
+                        dimens = dimens,
+                        gameState = gameState,
+                        announcementAbove = false
                     )
                 }
 
@@ -199,10 +205,10 @@ fun GameScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(3.5f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
                     Box(
-                        modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(start = dimens.smallPadding),
                         contentAlignment = Alignment.Center
                     ) {
                         VerticalPlayerArea(
@@ -221,14 +227,15 @@ fun GameScreen(
                                     dimens = dimens
                                 )
                             },
-                            dimens = dimens
+                            dimens = dimens,
+                            gameState = gameState
                         )
                     }
 
                     Column(
-                        modifier = Modifier.weight(3f),
+                        modifier = Modifier.weight(2f),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.Bottom
                     ) {
                         Scoreboard(score = gameState.score, dimens = dimens)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -242,7 +249,7 @@ fun GameScreen(
                     }
 
                     Box(
-                        modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(end = dimens.smallPadding),
                         contentAlignment = Alignment.Center
                     ) {
                         VerticalPlayerArea(
@@ -261,38 +268,18 @@ fun GameScreen(
                                     dimens = dimens
                                 )
                             },
-                            dimens = dimens
+                            dimens = dimens,
+                            gameState = gameState
                         )
                     }
                 }
 
-                // FILA 3 — Botones de acción
+                // FILA 4 — Jugador principal + botones de acción
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1.5f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    ActionButtons(
-                        actions = gameState.availableActions,
-                        gamePhase = gameState.gamePhase,
-                        onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
-                        selectedCardCount = gameState.selectedCardsForDiscard.size,
-                        isEnabled = isMyTurn,
-                        currentPlayerId = gameViewModel.humanPlayerId,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = dimens.defaultPadding),
-                        dimens = dimens
-                    )
-                }
-
-                // FILA 4 — Jugador principal
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(3f),
-                    contentAlignment = Alignment.Center
+                        .weight(4.5f),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
                     // Mano centrada
                     HorizontalPlayerArea(
@@ -312,29 +299,50 @@ fun GameScreen(
                             )
                         },
                         dimens = dimens,
-                        modifier = Modifier
+                        modifier = Modifier,
+                        gameState = gameState,
+                        announcementAbove = true,
+                        avatarLeadingPadding = dimens.defaultPadding * 2
                     )
+
+                    // Botones de acción — columna derecha, centrada verticalmente
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = dimens.defaultPadding)
+                    ) {
+                        ActionButtons(
+                            actions = gameState.availableActions,
+                            gamePhase = gameState.gamePhase,
+                            onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                            selectedCardCount = gameState.selectedCardsForDiscard.size,
+                            isEnabled = isMyTurn,
+                            currentPlayerId = gameViewModel.humanPlayerId,
+                            modifier = Modifier,
+                            dimens = dimens
+                        )
+                    }
 
                     // Botones Seña y Pausa — esquina inferior izquierda, FUERA del flujo
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(dimens.smallPadding),
+                            .padding(start = dimens.largePadding, bottom = dimens.largePadding),
                         horizontalArrangement = Arrangement.spacedBy(dimens.smallPadding)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(44.dp * scaleFactor)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .size(58.dp * scaleFactor)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                                 .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Seña", color = Color.White, fontSize = dimens.fontSizeSmall)
+                            Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
                         }
                         Box(
                             modifier = Modifier
-                                .size(44.dp * scaleFactor)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .size(58.dp * scaleFactor)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                                 .clickable { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
                             contentAlignment = Alignment.Center
                         ) {
@@ -342,66 +350,13 @@ fun GameScreen(
                                 painter = painterResource(id = R.drawable.ic_pause),
                                 contentDescription = "Pausa",
                                 tint = Color.White,
-                                modifier = Modifier.size(22.dp * scaleFactor)
+                                modifier = Modifier.size(48.dp * scaleFactor)
                             )
                         }
                     }
                 }
             }
 
-            // ── CAPA 2: globos de anuncio — flotan encima sin afectar el layout ──
-            // Usamos un Box que cubre toda la pantalla con pointerInput desactivado
-            // para que los toques pasen a través hacia los elementos de abajo.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(99f)
-            ) {
-                // Compañero — debajo de su área (top ~20% de pantalla)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = screenHeight * 0.18f)
-                ) {
-                    ActionAnnouncement(partner, gameState, dimens)
-                }
-
-                // Rival izquierdo — a la derecha de su avatar
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(
-                            start = dimens.avatarSize + dimens.smallPadding,
-                            bottom = screenHeight * 0.15f
-                        )
-                ) {
-                    ActionAnnouncement(rivalLeft, gameState, dimens)
-                }
-
-                // Rival derecho — a la izquierda de su avatar
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(
-                            end = dimens.avatarSize + dimens.smallPadding,
-                            bottom = screenHeight * 0.15f
-                        )
-                ) {
-                    ActionAnnouncement(rivalRight, gameState, dimens)
-                }
-
-                // Jugador principal — encima de su área
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(
-                            start = dimens.avatarSize + dimens.smallPadding * 2,
-                            bottom = screenHeight * 0.28f
-                        )
-                ) {
-                    ActionAnnouncement(player, gameState, dimens)
-                }
-            }
 
             // ── CAPA 3: overlays de pantalla completa ──
             if (gameState.isPaused) {
@@ -516,7 +471,7 @@ private fun GameActionButton(
             if (action.actionType == ActionType.BET && isEnabled) {
                 // Get the TextUnit value (e.g., 15.sp * 1.5 = 22.5.sp)
                 val iconSizeSp =
-                    dimens.fontSizeMedium
+                    dimens.fontSizeLarge
 
                 // Convert the sp value to Dp.
                 // While there isn't a direct .toDp() from sp, you can use the .value
@@ -571,8 +526,8 @@ fun ActionButtons(
 
     // --- Layout principal que cambia según la fase del juego ---
     Box(
-        modifier = modifier.fillMaxWidth().padding(top = dimens.buttonVPadding, bottom = dimens.buttonVPadding),
-        contentAlignment = Alignment.BottomCenter
+        modifier = modifier.padding(top = dimens.buttonVPadding, bottom = dimens.buttonVPadding),
+        contentAlignment = Alignment.Center
     ) {
         when (gamePhase) {
             GamePhase.MUS -> {
@@ -861,14 +816,14 @@ fun ActionAnnouncement(
                 text = ("Dame ${gameState.discardCounts[player.id]}"),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor, vertical = 1.dp * dimens.scaleFactor)
+                fontSize = dimens.fontSizeLarge,
+                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
             ) else Text(
                 text = actionToShow?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor, vertical = 1.dp * dimens.scaleFactor)
+                fontSize = dimens.fontSizeLarge,
+                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
             )
         }
     }
@@ -988,13 +943,23 @@ fun VerticalPlayerArea(
     handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
     activeGesture: ActiveGestureInfo?,
-    dimens: ResponsiveDimens
-
+    dimens: ResponsiveDimens,
+    gameState: GameState
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
+        Box(
+            modifier = Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                layout(placeable.width, 0) {
+                    placeable.placeRelative(0, -placeable.height)
+                }
+            }
+        ) {
+            ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+        }
         PlayerAvatar(player = player,
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
@@ -1013,14 +978,46 @@ fun HorizontalPlayerArea(
     hasCutMus: Boolean,
     activeGesture: ActiveGestureInfo?,
     dimens: ResponsiveDimens,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    gameState: GameState,
+    announcementAbove: Boolean = false,
+    avatarLeadingPadding: Dp = 0.dp
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens,activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+        Column(
+            modifier = Modifier.padding(start = avatarLeadingPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (announcementAbove) {
+                Box(
+                    modifier = Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width, 0) {
+                            placeable.placeRelative(0, -placeable.height)
+                        }
+                    }
+                ) {
+                    ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+                }
+            }
+            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+            if (!announcementAbove) {
+                Box(
+                    modifier = Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width, 0) {
+                            placeable.placeRelative(0, 0)
+                        }
+                    }
+                ) {
+                    ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+                }
+            }
+        }
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }
@@ -1283,13 +1280,13 @@ fun LanceTracker(
                         text = lanceName,
                         color = textColor,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = dimens.fontSizeMedium
+                        fontSize = dimens.fontSizeLarge
                     )
                     if (resultText.isNotEmpty()) {
                         Text(
                             text = resultText,
                             color = Color.Gray,
-                            fontSize = dimens.fontSizeMedium
+                            fontSize = dimens.fontSizeLarge
                         )
                     }
                 }
@@ -1410,6 +1407,7 @@ data class ResponsiveDimens(
     val handArcTranslationX: Float,
     val handArcTranslationY: Float,
     val handArcRotation: Float,
+    val largePadding: Dp,
     val defaultPadding: Dp,
     val smallPadding: Dp,
     val fontSizeLarge: TextUnit,
