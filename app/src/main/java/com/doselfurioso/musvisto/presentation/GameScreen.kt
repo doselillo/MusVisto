@@ -111,8 +111,15 @@ fun GameScreen(
         val maxScreenWidth = 800.dp
         val minScale = 0.70f
         val maxScale = 1.25f
-        val progress = ((screenWidth - minScreenWidth) / (maxScreenWidth - minScreenWidth)).coerceIn(0f, 1f)
-        val scaleFactor = minScale + progress * (maxScale - minScale)
+        val widthProgress = ((screenWidth - minScreenWidth) / (maxScreenWidth - minScreenWidth)).coerceIn(0f, 1f)
+        val widthScale = minScale + widthProgress * (maxScale - minScale)
+
+        val minScreenHeight = 560.dp
+        val maxScreenHeight = 1000.dp
+        val heightProgress = ((screenHeight - minScreenHeight) / (maxScreenHeight - minScreenHeight)).coerceIn(0f, 1f)
+        val heightScale = minScale + heightProgress * (maxScale - minScale)
+
+        val scaleFactor = minOf(widthScale, heightScale)
 
         val dimens = remember(scaleFactor) {
             ResponsiveDimens(
@@ -223,7 +230,7 @@ fun GameScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Scoreboard(score = gameState.score)
+                        Scoreboard(score = gameState.score, dimens = dimens)
                         Spacer(modifier = Modifier.height(6.dp))
                         LanceTracker(
                             currentPhase = gameState.gamePhase,
@@ -407,7 +414,12 @@ fun GameScreen(
             }
 
             if (gameState.isSelectingBet) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = screenHeight * 0.30f),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
                     BetSelector(
                         onBet = { amount ->
                             gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
@@ -424,6 +436,7 @@ fun GameScreen(
                     winnerTeam = gameState.winningTeam!!,
                     ordagoInfo = gameState.ordagoInfo,
                     players = players,
+                    bottomPadding = screenHeight * 0.28f,
                     onNewGameClick = {
                         gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
                     }
@@ -781,25 +794,24 @@ private fun PlayerAvatar(
 }
 
 @Composable
-fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
-    // We use a Card for a nice background
+fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier, dimens: ResponsiveDimens? = null) {
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = "NOSOTROS: ${score["teamA"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = dimens?.fontSizeMedium ?: 14.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "ELLOS: ${score["teamB"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = dimens?.fontSizeMedium ?: 14.sp
             )
         }
     }
@@ -1018,8 +1030,9 @@ fun HorizontalPlayerArea(
 @Composable
 fun GameOverOverlay(
     winnerTeam: String,
-    ordagoInfo: OrdagoInfo?, // <-- Recibe la info del órdago
-    players: List<Player>, // <-- Necesita los jugadores para buscar el nombre
+    ordagoInfo: OrdagoInfo?,
+    players: List<Player>,
+    bottomPadding: Dp = 240.dp,
     onNewGameClick: () -> Unit
 ) {
     // Lógica para mostrar el texto del órdago
@@ -1044,7 +1057,7 @@ fun GameOverOverlay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(bottom = 240.dp)
+            modifier = Modifier.padding(bottom = bottomPadding)
         ) {
             Text(
                 text = titleText,
@@ -1295,8 +1308,7 @@ fun BetSelector(
 
     Card(
         modifier = Modifier
-            .fillMaxWidth(0.8f)
-            .padding(bottom = 180.dp),
+            .fillMaxWidth(0.8f),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
