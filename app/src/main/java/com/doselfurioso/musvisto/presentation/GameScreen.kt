@@ -348,7 +348,7 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(5f)
+                    .zIndex(99f)
             ) {
                 // Compañero — debajo de su área (top ~20% de pantalla)
                 Box(
@@ -1226,7 +1226,7 @@ fun LanceTracker(
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
     Card(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 36.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
         Column(
