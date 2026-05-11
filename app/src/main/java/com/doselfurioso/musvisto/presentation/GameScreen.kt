@@ -22,7 +22,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -132,9 +131,10 @@ fun GameScreen(
                 handArcTranslationX = 150f * scaleFactor,
                 handArcTranslationY = 15f * scaleFactor,
                 handArcRotation     = 5f * scaleFactor,
-                largePadding        = (24.dp * scaleFactor).coerceIn(12.dp, 36.dp),
+                largePadding        = (48.dp * scaleFactor).coerceIn(12.dp, 88.dp),
                 defaultPadding      = (12.dp * scaleFactor).coerceIn(6.dp, 24.dp),
                 smallPadding        = (6.dp * scaleFactor).coerceIn(3.dp, 10.dp),
+                actionButtonsPadding = (92.dp * scaleFactor),
                 fontSizeLarge       = (20.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
                 fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
                 fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
@@ -208,7 +208,7 @@ fun GameScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Box(
-                        modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(top = dimens.largePadding),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         VerticalPlayerArea(
@@ -249,7 +249,7 @@ fun GameScreen(
                     }
 
                     Box(
-                        modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(top = dimens.largePadding),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         VerticalPlayerArea(
@@ -278,7 +278,8 @@ fun GameScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(4.5f),
+                        .weight(4.5f)
+                        .padding(top = dimens.defaultPadding),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     // Mano del jugador en la parte inferior
@@ -299,7 +300,9 @@ fun GameScreen(
                             )
                         },
                         dimens = dimens,
-                        modifier = Modifier.align(Alignment.BottomCenter)
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        gameState = gameState,
+                        announcementAbove = true
                     )
 
                     // Botones de acción — superpuestos en la parte superior, encima de las cartas
@@ -313,7 +316,7 @@ fun GameScreen(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
-                            .padding(horizontal = dimens.defaultPadding)
+                            .padding(start = dimens.defaultPadding, top = dimens.actionButtonsPadding, end = dimens.defaultPadding)
                             .zIndex(2f),
                         dimens = dimens
                     )
@@ -1232,11 +1235,11 @@ fun LanceTracker(
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
     Card(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 36.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = dimens.smallPadding),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             lances.forEach { lance ->
@@ -1246,7 +1249,7 @@ fun LanceTracker(
                 var resultText = ""
                 if (isCurrent && currentBet != null) {
                     resultText = "En juego: ${currentBet.amount}"
-                } else if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
+                } else if (result != null && !wasSkipped) {
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
                         "No Querido" -> "No Querida"
@@ -1274,21 +1277,22 @@ fun LanceTracker(
                 ) {
                     Text(
                         text = lanceName,
+                        modifier = Modifier.weight(1f),
                         color = textColor,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = dimens.fontSizeLarge
+                        fontSize = dimens.fontSizeMedium
                     )
                     if (resultText.isNotEmpty()) {
                         Text(
                             text = resultText,
                             color = Color.Gray,
-                            fontSize = dimens.fontSizeLarge
+                            fontSize = dimens.fontSizeMedium,
+                            softWrap = false
                         )
                     }
                 }
             }
         }
-
     }
 }
 
@@ -1414,5 +1418,6 @@ data class ResponsiveDimens(
     val actionbuttonsSize: Dp,
     val buttonVPadding: Dp,
     val buttonHPadding: Dp,
-    val scaleFactor: Float
+    val scaleFactor: Float,
+    val actionButtonsPadding: Dp
 )
