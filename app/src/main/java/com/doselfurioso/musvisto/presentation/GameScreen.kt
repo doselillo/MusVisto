@@ -203,7 +203,7 @@ fun GameScreen(
                 ) {
                     Box(
                         modifier = Modifier.weight(1.5f).fillMaxHeight(),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.TopCenter
                     ) {
                         VerticalPlayerArea(
                             player = rivalLeft,
@@ -243,7 +243,7 @@ fun GameScreen(
 
                     Box(
                         modifier = Modifier.weight(1.5f).fillMaxHeight(),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.TopCenter
                     ) {
                         VerticalPlayerArea(
                             player = rivalRight,
@@ -266,35 +266,14 @@ fun GameScreen(
                     }
                 }
 
-                // FILA 3 — Botones de acción
+                // FILA 3 — Jugador principal + botones de acción superpuestos
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1.5f),
-                    contentAlignment = Alignment.Center
+                        .weight(4.5f),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    ActionButtons(
-                        actions = gameState.availableActions,
-                        gamePhase = gameState.gamePhase,
-                        onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
-                        selectedCardCount = gameState.selectedCardsForDiscard.size,
-                        isEnabled = isMyTurn,
-                        currentPlayerId = gameViewModel.humanPlayerId,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = dimens.defaultPadding),
-                        dimens = dimens
-                    )
-                }
-
-                // FILA 4 — Jugador principal
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(3f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Mano centrada
+                    // Mano del jugador en la parte inferior
                     HorizontalPlayerArea(
                         player = player,
                         isCurrentTurn = isMyTurn,
@@ -312,14 +291,31 @@ fun GameScreen(
                             )
                         },
                         dimens = dimens,
-                        modifier = Modifier
+                        modifier = Modifier.align(Alignment.BottomCenter)
                     )
 
-                    // Botones Seña y Pausa — esquina inferior izquierda, FUERA del flujo
+                    // Botones de acción — superpuestos en la parte superior, encima de las cartas
+                    ActionButtons(
+                        actions = gameState.availableActions,
+                        gamePhase = gameState.gamePhase,
+                        onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                        selectedCardCount = gameState.selectedCardsForDiscard.size,
+                        isEnabled = isMyTurn,
+                        currentPlayerId = gameViewModel.humanPlayerId,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = dimens.defaultPadding)
+                            .zIndex(2f),
+                        dimens = dimens
+                    )
+
+                    // Botones Seña y Pausa — esquina inferior izquierda
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(dimens.smallPadding),
+                            .padding(dimens.smallPadding)
+                            .zIndex(3f),
                         horizontalArrangement = Arrangement.spacedBy(dimens.smallPadding)
                     ) {
                         Box(
