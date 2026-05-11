@@ -16,7 +16,7 @@ sealed class GameAction(
 ) {
     // Mus Phase Actions
     object Mus : GameAction("Mus", ActionType.CONFIRM, R.drawable.ic_cycle)
-    object NoMus : GameAction("No Mus", ActionType.DENY, R.drawable.ic_stop)
+    object NoMus : GameAction("Corto", ActionType.DENY, R.drawable.ic_stop)
     object ConfirmDiscard : GameAction("Descartar", ActionType.DISCARD, R.drawable.ic_check)
     object Continue : GameAction("Continuar", ActionType.CONFIRM, R.drawable.ic_continue)
     object NewGame : GameAction("Jugar de Nuevo", ActionType.CONFIRM, R.drawable.ic_newgame)

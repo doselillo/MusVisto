@@ -124,17 +124,17 @@ fun GameScreen(
 
         val dimens = remember(scaleFactor) {
             ResponsiveDimens(
-                cardWidth           = (120.dp * scaleFactor).coerceIn(48.dp, 120.dp),
-                cardBackWidth       = (72.dp * scaleFactor).coerceIn(48.dp, 120.dp),
+                cardWidth           = (114.dp * scaleFactor).coerceIn(46.dp, 114.dp),
+                cardBackWidth       = (72.dp * scaleFactor).coerceIn(36.dp, 85.dp),
                 cardAspectRatio     = 0.7f,
-                avatarSize          = (100.dp * scaleFactor).coerceIn(52.dp, 150.dp),
+                avatarSize          = (90.dp * scaleFactor).coerceIn(42.dp, 115.dp),
                 handArcTranslationX = 150f * scaleFactor,
                 handArcTranslationY = 15f * scaleFactor,
                 handArcRotation     = 5f * scaleFactor,
                 largePadding        = (48.dp * scaleFactor).coerceIn(12.dp, 88.dp),
                 defaultPadding      = (12.dp * scaleFactor).coerceIn(6.dp, 24.dp),
                 smallPadding        = (6.dp * scaleFactor).coerceIn(3.dp, 10.dp),
-                actionButtonsPadding = (92.dp * scaleFactor),
+                actionButtonsPadding = (60.dp * scaleFactor),
                 fontSizeLarge       = (20.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
                 fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
                 fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
@@ -169,7 +169,7 @@ fun GameScreen(
             } else gameState.availableActions
 
             // ── CAPA 1: el layout real (Column con pesos) ──
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
 
                 // FILA 1 — Compañero
                 Box(
@@ -233,7 +233,7 @@ fun GameScreen(
                     }
 
                     Column(
-                        modifier = Modifier.weight(2f),
+                        modifier = Modifier.weight(2f).fillMaxHeight(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom
                     ) {
@@ -399,7 +399,9 @@ fun GameScreen(
 
             if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = screenHeight * 0.55f),
                     contentAlignment = Alignment.Center
                 ) {
                     RoundEndOverlay(
@@ -777,30 +779,22 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // 1. DETERMINAMOS LA ACCIÓN CORRECTA PARA ESTE JUGADOR
-    //    Esta variable local 'actionToShow' será la única fuente de verdad para este anuncio.
-    var actionToShow = gameState.currentLanceActions[player.id]
-
-    // Solo mostramos la acción transitoria si no hay ya una acción normal para ese jugador
-    if (actionToShow == null && gameState.transientAction?.playerId == player.id) {
-        actionToShow = gameState.transientAction
+    // transientAction takes priority (end-of-phase action), then persistent — but hide
+    // the persistent action while it's the player's turn to avoid showing a stale
+    // action from a previous betting round within the same lance.
+    // Hide a stale persistent action only when the game is actively waiting for this
+    // player to make a choice (availableActions non-empty). During auto-declaration
+    // sequences (PARES_CHECK / JUEGO_CHECK) availableActions is empty, so announcements
+    // show correctly even for the first player in declaration order.
+    val isWaitingForInput = gameState.currentTurnPlayerId == player.id &&
+            gameState.availableActions.isNotEmpty()
+    val actionToShow = when {
+        gameState.transientAction?.playerId == player.id -> gameState.transientAction
+        isWaitingForInput -> null
+        else -> gameState.currentLanceActions[player.id]
     }
 
     val visible = actionToShow != null
-
-    // Primero, miramos si hay una acción persistente para este jugador en el lance actual.
-    val persistentAction = gameState.currentLanceActions[player.id]
-    if (persistentAction != null) {
-        actionToShow = persistentAction
-    }
-
-    // Luego, comprobamos si la acción transitoria (la que cambia de fase) es de este jugador.
-    // Si es así, tiene prioridad para mostrarse.
-    if (gameState.transientAction?.playerId == player.id) {
-        actionToShow = gameState.transientAction
-    }
-
-    // 2. LA VISIBILIDAD DEPENDE EXCLUSIVAMENTE DE SI HEMOS ENCONTRADO UNA ACCIÓN
 
     AnimatedVisibility(
         visible = visible,
@@ -852,7 +846,7 @@ private fun PlayerHandArc(
             val centerOffset = index - (cardCount - 1) / 2f
             val rotation = centerOffset * 5f
             val translationY = abs(centerOffset) * -1f
-            val translationX = centerOffset * 200f * dimens.scaleFactor
+            val translationX = centerOffset * 230f * dimens.scaleFactor
 
             GameCard(
                 card = card,
@@ -884,9 +878,16 @@ private fun PartnerHand(
     revealHand: Boolean,
     dimens: ResponsiveDimens
 ) {
-    Row(modifier = modifier) {
+    val showFaceUp = isDebugMode || revealHand
+    Row(
+        modifier = modifier,
+        horizontalArrangement = if (showFaceUp)
+            Arrangement.spacedBy(-(dimens.cardWidth * 0.30f))
+        else
+            Arrangement.spacedBy(0.dp)
+    ) {
         cards.forEach { card ->
-            if (isDebugMode || revealHand) {
+            if (showFaceUp) {
 
                 GameCard(
                     card = card,
@@ -908,10 +909,12 @@ private fun PartnerHand(
 
 @Composable
 fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean, rotate: Boolean = false, dimens: ResponsiveDimens) {
-    Box {
+    Box (
+        modifier = Modifier.offset(y = -dimens.smallPadding)
+    ) {
         repeat(cards.size) { index ->
             Box(
-                modifier = Modifier.offset(y = (index * dimens.cardWidth * 0.6f))
+                modifier = Modifier.offset(y = (index * dimens.cardWidth * 0.5f))
                     .graphicsLayer {
                         if (rotate) rotationZ = 90f else rotationZ = 270f
                     }
