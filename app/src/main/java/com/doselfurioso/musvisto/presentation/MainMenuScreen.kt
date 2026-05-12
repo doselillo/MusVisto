@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.doselfurioso.musvisto.R
+import androidx.compose.ui.text.style.TextAlign
+import com.doselfurioso.musvisto.BuildConfig
 
 @Composable
 fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
@@ -113,6 +115,15 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             }
 
              */
+
+            Text(
+                text = "Versión ${BuildConfig.VERSION_NAME}",
+                modifier = Modifier
+                    .padding(16.dp),
+                color = Color.White.copy(alpha = 0.6f), // Un color sutil
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

@@ -334,7 +334,10 @@ class GameViewModel constructor(
             if (phaseChanged) {
                 // La información del último anuncio está en `newState.transientAction`
                 // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
-                delay(1000)
+                delay(500)
+                _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
+                delay(500)
+
 
                 // Pasado el tiempo, nos aseguramos de que el estado esté limpio
                 // antes de continuar.
@@ -398,7 +401,7 @@ class GameViewModel constructor(
             listOf(
                 Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
                 Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-                Player(id = "p3", name = "Compañero", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
+                Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
                 Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
             )
         }

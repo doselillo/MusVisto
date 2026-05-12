@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -21,7 +22,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.doselfurioso.musvisto.R
@@ -92,352 +94,292 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
 fun GameScreen(
     gameViewModel: GameViewModel,
     navController: NavController
-){
+) {
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
     val gameLogic: MusGameLogic = gameViewModel.gameLogic
-
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF006A4E))
     ) {
-
         val screenWidth = maxWidth
+        val screenHeight = maxHeight
 
-        // --- INICIO DE LA NUEVA LÓGICA DE ESCALADO ---
+        val minScreenWidth = 320.dp
+        val maxScreenWidth = 800.dp
+        val minScale = 0.70f
+        val maxScale = 1.25f
+        val widthProgress = ((screenWidth - minScreenWidth) / (maxScreenWidth - minScreenWidth)).coerceIn(0f, 1f)
+        val widthScale = minScale + widthProgress * (maxScale - minScale)
 
-        // 1. Definimos los límites de la pantalla con los que vamos a trabajar.
-        //    - `minWidth`: El ancho de una pantalla muy pequeña (ej. 320dp).
-        //    - `maxWidth`: El ancho de una pantalla grande/tablet (ej. 800dp).
-        val minWidth = 320.dp
-        val maxWidth = 800.dp
+        val minScreenHeight = 560.dp
+        val maxScreenHeight = 1000.dp
+        val heightProgress = ((screenHeight - minScreenHeight) / (maxScreenHeight - minScreenHeight)).coerceIn(0f, 1f)
+        val heightScale = minScale + heightProgress * (maxScale - minScale)
 
-        // 2. Definimos los factores de escala que queremos en esos límites.
-        //    - En la pantalla más pequeña, queremos que todo se reduzca un 15% (escala de 0.85).
-        //    - En la pantalla más grande, queremos que todo aumente un 20% (escala de 1.2).
-        //    ¡ESTOS SON LOS VALORES QUE PUEDES AJUSTAR PARA EL "LOOK & FEEL"!
-        val minScale = 0.50f
-        val maxScale = 2f
-
-        // 3. Calculamos el progreso actual de la pantalla dentro de nuestro rango.
-        //    `coerceIn` asegura que el valor no se salga de los límites 0.0 a 1.0.
-        val progress = ((screenWidth - minWidth) / (maxWidth - minWidth)).coerceIn(0f, 1f)
-
-        // 4. Interpolamos para obtener nuestro factor de escala final.
-        //    Esta fórmula calcula el punto exacto entre `minScale` y `maxScale`
-        //    que corresponde al `progress` actual.
-        val scaleFactor = minScale + progress * (maxScale - minScale)
-
-        // --- FIN DE LA NUEVA LÓGICA DE ESCALADO ---
-
-
+        val scaleFactor = minOf(widthScale, heightScale)
 
         val dimens = remember(scaleFactor) {
             ResponsiveDimens(
-                // Ahora usamos este nuevo `scaleFactor` más equilibrado.
-                // Podemos ser un poco más generosos con los límites de `coerceIn`.
-                cardWidth = (180.dp * scaleFactor).coerceIn(70.dp, 120.dp),
-                cardAspectRatio = 0.7f,
-                avatarSize = (85.dp * scaleFactor).coerceIn(40.dp, 100.dp),
-                handArcTranslationX = (150f * scaleFactor),
-                handArcTranslationY = (15f * scaleFactor),
-                handArcRotation = 5f,
-                defaultPadding = (32.dp * scaleFactor),
-                smallPadding = (8.dp * scaleFactor),
-                fontSizeLarge = (20.sp * scaleFactor),
-                fontSizeMedium = (15.sp * scaleFactor),
-                fontSizeSmall = (12.sp * scaleFactor),
-                // Los offsets verticales pueden seguir dependiendo del alto para evitar solapamientos
-                sidePlayerVerticalOffset = (maxHeight * 0.3f).coerceAtMost(280.dp),
-                actionButtonsVerticalOffset = (maxHeight * 0.30f).coerceIn(130.dp, 220.dp),
-                actionbuttonsSize = (10.dp * scaleFactor).coerceIn(0.dp, 180.dp),
-                buttonVPadding = (10.dp * scaleFactor),
-                buttonHPadding = (10.dp * scaleFactor),
-                scaleFactor = scaleFactor.dp// 0'6 small - 0'9 big screen
-
+                cardWidth           = (114.dp * scaleFactor).coerceIn(46.dp, 114.dp),
+                cardBackWidth       = (72.dp * scaleFactor).coerceIn(36.dp, 85.dp),
+                cardAspectRatio     = 0.7f,
+                avatarSize          = (90.dp * scaleFactor).coerceIn(42.dp, 115.dp),
+                handArcTranslationX = 150f * scaleFactor,
+                handArcTranslationY = 15f * scaleFactor,
+                handArcRotation     = 5f * scaleFactor,
+                largePadding        = (48.dp * scaleFactor).coerceIn(12.dp, 88.dp),
+                defaultPadding      = (12.dp * scaleFactor).coerceIn(6.dp, 24.dp),
+                smallPadding        = (6.dp * scaleFactor).coerceIn(3.dp, 10.dp),
+                actionButtonsPadding = (60.dp * scaleFactor),
+                fontSizeLarge       = (20.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
+                fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
+                fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
+                sidePlayerVerticalOffset    = 0.dp,
+                actionButtonsVerticalOffset = 0.dp,
+                actionbuttonsSize   = 0.dp,
+                buttonVPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
+                buttonHPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
+                scaleFactor         = scaleFactor
             )
         }
-
-    Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
-        if (gameState.isPaused) {
-            PauseMenuOverlay(
-                navController = navController,
-                onAction = gameViewModel::onAction,
-                humanPlayerId = gameViewModel.humanPlayerId,
-                dimensions = dimens
-            )
-        }
-    }
-
-
 
         if (gameState.players.size == 4) {
-            val player = players[0]
-            val rivalLeft = players[1]
-            val partner = players[2]
+            val player     = players[0]
+            val rivalLeft  = players[1]
+            val partner    = players[2]
             val rivalRight = players[3]
 
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
             val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
-            var actionsForUi = gameState.availableActions
-            if (currentPlayer?.id == gameViewModel.humanPlayerId) {
+            val actionsForUi = if (currentPlayer?.id == gameViewModel.humanPlayerId) {
                 val playerHand = currentPlayer.hand
-                actionsForUi = when (gameState.gamePhase) {
-                    GamePhase.PARES -> {
+                when (gameState.gamePhase) {
+                    GamePhase.PARES ->
                         if (gameLogic.getHandPares(playerHand).strength > 0) gameState.availableActions
                         else listOf(GameAction.Paso)
-                    }
-
-                    GamePhase.JUEGO -> {
+                    GamePhase.JUEGO ->
                         if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) >= 31) gameState.availableActions
                         else listOf(GameAction.Paso)
-                    }
-
                     else -> gameState.availableActions
                 }
-            }
-/*
-            IconButton(
-                onClick = { gameViewModel.onToggleDebugMode() },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 32.dp, end = 16.dp)
-                    .zIndex(3f)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_debug),
-                    contentDescription = "Toggle Debug Mode",
-                    tint = Color.White.copy(alpha = 0.7f),
-                )
-            }
+            } else gameState.availableActions
 
- */
+            // ── CAPA 1: el layout real (Column con pesos) ──
+            Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
 
-            // --- ANUNCIOS DE ACCIÓN ---
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(rivalLeft, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 16.dp * scaleFactor, top = 250.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(rivalRight, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 24.dp * scaleFactor, top = 170.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(partner, gameState, dimens)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 32.dp * scaleFactor, bottom = 270.dp * scaleFactor)
-            ) {
-                ActionAnnouncement(player, gameState, dimens)
-            }
-            // ÁREA DEL COMPAÑERO (ARRIBA) - Vertical
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 80.dp * dimens.scaleFactor.value * dimens.scaleFactor.value)
-            ) {
-                HorizontalPlayerArea(
-                    player = partner,
-                    isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
-                    isMano = gameState.manoPlayerId == partner.id,
-                    hasCutMus = gameState.noMusPlayer == partner.id,
-                    activeGesture = gameState.activeGesture,
-                    handContent = {
-                        PartnerHand(
-                            modifier = Modifier.graphicsLayer { rotationZ = 180f },
-                            cards = partner.hand.sortedByDescending { it.rank.value },
-                            isDebugMode = isDebugMode,
-                            revealHand = gameState.revealAllHands,
-                            dimens = dimens
-                        )
-                    },
-                    dimens = dimens
-                )
-            }
-
-            // ÁREA DEL RIVAL IZQUIERDO - Horizontal
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = dimens.defaultPadding, bottom = dimens.sidePlayerVerticalOffset)
-            ) {
-                VerticalPlayerArea(
-                    player = rivalLeft,
-                    isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                    isMano = gameState.manoPlayerId == rivalLeft.id,
-                    hasCutMus = gameState.noMusPlayer == rivalLeft.id,
-                    activeGesture = gameState.activeGesture,
-                    handContent = {
-                        SideOpponentHandStacked(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .graphicsLayer { rotationX = 90f },
-                            cards = rivalLeft.hand.sortedByDescending { it.rank.value },
-                            isDebugMode = isDebugMode,
-                            revealHand = gameState.revealAllHands,
-                            rotate = true,
-                            dimens = dimens
-                        )
-                    },
-                    dimens = dimens
-                )
-            }
-
-            // ÁREA DEL RIVAL DERECHO - Horizontal
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = dimens.defaultPadding, bottom = dimens.sidePlayerVerticalOffset)
-            ) {
-                VerticalPlayerArea(
-                    player = rivalRight,
-                    isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                    isMano = gameState.manoPlayerId == rivalRight.id,
-                    hasCutMus = gameState.noMusPlayer == rivalRight.id,
-                    activeGesture = gameState.activeGesture,
-                    handContent = {
-                        SideOpponentHandStacked(
-                            modifier = Modifier
-                                .graphicsLayer { rotationZ = 180f },
-                            cards = rivalRight.hand.sortedBy { it.rank.value },
-                            isDebugMode = isDebugMode,
-                            revealHand = gameState.revealAllHands,
-                            rotate = false,
-                            dimens = dimens
-                        )
-                    },
-                    dimens = dimens
-                )
-            }
-
-            // ÁREA DEL JUGADOR PRINCIPAL (ABAJO) - Vertical
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp * dimens.scaleFactor.value * dimens.scaleFactor.value, start = 32.dp * dimens.scaleFactor.value)
-            ) {
-                IconButton(
-                    onClick = { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                // FILA 1 — Compañero
+                Box(
                     modifier = Modifier
-                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor)
-                        .align(Alignment.BottomStart) // Alineado arriba y al centro del área
-                        .size(50.dp * dimens.scaleFactor.value)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-
+                        .fillMaxWidth()
+                        .weight(2f)
+                        .padding(top = dimens.defaultPadding * 2),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "Seña",
-                        color = Color.White,
-                        fontSize = dimens.fontSizeLarge
+                    HorizontalPlayerArea(
+                        player = partner,
+                        isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
+                        isMano = gameState.manoPlayerId == partner.id,
+                        hasCutMus = gameState.noMusPlayer == partner.id,
+                        activeGesture = gameState.activeGesture,
+                        handContent = {
+                            PartnerHand(
+                                modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                                cards = partner.hand.sortedByDescending { it.rank.value },
+                                isDebugMode = isDebugMode,
+                                revealHand = gameState.revealAllHands,
+                                dimens = dimens
+                            )
+                        },
+                        dimens = dimens,
+                        gameState = gameState,
+                        announcementAbove = false
                     )
                 }
 
-                IconButton(
-                    onClick = { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
+                // FILA 2 — Rivales laterales + centro
+                Row(
                     modifier = Modifier
-                        .padding(bottom = 40.dp * scaleFactor, top = 100.dp * scaleFactor, start = 80.dp * scaleFactor)
-                        .align(Alignment.BottomStart) // Alineado arriba y al centro del área
-                        .size(50.dp * dimens.scaleFactor.value)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                        .fillMaxWidth()
+                        .weight(3.5f),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_pause), // Cambia este icono por uno de pausa si lo tienes
-                        contentDescription = "Pausa",
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(48.dp * scaleFactor)
-                    )
+                    Box(
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(top = dimens.largePadding),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        VerticalPlayerArea(
+                            player = rivalLeft,
+                            isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
+                            isMano = gameState.manoPlayerId == rivalLeft.id,
+                            hasCutMus = gameState.noMusPlayer == rivalLeft.id,
+                            activeGesture = gameState.activeGesture,
+                            handContent = {
+                                SideOpponentHandStacked(
+                                    modifier = Modifier.graphicsLayer { rotationX = 90f },
+                                    cards = rivalLeft.hand.sortedByDescending { it.rank.value },
+                                    isDebugMode = isDebugMode,
+                                    revealHand = gameState.revealAllHands,
+                                    rotate = true,
+                                    dimens = dimens
+                                )
+                            },
+                            dimens = dimens,
+                            gameState = gameState
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(2f).fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        Scoreboard(score = gameState.score, dimens = dimens)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LanceTracker(
+                            currentPhase = gameState.gamePhase,
+                            history = gameState.roundHistory,
+                            isPuntoPhase = gameState.isPuntoPhase,
+                            dimens = dimens,
+                            currentBet = gameState.currentBet
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier.weight(1.5f).fillMaxHeight().padding(top = dimens.largePadding),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        VerticalPlayerArea(
+                            player = rivalRight,
+                            isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
+                            isMano = gameState.manoPlayerId == rivalRight.id,
+                            hasCutMus = gameState.noMusPlayer == rivalRight.id,
+                            activeGesture = gameState.activeGesture,
+                            handContent = {
+                                SideOpponentHandStacked(
+                                    modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                                    cards = rivalRight.hand.sortedBy { it.rank.value },
+                                    isDebugMode = isDebugMode,
+                                    revealHand = gameState.revealAllHands,
+                                    rotate = false,
+                                    dimens = dimens
+                                )
+                            },
+                            dimens = dimens,
+                            gameState = gameState
+                        )
+                    }
                 }
 
+                // FILA 3 — Jugador principal + botones de acción superpuestos
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(4.5f)
+                        .padding(top = dimens.defaultPadding),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    // Mano del jugador en la parte inferior
+                    HorizontalPlayerArea(
+                        player = player,
+                        isCurrentTurn = isMyTurn,
+                        isMano = gameState.manoPlayerId == player.id,
+                        hasCutMus = gameState.noMusPlayer == player.id,
+                        activeGesture = gameState.activeGesture,
+                        handContent = {
+                            PlayerHandArc(
+                                cards = player.hand.sortedByDescending { it.rank.value },
+                                selectedCards = gameState.selectedCardsForDiscard,
+                                gamePhase = gameState.gamePhase,
+                                isMyTurn = isMyTurn,
+                                onCardClick = { card -> gameViewModel.onCardSelected(card) },
+                                dimens = dimens
+                            )
+                        },
+                        dimens = dimens,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        gameState = gameState,
+                        announcementAbove = true
+                    )
 
+                    // Botones de acción — superpuestos en la parte superior, encima de las cartas
+                    ActionButtons(
+                        actions = gameState.availableActions,
+                        gamePhase = gameState.gamePhase,
+                        onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                        selectedCardCount = gameState.selectedCardsForDiscard.size,
+                        isEnabled = isMyTurn,
+                        currentPlayerId = gameViewModel.humanPlayerId,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(start = dimens.defaultPadding, top = dimens.actionButtonsPadding, end = dimens.defaultPadding)
+                            .zIndex(2f),
+                        dimens = dimens
+                    )
 
-                HorizontalPlayerArea(
-                    player = player,
-                    isCurrentTurn = isMyTurn,
-                    isMano = gameState.manoPlayerId == player.id,
-                    hasCutMus = gameState.noMusPlayer == player.id,
-                    activeGesture = gameState.activeGesture,
-                    handContent = {
-                        PlayerHandArc(
-                            cards = player.hand.sortedByDescending { it.rank.value },
-                            selectedCards = gameState.selectedCardsForDiscard,
-                            gamePhase = gameState.gamePhase,
-                            isMyTurn = isMyTurn,
-                            onCardClick = { card -> gameViewModel.onCardSelected(card) },
-                            dimens = dimens
-                        )
-                    },
-                    dimens = dimens
-                )
+                    // Botones Seña y Pausa — esquina inferior izquierda
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(dimens.smallPadding)
+                            .zIndex(3f),
+                        horizontalArrangement = Arrangement.spacedBy(dimens.smallPadding)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp * scaleFactor)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp * scaleFactor)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                .clickable { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_pause),
+                                contentDescription = "Pausa",
+                                tint = Color.White,
+                                modifier = Modifier.size(48.dp * scaleFactor)
+                            )
+                        }
+                    }
+                }
             }
 
-            // INFO CENTRAL Y BOTONES
-            // Dentro del Column central en GameScreen
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(bottom = 200.dp), // Quitamos el padding lateral innecesario
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Scoreboard(score = gameState.score)
-                LanceTracker(
-                    currentPhase = gameState.gamePhase,
-                    history = gameState.roundHistory,
-                    isPuntoPhase = gameState.isPuntoPhase,
-                    dimens = dimens,
-                    currentBet = gameState.currentBet
+
+            // ── CAPA 3: overlays de pantalla completa ──
+            if (gameState.isPaused) {
+                PauseMenuOverlay(
+                    navController = navController,
+                    onAction = gameViewModel::onAction,
+                    humanPlayerId = gameViewModel.humanPlayerId,
+                    dimensions = dimens
                 )
             }
-
-            ActionButtons(
-                actions = gameState.availableActions,
-                gamePhase = gameState.gamePhase,
-                onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
-                selectedCardCount = gameState.selectedCardsForDiscard.size,
-                isEnabled = isMyTurn,
-                currentPlayerId = gameViewModel.humanPlayerId,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = dimens.actionButtonsVerticalOffset,
-                        start = 32.dp,
-                        end = 32.dp
-                    ),
-                dimens = dimens
-            )
 
             if (gameState.isSelectingBet) {
                 Box(
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = screenHeight * 0.30f),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     BetSelector(
                         onBet = { amount ->
-                            gameViewModel.onAction(
-                                GameAction.Envido(amount),
-                                gameViewModel.humanPlayerId
-                            )
+                            gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
                         },
                         onCancel = {
-                            gameViewModel.onAction(
-                                GameAction.Paso,
-                                gameViewModel.humanPlayerId
-                            )
+                            gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
                         }
                     )
                 }
@@ -446,40 +388,34 @@ fun GameScreen(
             if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
                 GameOverOverlay(
                     winnerTeam = gameState.winningTeam!!,
-                    ordagoInfo = gameState.ordagoInfo, // <-- Pasa la nueva info
-                    players = players, // <-- Pasa la lista de jugadores
+                    ordagoInfo = gameState.ordagoInfo,
+                    players = players,
+                    bottomPadding = screenHeight * 0.28f,
                     onNewGameClick = {
-                        gameViewModel.onAction(
-                            GameAction.NewGame,
-                            gameViewModel.humanPlayerId
-                        )
+                        gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
                     }
                 )
             }
 
-            Box(modifier = Modifier.align(Alignment.Center)) {
-                GameEventNotification(event = gameState.event)
+            if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = screenHeight * 0.55f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RoundEndOverlay(
+                        breakdown = gameState.scoreBreakdown!!,
+                        onContinueClick = {
+                            gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
+                        },
+                        dimens = dimens
+                    )
+                }
             }
-        }
-        if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
-            // Este Box se asegura de que el panel aparezca centrado
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 180.dp)
-                    .background(Color.Black.copy(alpha = 0.0f)) // Un fondo oscuro para dar énfasis
-                    .clickable(enabled = false, onClick = {}),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                RoundEndOverlay(
-                    breakdown = gameState.scoreBreakdown!!,
-                    onContinueClick = {
-                        gameViewModel.onAction(
-                            GameAction.Continue,
-                            gameViewModel.humanPlayerId
-                        )
-                    }
-                )
+
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                GameEventNotification(event = gameState.event)
             }
         }
     }
@@ -529,14 +465,14 @@ private fun GameActionButton(
         colors = buttonColors,
         enabled = isEnabled,
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-        modifier = Modifier.defaultMinSize(minHeight = dimens.scaleFactor).height(48.dp * dimens.scaleFactor.value)
+        modifier = Modifier.height(48.dp * dimens.scaleFactor)
     ) {
         if (action.iconResId != null) {
 
             if (action.actionType == ActionType.BET && isEnabled) {
                 // Get the TextUnit value (e.g., 15.sp * 1.5 = 22.5.sp)
                 val iconSizeSp =
-                    dimens.fontSizeMedium
+                    dimens.fontSizeLarge
 
                 // Convert the sp value to Dp.
                 // While there isn't a direct .toDp() from sp, you can use the .value
@@ -591,15 +527,15 @@ fun ActionButtons(
 
     // --- Layout principal que cambia según la fase del juego ---
     Box(
-        modifier = modifier.fillMaxWidth().padding(top = dimens.buttonVPadding, bottom = dimens.buttonVPadding),
-        contentAlignment = Alignment.BottomCenter
+        modifier = modifier.padding(top = dimens.buttonVPadding, bottom = dimens.buttonVPadding),
+        contentAlignment = Alignment.Center
     ) {
         when (gamePhase) {
             GamePhase.MUS -> {
                 // FASE MUS: Solo se muestran los botones de Mus
                 Row(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor)
                 ) {
                     GameActionButton(
                         action = GameAction.Mus,
@@ -640,7 +576,7 @@ fun ActionButtons(
 
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value),
+                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
 
@@ -660,7 +596,7 @@ fun ActionButtons(
                         )
                     }
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor.value),
+                        verticalArrangement = Arrangement.spacedBy(12.dp * dimens.scaleFactor),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         val pasoAction = GameAction.Paso
@@ -703,9 +639,8 @@ fun CardBack(modifier: Modifier = Modifier, dimens: ResponsiveDimens) { // <-- A
         contentDescription = "Card back",
         // Apply the passed-in modifier here, then add our specific ones
         modifier = modifier
-            .width((dimens.cardWidth - 10.dp)* dimens.scaleFactor.value * dimens.scaleFactor.value)
+            .width(dimens.cardBackWidth)
             .aspectRatio(dimens.cardAspectRatio)
-            .padding(vertical = 4.dp)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp))
             .bottomBorder(1.dp, Color.Black.copy(alpha = 0.5f))
     )
@@ -727,7 +662,7 @@ private fun GameCard(
         painter = cardToPainter(card = card),
         contentDescription = "${card.rank} of ${card.suit}",
         modifier = modifier
-            .width((dimens.cardWidth * dimens.scaleFactor.value * dimens.scaleFactor.value) + 10.dp)
+            .width(dimens.cardWidth)
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
@@ -815,25 +750,24 @@ private fun PlayerAvatar(
 }
 
 @Composable
-fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier) {
-    // We use a Card for a nice background
+fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier, dimens: ResponsiveDimens? = null) {
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = "NOSOTROS: ${score["teamA"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = dimens?.fontSizeMedium ?: 14.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "ELLOS: ${score["teamB"] ?: 0}",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = dimens?.fontSizeMedium ?: 14.sp
             )
         }
     }
@@ -845,30 +779,22 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // 1. DETERMINAMOS LA ACCIÓN CORRECTA PARA ESTE JUGADOR
-    //    Esta variable local 'actionToShow' será la única fuente de verdad para este anuncio.
-    var actionToShow = gameState.currentLanceActions[player.id]
-
-    // Solo mostramos la acción transitoria si no hay ya una acción normal para ese jugador
-    if (actionToShow == null && gameState.transientAction?.playerId == player.id) {
-        actionToShow = gameState.transientAction
+    // transientAction takes priority (end-of-phase action), then persistent — but hide
+    // the persistent action while it's the player's turn to avoid showing a stale
+    // action from a previous betting round within the same lance.
+    // Hide a stale persistent action only when the game is actively waiting for this
+    // player to make a choice (availableActions non-empty). During auto-declaration
+    // sequences (PARES_CHECK / JUEGO_CHECK) availableActions is empty, so announcements
+    // show correctly even for the first player in declaration order.
+    val isWaitingForInput = gameState.currentTurnPlayerId == player.id &&
+            gameState.availableActions.isNotEmpty()
+    val actionToShow = when {
+        gameState.transientAction?.playerId == player.id -> gameState.transientAction
+        isWaitingForInput -> null
+        else -> gameState.currentLanceActions[player.id]
     }
 
     val visible = actionToShow != null
-
-    // Primero, miramos si hay una acción persistente para este jugador en el lance actual.
-    val persistentAction = gameState.currentLanceActions[player.id]
-    if (persistentAction != null) {
-        actionToShow = persistentAction
-    }
-
-    // Luego, comprobamos si la acción transitoria (la que cambia de fase) es de este jugador.
-    // Si es así, tiene prioridad para mostrarse.
-    if (gameState.transientAction?.playerId == player.id) {
-        actionToShow = gameState.transientAction
-    }
-
-    // 2. LA VISIBILIDAD DEPENDE EXCLUSIVAMENTE DE SI HEMOS ENCONTRADO UNA ACCIÓN
 
     AnimatedVisibility(
         visible = visible,
@@ -877,20 +803,20 @@ fun ActionAnnouncement(
     ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
-            modifier = Modifier.padding(4.dp * dimens.scaleFactor.value)
+            modifier = Modifier.padding(4.dp * dimens.scaleFactor)
         ) {
             if (actionToShow?.action is GameAction.ConfirmDiscard) Text(
                 text = ("Dame ${gameState.discardCounts[player.id]}"),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor.value, vertical = 1.dp * dimens.scaleFactor.value)
+                fontSize = dimens.fontSizeLarge,
+                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
             ) else Text(
                 text = actionToShow?.action?.displayText ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeMedium,
-                modifier = Modifier.padding(horizontal = 8.dp * dimens.scaleFactor.value, vertical = 1.dp * dimens.scaleFactor.value)
+                fontSize = dimens.fontSizeLarge,
+                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
             )
         }
     }
@@ -920,7 +846,7 @@ private fun PlayerHandArc(
             val centerOffset = index - (cardCount - 1) / 2f
             val rotation = centerOffset * 5f
             val translationY = abs(centerOffset) * -1f
-            val translationX = centerOffset * 200f * dimens.scaleFactor.value
+            val translationX = centerOffset * 230f * dimens.scaleFactor
 
             GameCard(
                 card = card,
@@ -952,9 +878,16 @@ private fun PartnerHand(
     revealHand: Boolean,
     dimens: ResponsiveDimens
 ) {
-    Row(modifier = modifier) {
+    val showFaceUp = isDebugMode || revealHand
+    Row(
+        modifier = modifier,
+        horizontalArrangement = if (showFaceUp)
+            Arrangement.spacedBy(-(dimens.cardWidth * 0.30f))
+        else
+            Arrangement.spacedBy(0.dp)
+    ) {
         cards.forEach { card ->
-            if (isDebugMode || revealHand) {
+            if (showFaceUp) {
 
                 GameCard(
                     card = card,
@@ -976,10 +909,15 @@ private fun PartnerHand(
 
 @Composable
 fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMode: Boolean, revealHand: Boolean, rotate: Boolean = false, dimens: ResponsiveDimens) {
-    Box {
+    Box (
+        modifier = Modifier.offset(y = -dimens.smallPadding)
+    ) {
         repeat(cards.size) { index ->
             Box(
-                modifier = Modifier.offset(y = (index * 75 * dimens.scaleFactor.value).dp)
+                modifier = Modifier.offset(y = (index * dimens.cardWidth * 0.5f))
+                    .graphicsLayer {
+                        if (rotate) rotationZ = 90f else rotationZ = 270f
+                    }
             ) {
                 if (isDebugMode || revealHand) {
                     GameCard(
@@ -988,13 +926,10 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
                         gamePhase = GamePhase.PRE_GAME,
                         isMyTurn = false,
                         onClick = {},
-                        modifier = Modifier.graphicsLayer {
-                            if (rotate) rotationZ = 90f else rotationZ = 270f
-                        },
                         dimens = dimens
                     )
                 } else {
-                    CardBack(modifier = Modifier.graphicsLayer { rotationZ = 270f }, dimens = dimens)
+                    CardBack(dimens = dimens)
                 }
             }
         }
@@ -1010,13 +945,23 @@ fun VerticalPlayerArea(
     handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
     activeGesture: ActiveGestureInfo?,
-    dimens: ResponsiveDimens
-
+    dimens: ResponsiveDimens,
+    gameState: GameState
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
+        Box(
+            modifier = Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                layout(placeable.width, 0) {
+                    placeable.placeRelative(0, -placeable.height)
+                }
+            }
+        ) {
+            ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+        }
         PlayerAvatar(player = player,
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
@@ -1034,13 +979,47 @@ fun HorizontalPlayerArea(
     handContent: @Composable (() -> Unit),
     hasCutMus: Boolean,
     activeGesture: ActiveGestureInfo?,
-    dimens: ResponsiveDimens
+    dimens: ResponsiveDimens,
+    modifier: Modifier = Modifier,
+    gameState: GameState,
+    announcementAbove: Boolean = false,
+    avatarLeadingPadding: Dp = 0.dp
 ) {
     Row(
+        modifier = modifier,
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens,activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+        Column(
+            modifier = Modifier.padding(start = avatarLeadingPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (announcementAbove) {
+                Box(
+                    modifier = Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width, 0) {
+                            placeable.placeRelative(0, -placeable.height)
+                        }
+                    }
+                ) {
+                    ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+                }
+            }
+            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+            if (!announcementAbove) {
+                Box(
+                    modifier = Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width, 0) {
+                            placeable.placeRelative(0, 0)
+                        }
+                    }
+                ) {
+                    ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
+                }
+            }
+        }
         Box(contentAlignment = Alignment.Center) {
             handContent()
         }
@@ -1050,8 +1029,9 @@ fun HorizontalPlayerArea(
 @Composable
 fun GameOverOverlay(
     winnerTeam: String,
-    ordagoInfo: OrdagoInfo?, // <-- Recibe la info del órdago
-    players: List<Player>, // <-- Necesita los jugadores para buscar el nombre
+    ordagoInfo: OrdagoInfo?,
+    players: List<Player>,
+    bottomPadding: Dp = 240.dp,
     onNewGameClick: () -> Unit
 ) {
     // Lógica para mostrar el texto del órdago
@@ -1076,7 +1056,7 @@ fun GameOverOverlay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(bottom = 240.dp)
+            modifier = Modifier.padding(bottom = bottomPadding)
         ) {
             Text(
                 text = titleText,
@@ -1133,44 +1113,13 @@ fun GameEventNotification(event: GameEvent?) {
     }
 }
 
-@Composable
-fun RoundHistoryDisplay(history: List<LanceResult>, modifier: Modifier = Modifier) {
-    // Usamos una Columna para que cada resultado de lance tenga su propia línea.
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        history.forEach { result ->
-            // Creamos el texto descriptivo basado en el resultado del lance
-            val lanceName = result.lance.name.replace('_', ' ')
-            val outcomeText = when (result.outcome) {
-                "Paso" -> "$lanceName: en Paso"
-                "Querido" -> "$lanceName: vale ${result.amount}"
-                "No Querido" -> "$lanceName: No Querida"
-                else -> ""
-            }
-            Text(
-                text = outcomeText,
-                color = Color.White.copy(alpha = 0.8f),
-                fontWeight = FontWeight.Normal,
-                fontSize = 14.sp,
-                modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-        }
-    }
-}
-
 // En: GameScreen.kt
 // Reemplaza la función RoundEndOverlay entera por esta
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
-    onContinueClick: () -> Unit
+    onContinueClick: () -> Unit,
+    dimens: ResponsiveDimens
 ) {
     // La Card ahora es el elemento principal, sin un Box que ocupe toda la pantalla
     Card(
@@ -1199,7 +1148,7 @@ fun RoundEndOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "NOSOTROS",
-                        fontSize = 14.sp,
+                        fontSize = dimens.fontSizeMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -1209,7 +1158,7 @@ fun RoundEndOverlay(
                             modifier = Modifier.width(150.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
                             Text(
                                 "+${detail.points}",
                                 color = Color.White,
@@ -1236,7 +1185,7 @@ fun RoundEndOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "ELLOS",
-                        fontSize = 14.sp,
+                        fontSize = dimens.fontSizeMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -1246,7 +1195,7 @@ fun RoundEndOverlay(
                             modifier = Modifier.width(150.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(detail.reason, color = Color.LightGray, fontSize = 12.sp)
+                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
                             Text(
                                 "+${detail.points}",
                                 color = Color.White,
@@ -1289,11 +1238,11 @@ fun LanceTracker(
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
     Card(
-        modifier = modifier.width(200.dp * dimens.scaleFactor.value),
+        modifier = modifier.fillMaxWidth().padding(horizontal = dimens.smallPadding),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             lances.forEach { lance ->
@@ -1303,7 +1252,7 @@ fun LanceTracker(
                 var resultText = ""
                 if (isCurrent && currentBet != null) {
                     resultText = "En juego: ${currentBet.amount}"
-                } else if (result != null && !wasSkipped) { // No mostramos texto para lances saltados
+                } else if (result != null && !wasSkipped) {
                     resultText = when (result.outcome) {
                         "Querido" -> "Vale ${result.amount}"
                         "No Querido" -> "No Querida"
@@ -1331,6 +1280,7 @@ fun LanceTracker(
                 ) {
                     Text(
                         text = lanceName,
+                        modifier = Modifier.weight(1f),
                         color = textColor,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                         fontSize = dimens.fontSizeMedium
@@ -1339,13 +1289,13 @@ fun LanceTracker(
                         Text(
                             text = resultText,
                             color = Color.Gray,
-                            fontSize = dimens.fontSizeMedium
+                            fontSize = dimens.fontSizeMedium,
+                            softWrap = false
                         )
                     }
                 }
             }
         }
-
     }
 }
 
@@ -1358,8 +1308,7 @@ fun BetSelector(
 
     Card(
         modifier = Modifier
-            .fillMaxWidth(0.8f)
-            .padding(bottom = 180.dp),
+            .fillMaxWidth(0.8f),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
@@ -1455,11 +1404,13 @@ fun PauseMenuOverlay(
 
 data class ResponsiveDimens(
     val cardWidth: Dp,
+    val cardBackWidth: Dp,
     val cardAspectRatio: Float,
     val avatarSize: Dp,
     val handArcTranslationX: Float,
     val handArcTranslationY: Float,
     val handArcRotation: Float,
+    val largePadding: Dp,
     val defaultPadding: Dp,
     val smallPadding: Dp,
     val fontSizeLarge: TextUnit,
@@ -1470,5 +1421,6 @@ data class ResponsiveDimens(
     val actionbuttonsSize: Dp,
     val buttonVPadding: Dp,
     val buttonHPadding: Dp,
-    val scaleFactor: Dp
+    val scaleFactor: Float,
+    val actionButtonsPadding: Dp
 )
