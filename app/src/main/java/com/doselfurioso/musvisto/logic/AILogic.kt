@@ -375,7 +375,7 @@ class AILogic constructor(
         }
 
         // --- CÁLCULO DE CHICA ---
-        val lowCardsCount = hand.count { it.rank.value == 1 } // Ases y Doses
+        val lowCardsCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
         var chicaStrength = 0
         explanation.appendLine("   - Chica:")
         when (lowCardsCount) {
@@ -479,9 +479,9 @@ class AILogic constructor(
         }
 
         val finalStrength = HandStrength(
-            grande = 0, // Placeholder
-            chica = 0,  // Placeholder
-            pares = 0,  // Placeholder
+            grande = grandeStrength.coerceIn(0, 100),
+            chica = chicaStrength.coerceIn(0, 100),
+            pares = paresStrength.coerceIn(0, 100),
             juego = juegoStrength.coerceIn(0, 100)
         )
 
@@ -537,7 +537,7 @@ class AILogic constructor(
             R.drawable.duples_altos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.REY, Rank.REY))
             R.drawable.duples_bajos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.SOTA, Rank.AS))
             R.drawable.reyes_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.REY))
-            R.drawable.ases_2 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.AS))
+            R.drawable.ases_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.AS))
             R.drawable.reyes_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.REY))
             R.drawable.ases_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.AS))
 
