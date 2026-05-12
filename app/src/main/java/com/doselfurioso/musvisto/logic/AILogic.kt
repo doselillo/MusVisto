@@ -287,18 +287,20 @@ class AILogic constructor(
 
         // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
         val cardScores = mutableMapOf<Card, Int>()
-        val rankCounts = hand.groupingBy { it.rank }.eachCount()
+        // Conteo por rango de emparejamiento: Rey y Tres cuentan como el mismo rango,
+        // igual que As y Dos. Sin esto, una mano como REY+TRES no obtenía el bonus de par.
+        val pairingCounts = hand.groupingBy { getPairingRank(it.rank) }.eachCount()
 
         for (card in hand) {
             var score = 0
             if (card.rank == Rank.REY || card.rank == Rank.TRES) score += 50
-            when (rankCounts[card.rank] ?: 0) {
+            when (pairingCounts[getPairingRank(card.rank)] ?: 0) {
                 4 -> score += 100
                 3 -> score += 80
                 2 -> score += 40
             }
             if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
-            if (card.rank.value in 4..11 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
+            if (card.rank.value in 4..11 && (pairingCounts[getPairingRank(card.rank)] ?: 0) < 2) score -= 10
             cardScores[card] = score
         }
 
