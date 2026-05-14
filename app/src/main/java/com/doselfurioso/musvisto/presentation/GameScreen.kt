@@ -65,6 +65,7 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.model.Card as CardData
 
 // Custom modifier for the bottom border (no changes here)
@@ -363,9 +364,13 @@ fun GameScreen(
                     navController = navController,
                     onAction = gameViewModel::onAction,
                     humanPlayerId = gameViewModel.humanPlayerId,
-                    dimensions = dimens
+                    dimensions = dimens,
+                    gameViewModel = gameViewModel
                 )
             }
+
+            // Panel flotante de logs de IA — solo se renderiza en builds debug.
+            DebugFeatures.AiDebugPanelOverlay(gameViewModel)
 
             if (gameState.isSelectingBet) {
                 Box(
@@ -878,7 +883,7 @@ private fun PartnerHand(
     revealHand: Boolean,
     dimens: ResponsiveDimens
 ) {
-    val showFaceUp = isDebugMode || revealHand
+    val showFaceUp = (DebugFeatures.IS_ENABLED && isDebugMode) || revealHand
     Row(
         modifier = modifier,
         horizontalArrangement = if (showFaceUp)
@@ -919,7 +924,7 @@ fun SideOpponentHandStacked(modifier: Modifier, cards: List<CardData>, isDebugMo
                         if (rotate) rotationZ = 90f else rotationZ = 270f
                     }
             ) {
-                if (isDebugMode || revealHand) {
+                if ((DebugFeatures.IS_ENABLED && isDebugMode) || revealHand) {
                     GameCard(
                         card = cards[index],
                         isSelected = false,
@@ -1355,7 +1360,8 @@ fun PauseMenuOverlay(
     navController: NavController,
     onAction: (GameAction, String) -> Unit,
     humanPlayerId: String,
-    dimensions: ResponsiveDimens
+    dimensions: ResponsiveDimens,
+    gameViewModel: GameViewModel
 ) {
     Box(
         modifier = Modifier
@@ -1397,6 +1403,9 @@ fun PauseMenuOverlay(
                 ) {
                     Text("Volver al Menú", fontSize = dimensions.fontSizeMedium)
                 }
+
+                // Botón de debug — solo se renderiza en builds debug.
+                DebugFeatures.DebugToggleButton(gameViewModel)
             }
         }
     }

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
@@ -31,6 +32,9 @@ class GameViewModel constructor(
 
     private val _isDebugMode = MutableStateFlow(false)
     val isDebugMode: StateFlow<Boolean> = _isDebugMode.asStateFlow()
+
+    private val _aiDebugLogs = MutableStateFlow<List<String>>(emptyList())
+    val aiDebugLogs: StateFlow<List<String>> = _aiDebugLogs.asStateFlow()
 
     val humanPlayerId = "p1"
 
@@ -290,6 +294,11 @@ class GameViewModel constructor(
                     "MusVistoDebug",
                     "AI (${currentPlayer.name}) decided to: ${aiDecision.action.displayText}"
                 )
+                // En builds release `DebugFeatures.IS_ENABLED` es constante false y R8
+                // elimina el bloque completo, así que el flow queda vacío.
+                if (DebugFeatures.IS_ENABLED && aiDecision.debugLog.isNotEmpty()) {
+                    _aiDebugLogs.value = (listOf(aiDecision.debugLog) + _aiDebugLogs.value).take(20)
+                }
 
                 // Si la acción es descartar, aplicamos la selección de cartas de la IA al estado
                 if (aiDecision.action is GameAction.ConfirmDiscard) {

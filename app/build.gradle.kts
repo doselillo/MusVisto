@@ -26,6 +26,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Solo para poder instalar release en dispositivos de desarrollo.
+            // Sustituir por la clave real cuando se publique.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
