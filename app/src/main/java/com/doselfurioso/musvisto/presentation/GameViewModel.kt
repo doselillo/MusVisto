@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 
@@ -32,6 +33,16 @@ class GameViewModel constructor(
     val isDebugMode: StateFlow<Boolean> = _isDebugMode.asStateFlow()
 
     val humanPlayerId = "p1"
+
+    private fun setGameState(newState: GameState) {
+        _gameState.value = newState.copy(isPaused = _gameState.value.isPaused)
+    }
+
+    private suspend fun awaitNotPaused() {
+        if (_gameState.value.isPaused) {
+            _gameState.first { !it.isPaused }
+        }
+    }
 
     init {
         val savedData = gameRepository.loadState()
@@ -227,20 +238,20 @@ class GameViewModel constructor(
 
         if (winner != null) {
             gameRepository.deleteState()
-            _gameState.value = stateWithBreakdown.copy(
+            setGameState(stateWithBreakdown.copy(
                 score = newScore,
                 gamePhase = GamePhase.GAME_OVER,
                 winningTeam = winner,
                 availableActions = emptyList(),
                 revealAllHands = true
-            )
+            ))
         } else {
-            _gameState.value = stateWithBreakdown.copy(
+            setGameState(stateWithBreakdown.copy(
                 score = newScore,
                 gamePhase = GamePhase.ROUND_OVER,
                 availableActions = listOf(GameAction.Continue),
                 revealAllHands = true
-            )
+            ))
         }
     }
 
@@ -265,6 +276,7 @@ class GameViewModel constructor(
     private fun handleAiTurn() {
         viewModelScope.launch {
             delay(1000)
+            awaitNotPaused()
             val currentState = _gameState.value
             val currentPlayer =
                 currentState.players.find { it.id == currentState.currentTurnPlayerId }
@@ -316,7 +328,7 @@ class GameViewModel constructor(
         // Necesitamos saber si la fase ha cambiado para saber si debemos hacer la pausa de limpieza
         val phaseChanged = _gameState.value.gamePhase != newState.gamePhase
         // Actualizamos la UI inmediatamente con el nuevo estado
-        _gameState.value = newState
+        setGameState(newState)
 
         // Si la ronda o la partida han terminado, la lógica no cambia
         if (newState.gamePhase == GamePhase.ROUND_OVER) {
@@ -335,8 +347,10 @@ class GameViewModel constructor(
                 // La información del último anuncio está en `newState.transientAction`
                 // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
                 delay(500)
+                awaitNotPaused()
                 _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
                 delay(500)
+                awaitNotPaused()
 
 
                 // Pasado el tiempo, nos aseguramos de que el estado esté limpio
@@ -367,6 +381,7 @@ class GameViewModel constructor(
             for (player in playersInOrder) {
                 // Hacemos una pausa para que el efecto sea visible
                 delay(750)
+                awaitNotPaused()
 
                 // Determinamos si el jugador actual tiene jugada o no
                 val hasPlay = if (tempState.gamePhase == GamePhase.PARES_CHECK) {
@@ -382,11 +397,12 @@ class GameViewModel constructor(
                     lastAction = actionInfo,
                     currentLanceActions = tempState.currentLanceActions + (player.id to actionInfo)
                 )
-                _gameState.value = tempState
+                setGameState(tempState)
             }
 
             // Una vez que todos han hablado, hacemos una última pausa y avanzamos a la siguiente fase
             delay(1000)
+            awaitNotPaused()
             // La función endLanceAndAdvance es la que contiene la lógica para saltar lances si es necesario
             val finalState = gameLogic.resolveDeclaration(tempState)
             updateStateAndCheckAiTurn(finalState)
@@ -515,6 +531,7 @@ class GameViewModel constructor(
 
             // Esperamos un poco para que no sea instantáneo
             delay(2000)
+            awaitNotPaused()
 
             // El resto de la función itera sobre la nueva lista
             for (aiPlayer in aiPlayersWithAiPartners) {
@@ -525,6 +542,7 @@ class GameViewModel constructor(
                         onAction(GameAction.ShowGesture, aiPlayer.id)
                         // Pequeña pausa por si varias IAs quisieran pasar seña
                         delay(500)
+                        awaitNotPaused()
                     }
                 }
             }
