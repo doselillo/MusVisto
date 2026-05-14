@@ -13,8 +13,8 @@ android {
         applicationId = "com.doselfurioso.musvisto"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.0-beta4"
+        versionCode = 6
+        versionName = "1.0.0-beta5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
