@@ -7,7 +7,9 @@
       "Bash(python -c \"import PyPDF2; print\\('ok'\\)\")",
       "Bash(python -c \"import fitz; print\\('ok'\\)\")",
       "Bash(pip install *)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(where java *)",
+      "Bash(java -version)"
     ]
   }
 }
