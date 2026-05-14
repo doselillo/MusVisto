@@ -145,9 +145,10 @@ class AILogic constructor(
         }
     }
 
-    private fun getCardChicaValue(card: Card): Int {
-        // El inverso de Grande (As=10, Rey=1)
-        return 11 - getCardGrandeValue(card)
+    private fun cardChicaOrderValue(card: Card): Int = when (card.rank) {
+        Rank.TRES -> 10  // Equivale a Rey: la peor carta para Chica
+        Rank.DOS  -> 1   // Equivale a As: la mejor carta para Chica
+        else      -> card.rank.value
     }
 
     private fun cardToShortString(card: Card): String {
@@ -273,9 +274,12 @@ class AILogic constructor(
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // REGLA 1: SI TIENES 3 FIGURAS (Rey), tienes 30 puntos.
-        // Es una jugada muy fuerte para buscar 31 o 40. Descarta la 4ª carta.
-        val figures = hand.filter { it.rank.value in 12..12 }
+        // REGLA 1: SI TIENES 3 FIGURAS (Sota, Caballo, Rey o Tres = valor 10 para Juego),
+        // tienes al menos 30 puntos. Descarta la 4ª carta buscando completar el Juego.
+        val figures = hand.filter {
+            it.rank == Rank.REY || it.rank == Rank.TRES ||
+            it.rank == Rank.CABALLO || it.rank == Rank.SOTA
+        }
         if (figures.size == 3) {
             val nonFigureCard = hand.first { it !in figures }
             return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
@@ -283,18 +287,20 @@ class AILogic constructor(
 
         // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
         val cardScores = mutableMapOf<Card, Int>()
-        val rankCounts = hand.groupingBy { it.rank }.eachCount()
+        // Conteo por rango de emparejamiento: Rey y Tres cuentan como el mismo rango,
+        // igual que As y Dos. Sin esto, una mano como REY+TRES no obtenía el bonus de par.
+        val pairingCounts = hand.groupingBy { getPairingRank(it.rank) }.eachCount()
 
         for (card in hand) {
             var score = 0
             if (card.rank == Rank.REY || card.rank == Rank.TRES) score += 50
-            when (rankCounts[card.rank] ?: 0) {
+            when (pairingCounts[getPairingRank(card.rank)] ?: 0) {
                 4 -> score += 100
                 3 -> score += 80
                 2 -> score += 40
             }
             if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
-            if (card.rank.value in 4..11 && (rankCounts[card.rank] ?: 0) < 2) score -= 10
+            if (card.rank.value in 4..11 && (pairingCounts[getPairingRank(card.rank)] ?: 0) < 2) score -= 10
             cardScores[card] = score
         }
 
@@ -396,14 +402,16 @@ class AILogic constructor(
             }
 
             else -> {
-                chicaStrength =
-                    (12 - hand.minOf { it.rank.value }) * 4; explanation.appendLine("     - No Ases/Doses, base = (12 - ${hand.minOf { it.rank.value }}) * 4 -> $chicaStrength pts")
+                val minOrderValue = hand.minOf { cardChicaOrderValue(it) }
+                chicaStrength = (12 - minOrderValue) * 4
+                explanation.appendLine("     - No Ases/Doses, base = (12 - $minOrderValue) * 4 -> $chicaStrength pts")
             }
         }
         if (lowCardsCount < 2) {
-            val bonus = ((12 - sortedHand.last().rank.value) * 1.5).toInt()
+            val bestChicaCard = hand.minByOrNull { cardChicaOrderValue(it) }!!
+            val bonus = ((12 - cardChicaOrderValue(bestChicaCard)) * 1.5).toInt()
             chicaStrength += bonus
-            explanation.appendLine("     - Bonus por carta más baja (${cardToShortString(sortedHand.last())}) -> +$bonus pts")
+            explanation.appendLine("     - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -> +$bonus pts")
         }
 
         // --- CÁLCULO DE PARES ---
@@ -448,9 +456,15 @@ class AILogic constructor(
         explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}):")
 
         if (juegoValue >= 31) {
-            // Lógica para JUEGO (sin cambios)
             val baseJuegoStrength = when (juegoValue) {
-                31 -> 95; 32 -> 65; 40 -> 68; 37 -> 60; else -> 50
+                31 -> 95  // Mejor juego
+                32 -> 85  // Segundo mejor
+                40 -> 75  // Tercero
+                37 -> 65
+                36 -> 60
+                35 -> 55
+                34 -> 52
+                else -> 50  // 33, el peor juego
             }
             juegoStrength = baseJuegoStrength
             explanation.appendLine("     - JUEGO: Base por valor $juegoValue -> $juegoStrength pts")
