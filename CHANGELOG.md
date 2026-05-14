@@ -5,7 +5,11 @@ Todos los cambios reseñables de cada versión publicada de MusVisto.
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [Semantic Versioning](https://semver.org/lang/es/).
 
-## [Sin publicar] — 1.0.0-beta5
+## [Sin publicar]
+
+(añadir aquí los cambios de la próxima versión)
+
+## [1.0.0-beta5] — 2026-05-14
 
 ### Añadido
 - IA: órdago proactivo en tres escenarios (desesperación, bloquear victoria rival, cerrar partida).
