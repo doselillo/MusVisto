@@ -344,4 +344,58 @@ class AILogicTest {
 
         assertFalse("Con marcador igualado no debe cantar órdago proactivo", decision.action is GameAction.Órdago)
     }
+
+    // --- TESTS DE REGRESIÓN: SEÑAS DEL COMPAÑERO ---
+
+    @Test
+    fun `partnerGrandeBoost - reyes_3 is the strongest grande boost`() {
+        assertEquals(90, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.reyes_3))
+    }
+
+    @Test
+    fun `partnerGrandeBoost - sena_31 implies figures, gets moderate boost`() {
+        assertEquals(70, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
+    }
+
+    @Test
+    fun `partnerGrandeBoost - reyes_2 gets medium boost`() {
+        assertEquals(65, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.reyes_2))
+    }
+
+    @Test
+    fun `partnerGrandeBoost - duples_altos gets low boost`() {
+        assertEquals(50, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.duples_altos))
+    }
+
+    @Test
+    fun `partnerGrandeBoost - chica-only and ciega gestures give zero grande boost`() {
+        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ases_2))
+        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ases_3))
+        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.duples_bajos))
+        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ciega))
+    }
+
+    @Test
+    fun `partnerChicaBoost - ases_3 is the strongest chica boost`() {
+        assertEquals(90, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ases_3))
+    }
+
+    @Test
+    fun `partnerChicaBoost - ases_2 gets medium boost`() {
+        assertEquals(65, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ases_2))
+    }
+
+    @Test
+    fun `partnerChicaBoost - duples_bajos gets low boost`() {
+        assertEquals(50, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.duples_bajos))
+    }
+
+    @Test
+    fun `partnerChicaBoost - grande-only and ciega gestures give zero chica boost`() {
+        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.reyes_2))
+        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.reyes_3))
+        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.duples_altos))
+        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
+        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ciega))
+    }
 }
