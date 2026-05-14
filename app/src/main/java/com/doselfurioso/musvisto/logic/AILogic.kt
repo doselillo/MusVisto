@@ -13,7 +13,12 @@ import com.doselfurioso.musvisto.model.Rank
 import kotlin.math.max
 
 
-data class AIDecision(val action: GameAction, val cardsToDiscard: Set<Card> = emptySet())
+data class AIDecision(
+    val action: GameAction,
+    val cardsToDiscard: Set<Card> = emptySet(),
+    /** Log detallado de la decisión, consumido por el panel de debug en builds debug. */
+    val debugLog: String = ""
+)
 
 /**
  * Clase AILogic
@@ -124,8 +129,9 @@ class AILogic constructor(
 
         logBuilder.appendLine(actionLog)
         logBuilder.appendLine("================ END AI DECISION [$decisionId] ================\n")
-        Log.d(TAG, logBuilder.toString())
-        return decision
+        val log = logBuilder.toString()
+        Log.d(TAG, log)
+        return decision.copy(debugLog = log)
     }
 
     private fun getPairingRank(rank: Rank): Rank {
