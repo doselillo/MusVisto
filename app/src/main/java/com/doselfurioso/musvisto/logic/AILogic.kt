@@ -253,77 +253,120 @@ class AILogic constructor(
         return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
     }
 
-    // ---------------- Descarte (inteligente, protegido contra romper 31) ----------------
+    // ---------------- Descarte (heurística por scoring de carta) ----------------
+    //
+    // Cada carta recibe un score = baseRank + groupBonus + juegoBonus + duplesBonus - deadPenalty.
+    // Se descartan todas las cartas con score < DISCARD_THRESHOLD.
+    // Reglas duras antes del scoring para los casos con jugada clara (31, 3 figuras).
 
-    fun decideDiscard(
-        aiPlayer: Player
-    ): AIDecision {
+    private val figureRanks = setOf(Rank.REY, Rank.TRES, Rank.CABALLO, Rank.SOTA)
+    private val deadRange = setOf(Rank.CUATRO, Rank.CINCO, Rank.SEIS, Rank.SIETE)
+    private val discardThreshold = 25
+    private val duplesBonus = 30
+    private val deadPenalty = 25
+
+    fun decideDiscard(aiPlayer: Player): AIDecision {
         val hand = aiPlayer.hand
 
-        // Si por alguna razón la mano está vacía, no se descarta nada.
+        // Defensivo: si la mano está vacía no hay nada que descartar.
         if (hand.isEmpty()) {
             return AIDecision(GameAction.ConfirmDiscard, emptySet())
         }
 
         val juegoValue = gameLogic.getHandJuegoValue(hand)
 
-        // REGLA 0: Si tienes 31, estás obligado a descartar una carta,
-        // así que tira la que menos valor tenga para la Grande (la de menor rango).
+        // Regla dura: 31 obliga a descartar — tira la de menor baseRank para
+        // preservar Grande (Rey/Tres) y Chica (As/Dos).
         if (juegoValue == 31) {
-            val cardToDiscard = hand.minByOrNull { it.rank.value }!!
+            val cardToDiscard = hand.minByOrNull { baseRank(it.rank) }!!
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // REGLA 1: SI TIENES 3 FIGURAS (Sota, Caballo, Rey o Tres = valor 10 para Juego),
-        // tienes al menos 30 puntos. Descarta la 4ª carta buscando completar el Juego.
-        val figures = hand.filter {
-            it.rank == Rank.REY || it.rank == Rank.TRES ||
-            it.rank == Rank.CABALLO || it.rank == Rank.SOTA
-        }
+        // Regla dura: 3 figuras + 1 no-figura → tira la no-figura buscando el 31.
+        val figures = hand.filter { it.rank in figureRanks }
         if (figures.size == 3) {
             val nonFigureCard = hand.first { it !in figures }
             return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
         }
 
-        // --- SISTEMA DE PUNTUACIÓN DE CARTAS ---
-        val cardScores = mutableMapOf<Card, Int>()
-        // Conteo por rango de emparejamiento: Rey y Tres cuentan como el mismo rango,
-        // igual que As y Dos. Sin esto, una mano como REY+TRES no obtenía el bonus de par.
         val pairingCounts = hand.groupingBy { getPairingRank(it.rank) }.eachCount()
-
-        for (card in hand) {
-            var score = 0
-            if (card.rank == Rank.REY || card.rank == Rank.TRES) score += 50
-            when (pairingCounts[getPairingRank(card.rank)] ?: 0) {
-                4 -> score += 100
-                3 -> score += 80
-                2 -> score += 40
-            }
-            if (card.rank == Rank.AS || card.rank == Rank.DOS) score += 20
-            if (card.rank.value in 4..11 && (pairingCounts[getPairingRank(card.rank)] ?: 0) < 2) score -= 10
-            cardScores[card] = score
+        val hasDuples = pairingCounts.values.count { it == 2 } == 2
+        val cardScores = hand.associateWith { card ->
+            scoreCard(card, pairingCounts, juegoValue, hasDuples)
         }
 
-        // Ordenamos las cartas de peor a mejor según su puntuación.
-        val sortedCards = hand.sortedBy { cardScores[it] }
+        var cardsToDiscard = hand.filter { (cardScores[it] ?: 0) < discardThreshold }.toSet()
 
-        // --- DECISIÓN FINAL DE DESCARTE (CORREGIDA) ---
-
-        // 1. Intentamos descartar todas las cartas que consideramos "malas" (puntuación negativa).
-        var cardsToDiscard = sortedCards.filter { (cardScores[it] ?: 0) < 0 }.toSet()
-
-        // 2. REGLA OBLIGATORIA DE MUS: Si la estrategia no ha seleccionado ninguna carta para
-        //    descartar (porque la mano es muy buena), FORZAMOS el descarte de la peor carta.
+        // Mus obligatorio: si nada baja del umbral (mano excelente), descarta la peor.
         if (cardsToDiscard.isEmpty()) {
-            // 'sortedCards' está ordenada por puntuación de PEOR a MEJOR.
-            // La peor carta es la primera de la lista.
-            val worstCard = sortedCards.first()
-            Log.d("AILogic", "Forcing discard of the worst card: ${cardToShortString(worstCard)}")
+            val worstCard = hand.minByOrNull { cardScores[it] ?: 0 }!!
+            Log.d(TAG, "Mus obligatorio: descartando la peor carta: ${cardToShortString(worstCard)}")
             cardsToDiscard = setOf(worstCard)
         }
-        // --- FIN DE LA CORRECCIÓN ---
+
+        // TODO Mano-aware: cuando aiPlayer es el "mano" del turno, el scoring
+        // debería ser más exigente con figuras no-Rey (Caballo/Sota) y premiar
+        // más Grande/Pares/Juego — ser mano gana los desempates, así que las
+        // jugadas medias rinden más. Requiere pasar gameState.manoPlayerId aquí.
 
         return AIDecision(GameAction.ConfirmDiscard, cardsToDiscard)
+    }
+
+    private fun scoreCard(
+        card: Card,
+        pairingCounts: Map<Rank, Int>,
+        juegoValue: Int,
+        hasDuples: Boolean
+    ): Int {
+        val pairingRank = getPairingRank(card.rank)
+        val groupSize = pairingCounts[pairingRank] ?: 1
+        val isPaired = groupSize >= 2
+
+        val base = baseRank(card.rank)
+        val group = groupBonus(groupSize, pairingRank)
+        val juego = juegoBonus(juegoValueOf(card.rank), juegoValue)
+        val duples = if (hasDuples) duplesBonus else 0
+        val dead = if (card.rank in deadRange && !isPaired && juegoValue < 27) deadPenalty else 0
+
+        return base + group + juego + duples - dead
+    }
+
+    private fun baseRank(rank: Rank): Int = when (rank) {
+        Rank.REY, Rank.TRES -> 30
+        Rank.AS, Rank.DOS -> 20
+        Rank.CABALLO -> 10
+        Rank.SOTA -> 8
+        Rank.SIETE -> 6
+        Rank.SEIS -> 5
+        Rank.CINCO -> 4
+        Rank.CUATRO -> 3
+    }
+
+    private fun groupBonus(size: Int, pairingRank: Rank): Int = when (size) {
+        4 -> 60
+        3 -> when (pairingRank) {
+            Rank.REY, Rank.AS -> 70
+            Rank.CABALLO, Rank.SOTA -> 50
+            else -> 40
+        }
+        2 -> when (pairingRank) {
+            Rank.REY -> 30
+            Rank.AS, Rank.CABALLO, Rank.SOTA -> 20
+            else -> 5
+        }
+        else -> 0
+    }
+
+    private fun juegoBonus(cardJuegoValue: Int, totalJuego: Int): Int = when {
+        totalJuego == 31 -> if (cardJuegoValue == 10) 25 else 10
+        totalJuego in 32..40 -> if (cardJuegoValue == 10) 5 else 0
+        else -> 0
+    }
+
+    private fun juegoValueOf(rank: Rank): Int = when (rank) {
+        Rank.SOTA, Rank.CABALLO, Rank.REY, Rank.TRES -> 10
+        Rank.DOS -> 1
+        else -> rank.value
     }
 
 
