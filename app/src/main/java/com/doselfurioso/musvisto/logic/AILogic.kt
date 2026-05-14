@@ -663,17 +663,35 @@ class AILogic constructor(
             if (gesturer.team == aiPlayer.team && gesturer.id != aiPlayer.id) {
                 val gestureName = gestureIdToName(gesture.gestureResId)
                 logBuilder.appendLine("   - (Offensive) Partner ${gesturer.name} has '$gestureName'. Merging strength.")
+                val gesturerIsMano = gameState.manoPlayerId == gesturer.id
 
-                // --- LÓGICA DE FUSIÓN CORREGIDA ---
+                // Cada seña del compañero implica info parcial sobre Grande y Chica además
+                // de la jugada concreta. Aplicamos un boost moderado al lance que cuadra:
+                // las 2 cartas que no vemos podrían tirar la jugada del compañero, por eso
+                // no asumimos el máximo.
+                val grandeBoost = partnerGrandeBoost(gesture.gestureResId)
+                val chicaBoost = partnerChicaBoost(gesture.gestureResId)
+                if (grandeBoost > teamStrength.grande) {
+                    teamStrength = teamStrength.copy(grande = grandeBoost)
+                    logBuilder.appendLine("     -> Partner gesture boosts Grande to $grandeBoost.")
+                }
+                if (chicaBoost > teamStrength.chica) {
+                    teamStrength = teamStrength.copy(chica = chicaBoost)
+                    logBuilder.appendLine("     -> Partner gesture boosts Chica to $chicaBoost.")
+                }
+
                 when (val meaning = getGestureMeaning(gesture.gestureResId)) {
                     is GestureMeaning.Pares -> {
-                        val gestureStrength = getParesPlayStrength(meaning.play, false) // Calcula la fuerza de la seña
+                        val gestureStrength = getParesPlayStrength(meaning.play, gesturerIsMano)
                         teamStrength = teamStrength.copy(pares = max(teamStrength.pares, gestureStrength))
-                        logBuilder.appendLine("     -> Partner Pares Strength is ~$gestureStrength. Team Pares Strength is now ${teamStrength.pares}.")
+                        logBuilder.appendLine("     -> Partner Pares Strength is ~$gestureStrength (mano=$gesturerIsMano). Team Pares Strength is now ${teamStrength.pares}.")
                     }
                     is GestureMeaning.Juego -> {
-                        teamStrength = teamStrength.copy(juego = max(teamStrength.juego, 100))
-                        logBuilder.appendLine("     -> Partner Juego Strength is 100. Team Juego Strength is now ${teamStrength.juego}.")
+                        // 31 sin ser mano puede perder ante otro 31 más cerca de mano:
+                        // mismo trato que para la propia mano en evaluateHand.
+                        val juegoStrength = if (gesturerIsMano) 100 else 85
+                        teamStrength = teamStrength.copy(juego = max(teamStrength.juego, juegoStrength))
+                        logBuilder.appendLine("     -> Partner Juego Strength is $juegoStrength (mano=$gesturerIsMano). Team Juego Strength is now ${teamStrength.juego}.")
                     }
                     else -> {}
                 }
@@ -723,6 +741,25 @@ class AILogic constructor(
             logBuilder.appendLine("   -> Strength not adjusted by gestures.")
         }
         return finalAdjustedStrength
+    }
+
+    // Boost al lance Grande del equipo según la seña del compañero.
+    // Estimación moderada: una seña fija 2 cartas pero deja otras 2 desconocidas
+    // que podrían rebajar la jugada real para Grande.
+    internal fun partnerGrandeBoost(gestureResId: Int): Int = when (gestureResId) {
+        R.drawable.reyes_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
+        R.drawable.sena_31 -> 70   // 31 implica figuras pero no necesariamente Reyes
+        R.drawable.reyes_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
+        R.drawable.duples_altos -> 50  // info parcial: por sí sola no dispara, pero suma con la propia
+        else -> 0
+    }
+
+    // Boost al lance Chica del equipo según la seña del compañero.
+    internal fun partnerChicaBoost(gestureResId: Int): Int = when (gestureResId) {
+        R.drawable.ases_3 -> 90    // 3 Ases/Doses → dispara Envido seguro
+        R.drawable.ases_2 -> 65    // par bajo
+        R.drawable.duples_bajos -> 50
+        else -> 0
     }
 
     private fun getParesPlayStrength(paresPlay: ParesPlay, isMano: Boolean): Int {
