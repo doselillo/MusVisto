@@ -195,8 +195,9 @@ class AILogic constructor(
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
             advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
 
-            // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta, pero de forma comedida.
-            advantage > 85 -> GameAction.Envido(2)
+            // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
+            // para que la IA sea menos predecible.
+            advantage > 85 -> GameAction.Envido(rng.nextInt(2, 5))
 
             // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
             advantage > 70 -> GameAction.Quiero
@@ -238,6 +239,25 @@ class AILogic constructor(
         aiPlayer: Player,
         gameState: GameState
     ): Pair<GameAction, String> {
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val myTeamScore = gameState.score[aiPlayer.team] ?: 0
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        val scoreDifference = myTeamScore - opponentScore
+
+        // Órdago proactivo en escenarios marcados:
+        // 1) Desesperación: vamos perdiendo y el rival está cerca de cantar 40. Mano buena.
+        if (strength > 75 && scoreDifference < -15 && opponentScore > 25) {
+            return Pair(GameAction.Órdago, "Reason: Desperation (diff $scoreDifference, opp $opponentScore, strength $strength)")
+        }
+        // 2) Bloquear victoria rival: el rival está a un envite de ganar y tenemos mano muy fuerte.
+        if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
+            return Pair(GameAction.Órdago, "Reason: Block opponent win (opp $opponentScore, diff $scoreDifference, strength $strength)")
+        }
+        // 3) Cerrar partida: estamos a un envite de ganar nosotros con mano decente.
+        if (myTeamScore >= 35 && opponentScore < 35 && strength > 50) {
+            return Pair(GameAction.Órdago, "Reason: Closing the game (my $myTeamScore, opp $opponentScore, strength $strength)")
+        }
+
         val betThreshold = 80
         val bluffThreshold = 60
         val bluffChance = 5 + (strength / 10)
@@ -247,7 +267,7 @@ class AILogic constructor(
             return Pair(GameAction.Envido(amount), "Reason: Strength $strength > bet threshold $betThreshold")
         }
         if (strength > bluffThreshold && rng.nextInt(100) < bluffChance) {
-            return Pair(GameAction.Envido(2), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
+            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
         }
 
         return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
