@@ -63,16 +63,14 @@ class AILogicTest {
     }
 
     @Test
-    fun `makeDecision - IA should make a standard bet even with a great hand due to conservative logic`() {
-        // --- TEST CORREGIDO ---
-        // AHORA: Comprobamos que, con tres Reyes, la IA hace el envite estándar de 2,
-        // porque su personalidad ya no es tan agresiva.
+    fun `makeDecision - IA should bet bigger with a great hand (strength-scaled amount)`() {
+        // Con tres Reyes (mano muy fuerte a Grande) el importe se escala por
+        // fuerza: betAmount con strength alta -> tramo 3..5 (ya no 2 fijo).
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.CABALLO))
         val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
         val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
         assertTrue(decision.action is GameAction.Envido)
-        // `decideInitialBet` para strength alta usa rng.nextInt(2, 5) -> 2..4 aleatorio.
-        assertTrue((decision.action as GameAction.Envido).amount in 2..4)
+        assertTrue((decision.action as GameAction.Envido).amount in 3..5)
     }
 
     @Test

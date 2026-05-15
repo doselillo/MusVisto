@@ -203,7 +203,7 @@ class AILogic constructor(
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(rng.nextInt(2, 5))
+            advantage > 85 -> GameAction.Envido(betAmount(adjustedStrength))
 
             // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
             advantage > 70 -> GameAction.Quiero
@@ -240,6 +240,16 @@ class AILogic constructor(
     }
 
 
+    // Importe de envite sesgado por la fuerza de la jugada: con mano floja
+    // (justo sobre el umbral) envida poco; con mano muy fuerte sube más.
+    // Mantiene aleatoriedad dentro de cada tramo para no ser predecible.
+    private fun betAmount(strength: Int): Int = when {
+        strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
+        strength >= 80 -> rng.nextInt(3, 6)  // 3-5
+        strength >= 70 -> rng.nextInt(2, 5)  // 2-4
+        else -> rng.nextInt(2, 4)            // 2-3: manos justas
+    }
+
     private fun decideInitialBet(
         strength: Int,
         aiPlayer: Player,
@@ -269,11 +279,12 @@ class AILogic constructor(
         val bluffChance = 5 + (strength / 10)
 
         if (strength > betThreshold) {
-            val amount = rng.nextInt(2, 5)
+            val amount = betAmount(strength)
             return Pair(GameAction.Envido(amount), "Reason: Strength $strength > bet threshold $betThreshold")
         }
         if (strength > bluffThreshold && rng.nextInt(100) < bluffChance) {
-            return Pair(GameAction.Envido(rng.nextInt(2, 5)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
+            // El farol se mantiene barato a propósito: mano débil, limitar pérdida.
+            return Pair(GameAction.Envido(rng.nextInt(2, 4)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
         }
 
         return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
@@ -525,15 +536,17 @@ class AILogic constructor(
         explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}):")
 
         if (juegoValue >= 31) {
+            // El 31 es premium (además suma +1 tanto por "juego de 31"). El resto
+            // baja con un salto claro: un 32 es decente pero NO está cerca del 31.
             val baseJuegoStrength = when (juegoValue) {
-                31 -> 95  // Mejor juego
-                32 -> 85  // Segundo mejor
-                40 -> 75  // Tercero
-                37 -> 65
-                36 -> 60
-                35 -> 55
-                34 -> 52
-                else -> 50  // 33, el peor juego
+                31 -> 95  // Mejor juego, con diferencia
+                32 -> 70  // Segundo, pero lejos del 31
+                40 -> 60
+                37 -> 52
+                36 -> 48
+                35 -> 44
+                34 -> 41
+                else -> 38  // 33, el peor juego
             }
             juegoStrength = baseJuegoStrength
             explanation.appendLine("     - JUEGO: Base por valor $juegoValue -> $juegoStrength pts")
@@ -541,6 +554,15 @@ class AILogic constructor(
             if (juegoValue == 31 && !isMano) {
                 juegoStrength -= 15
                 explanation.appendLine("     - Penalización por tener 31 sin ser mano -> -15 pts")
+            }
+
+            // Los empates de Juego los gana quien está más cerca de mano. Con un
+            // juego no-31 (empatable a menudo), cuanto más tarde se actúa peor:
+            // un 32 en postre pierde el desempate. Penaliza por posición.
+            if (juegoValue in 32..40 && playerPositionInTurn > 0) {
+                val posPenalty = playerPositionInTurn * 6
+                juegoStrength -= posPenalty
+                explanation.appendLine("     - Penalización por posición ${playerPositionInTurn + 1} con juego no-31 -> -$posPenalty pts")
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
