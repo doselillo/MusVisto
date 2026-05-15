@@ -945,20 +945,21 @@ class AILogic constructor(
                 }
 
                 // #9: una seña rival de reyes/ases/duples/31 también implica
-                // fuerza del rival en Grande/Chica, no solo Pares/Juego. Bajar
-                // mi confianza ahí, proporcional a la fuerza implícita (mitad
-                // del boost que esa seña daría al equipo que la posee).
+                // fuerza del rival en Grande/Chica, no solo Pares/Juego. Solo
+                // bajo mi confianza si esa fuerza implícita SUPERA mi propia
+                // mano en ese lance (igual que la rama de Pares): con 4 reyes
+                // no me asusta una seña de 3 reyes. Reducción = mitad del boost.
                 val oppG = partnerGrandeBoost(gesture.gestureResId)
                 val oppC = partnerChicaBoost(gesture.gestureResId)
-                if (oppG > 0) {
+                if (oppG > baseStrength.grande) {
                     val g = (finalAdjustedStrength.grande - oppG / 2).coerceIn(0, 100)
                     finalAdjustedStrength = finalAdjustedStrength.copy(grande = g)
-                    logBuilder.appendLine("     -> Rival fuerte en Grande (seña): mi Grande -> $g")
+                    logBuilder.appendLine("     -> Rival más fuerte en Grande (seña $oppG > mi ${baseStrength.grande}): mi Grande -> $g")
                 }
-                if (oppC > 0) {
+                if (oppC > baseStrength.chica) {
                     val c = (finalAdjustedStrength.chica - oppC / 2).coerceIn(0, 100)
                     finalAdjustedStrength = finalAdjustedStrength.copy(chica = c)
-                    logBuilder.appendLine("     -> Rival fuerte en Chica (seña): mi Chica -> $c")
+                    logBuilder.appendLine("     -> Rival más fuerte en Chica (seña $oppC > mi ${baseStrength.chica}): mi Chica -> $c")
                 }
             }
         }
