@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -84,6 +85,65 @@ class AILogicTest {
                 withPartnerMano is GameAction.Mus
             )
         }
+    }
+
+    // --- TESTS CAPITANÍA DE LANCE (#1/#4: rol de apoyo) ---
+
+    // ai (teamB) primero en turno, mano floja a Juego; compañero (teamB) actúa
+    // después y ha señalizado 31. ai debe apoyar: no abre (Paso) aunque la
+    // fuerza de equipo (fusionada) le empujaría a envidar.
+    @Test
+    fun `support - early weak AI defers to later partner who signaled Juego`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO)) // sin juego (29)
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = ai.id, // ai pos 0 (más temprano), partner pos 2
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue("En apoyo no debe abrir", decision.action is GameAction.Paso)
+    }
+
+    // Mismo escenario pero ai es el capitán (actúa DESPUÉS que el compañero):
+    // NO debe forzar apoyo; con la fuerza de equipo alta debe envidar.
+    @Test
+    fun `support - captain (later position) does NOT defer`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO))
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(partner, opp1, ai, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = partner.id, // partner pos 0, ai pos 2 -> ai capitán
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse("El capitán no juega de apoyo", decision.action is GameAction.Paso)
+    }
+
+    // ai con mano propia fuerte (31) no cede aunque esté en posición temprana.
+    @Test
+    fun `support - strong own hand does NOT defer even if early`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS)) // 31
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = ai.id,
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse("Mano propia fuerte no cede la iniciativa", decision.action is GameAction.Paso)
     }
 
     // --- NUEVOS TESTS DE DECISIONES DE LA IA ---

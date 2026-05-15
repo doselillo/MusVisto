@@ -12,6 +12,10 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import kotlin.math.max
 
+// Por debajo de esta fuerza propia (pre-fusión con señas) en un lance, la mano
+// no es independientemente fuerte: si el compañero señalizó y tiene mejor
+// posición, conviene jugar de apoyo en vez de pisarle el envite.
+private const val SUPPORT_OWN_FLOOR = 70
 
 data class AIDecision(
     val action: GameAction,
@@ -85,6 +89,18 @@ class AILogic constructor(
         val decision: AIDecision
         val actionLog: String
 
+        // Capitanía de lance (#1/#4): ¿debo jugar de apoyo y cederle la
+        // iniciativa al compañero (mejor posición + seña fuerte conocida)?
+        val ownBaseLance = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> baseStrength.grande
+            GamePhase.CHICA -> baseStrength.chica
+            GamePhase.PARES -> baseStrength.pares
+            GamePhase.JUEGO -> baseStrength.juego
+            else -> 0
+        }
+        val playSupport = shouldPlaySupport(gameState, aiPlayer, gameState.gamePhase, ownBaseLance)
+        if (playSupport) logBuilder.appendLine("4b. Rol de APOYO: compañero capitán de lance (mejor posición + seña fuerte), mano propia floja ($ownBaseLance).")
+
         if (gameState.currentBet != null) {
             val strengthForLance = when (gameState.gamePhase) {
                 GamePhase.GRANDE -> finalStrength.grande
@@ -93,14 +109,21 @@ class AILogic constructor(
                 GamePhase.JUEGO -> finalStrength.juego
                 else -> 0
             }
-            val responseAction = decideResponse(strengthForLance, gameState, aiPlayer)
+            val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
+            // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
+            // para mantener el bote del equipo sin pisar al capitán.
+            val responseAction = if (playSupport &&
+                (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
+            ) GameAction.Quiero else rawResponse
             decision = AIDecision(responseAction)
-            // Log para la respuesta
             val threshold = 70 // Umbral para "Quiero"
-            actionLog = if (responseAction is GameAction.Quiero) {
-                ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
-            } else {
-                ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
+            actionLog = when {
+                playSupport && responseAction !== rawResponse ->
+                    ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
+                responseAction is GameAction.Quiero ->
+                    ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
+                else ->
+                    ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
             }
         } else {
             when (gameState.gamePhase) {
@@ -121,8 +144,16 @@ class AILogic constructor(
                         else -> finalStrength.juego
                     }
                     val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
-                    decision = AIDecision(betResult.first)
-                    actionLog = ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
+                    // En apoyo no abro: dejo hablar a rivales y al capitán.
+                    val betAction = if (playSupport &&
+                        (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
+                    ) GameAction.Paso else betResult.first
+                    decision = AIDecision(betAction)
+                    actionLog = if (playSupport && betAction !== betResult.first) {
+                        ">>> FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"
+                    } else {
+                        ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
+                    }
                 }
             }
         }
@@ -219,6 +250,39 @@ class AILogic constructor(
     }
 
     // ---------------- Mus / NoMus ----------------
+    // Capitanía de lance por posición (#1/#4): si el compañero ya señalizó
+    // fuerza para este lance y actúa DESPUÉS que yo (mejor posición), y mi mano
+    // propia es floja, debo jugar de apoyo: ni abrir ni subir, para no pisarle
+    // ni delatar la jugada conocida hablando antes el de mano débil.
+    private fun shouldPlaySupport(
+        gameState: GameState,
+        aiPlayer: Player,
+        lance: GamePhase,
+        ownBaseLanceStrength: Int
+    ): Boolean {
+        if (ownBaseLanceStrength >= SUPPORT_OWN_FLOOR) return false
+        val partner = gameState.players.firstOrNull {
+            it.team == aiPlayer.team && it.id != aiPlayer.id
+        } ?: return false
+        val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val myPos = order.indexOfFirst { it.id == aiPlayer.id }
+        val partnerPos = order.indexOfFirst { it.id == partner.id }
+        if (myPos < 0 || partnerPos < 0) return false
+        // Capitán = el que actúa más tarde (mejor posición). Si lo soy, no apoyo.
+        if (myPos > partnerPos) return false
+        val partnerGesture = gameState.knownGestures[partner.id] ?: return false
+        val resId = partnerGesture.gestureResId
+        return when (lance) {
+            GamePhase.GRANDE -> partnerGrandeBoost(resId) >= 65
+            GamePhase.CHICA -> partnerChicaBoost(resId) >= 65
+            GamePhase.PARES -> getGestureMeaning(resId).let {
+                it is GestureMeaning.Pares && it.play !is ParesPlay.NoPares
+            }
+            GamePhase.JUEGO -> getGestureMeaning(resId) is GestureMeaning.Juego
+            else -> false
+        }
+    }
+
     private fun decideMus(
         strength: HandStrength,
         aiPlayer: Player,
