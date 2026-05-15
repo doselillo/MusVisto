@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -41,6 +42,163 @@ class AILogicTest {
         assertFalse("No debe tirar el As (preserva Chica)", decision.cardsToDiscard.contains(Card(Suit.BASTOS, Rank.AS)))
     }
 
+    // --- TESTS DECISIÓN DE MUS (#5: no quitar mano al compañero) ---
+
+    @Test
+    fun `decideMus - clearly strong hand still cuts Mus even if partner is mano`() {
+        // 4 Reyes (Grande=100). Aunque el compañero sea mano (umbral +10 -> 95),
+        // 100 >= 95: una mano claramente buena se corta igual (beneficia al equipo).
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))
+        val ai = testPlayer.copy(hand = hand)            // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val gameState = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = partner.id                     // el compañero es mano
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(decision.action is GameAction.NoMus)
+    }
+
+    @Test
+    fun `decideMus - partner-mano bias never makes the AI cut more (no inversion)`() {
+        // Invariante: subir el umbral solo puede convertir NoMus -> Mus, nunca al
+        // revés. Para CUALQUIER mano, si con rival-mano pide Mus, con compañero-mano
+        // también debe pedir Mus.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.CINCO))
+        val ai = testPlayer.copy(hand = hand)            // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+
+        val opponentMano = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = opponentPlayer.id
+        )
+        val partnerMano = opponentMano.copy(manoPlayerId = partner.id)
+
+        val withOpponentMano = aiLogic.makeDecision(opponentMano, ai).action
+        val withPartnerMano = aiLogic.makeDecision(partnerMano, ai).action
+
+        if (withOpponentMano is GameAction.Mus) {
+            assertTrue(
+                "El sesgo de compañero-mano no debe hacer que la IA corte más",
+                withPartnerMano is GameAction.Mus
+            )
+        }
+    }
+
+    // --- TESTS CAPITANÍA DE LANCE (#1/#4: rol de apoyo) ---
+
+    // ai (teamB) primero en turno, mano floja a Juego; compañero (teamB) actúa
+    // después y ha señalizado 31. ai debe apoyar: no abre (Paso) aunque la
+    // fuerza de equipo (fusionada) le empujaría a envidar.
+    @Test
+    fun `support - early weak AI defers to later partner who signaled Juego`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO)) // sin juego (29)
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = ai.id, // ai pos 0 (más temprano), partner pos 2
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue("En apoyo no debe abrir", decision.action is GameAction.Paso)
+    }
+
+    // Mismo escenario pero ai es el capitán (actúa DESPUÉS que el compañero):
+    // NO debe forzar apoyo; con la fuerza de equipo alta debe envidar.
+    @Test
+    fun `support - captain (later position) does NOT defer`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO))
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(partner, opp1, ai, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = partner.id, // partner pos 0, ai pos 2 -> ai capitán
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse("El capitán no juega de apoyo", decision.action is GameAction.Paso)
+    }
+
+    // ai con mano propia fuerte (31) no cede aunque esté en posición temprana.
+    @Test
+    fun `support - strong own hand does NOT defer even if early`() {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS)) // 31
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = ai.id,
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse("Mano propia fuerte no cede la iniciativa", decision.action is GameAction.Paso)
+    }
+
+    // --- TESTS 31 EN POSTRE ANTE ENVITE A JUEGO ---
+
+    private fun postre31JuegoState(betAmount: Int): Pair<GameState, Player> {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS)) // 31
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        // Orden empezando en opp1 -> [opp1, partner, opp2, ai]: ai es postre.
+        val gs = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = opp1.id,
+            currentBet = BetInfo(betAmount, opp1.id, ai.id)
+        )
+        return gs to ai
+    }
+
+    // Garantía de buen Mus: un envite pequeño con 31 (aunque sea postre)
+    // NUNCA se pliega — puede quererse o subirse (ambas correctas), pero
+    // jamás NoQuiero/Paso. Esto verifica que el fix anti-exploit no degrada
+    // el juego con la mejor jugada ante envites baratos.
+    @Test
+    fun `postre 31 never folds a small Juego bet`() {
+        val (gs, ai) = postre31JuegoState(betAmount = 2)
+        repeat(30) {
+            val action = aiLogic.makeDecision(gs, ai).action
+            assertFalse(
+                "31 no debe plegar un envite pequeño, fue $action",
+                action is GameAction.NoQuiero || action is GameAction.Paso
+            )
+        }
+    }
+
+    // Anti-exploit: ante un envite mayor, el 31 en postre NO acepta el 100%
+    // de las veces (no es farmeable de forma determinista) — pero tampoco
+    // pliega siempre (seguiría siendo buena mano).
+    @Test
+    fun `postre 31 facing a bigger Juego bet is not deterministic`() {
+        val (gs, ai) = postre31JuegoState(betAmount = 5)
+        var quiero = 0
+        var noQuiero = 0
+        repeat(200) {
+            when (aiLogic.makeDecision(gs, ai).action) {
+                is GameAction.Quiero -> quiero++
+                is GameAction.NoQuiero -> noQuiero++
+                else -> {}
+            }
+        }
+        assertTrue("Debe querer la mayoría de las veces", quiero > 0)
+        assertTrue("No debe ser determinista (a veces no quiere)", noQuiero > 0)
+    }
+
     // --- NUEVOS TESTS DE DECISIONES DE LA IA ---
 
     @Test
@@ -63,16 +221,14 @@ class AILogicTest {
     }
 
     @Test
-    fun `makeDecision - IA should make a standard bet even with a great hand due to conservative logic`() {
-        // --- TEST CORREGIDO ---
-        // AHORA: Comprobamos que, con tres Reyes, la IA hace el envite estándar de 2,
-        // porque su personalidad ya no es tan agresiva.
+    fun `makeDecision - IA should bet bigger with a great hand (strength-scaled amount)`() {
+        // Con tres Reyes (mano muy fuerte a Grande) el importe se escala por
+        // fuerza: betAmount con strength alta -> tramo 3..5 (ya no 2 fijo).
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.CABALLO))
         val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
         val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
         assertTrue(decision.action is GameAction.Envido)
-        // `decideInitialBet` para strength alta usa rng.nextInt(2, 5) -> 2..4 aleatorio.
-        assertTrue((decision.action as GameAction.Envido).amount in 2..4)
+        assertTrue((decision.action as GameAction.Envido).amount in 3..5)
     }
 
     @Test
