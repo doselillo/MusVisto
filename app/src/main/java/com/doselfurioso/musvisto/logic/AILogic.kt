@@ -627,15 +627,17 @@ class AILogic constructor(
      *
      * 5% break para variación humana-like (no ser absoluto).
      *
-     * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
-     * esta delegación DEBE quedar deshabilitada — el mus corrido prohíbe señas
-     * y exige decisión de corte individual (determina la mano).
+     * #17 (mus corrido): deshabilitada mientras el modo está activo — el mus
+     * corrido prohíbe señas y exige corte individual (determina la mano). El
+     * guard de abajo es defensa explícita; además `onEnterMusPhase` no rellena
+     * `pendingGestures` en mus corrido, así que el gate de señas ya falla solo.
      */
     private fun decideMusDelegation(
         gameState: GameState,
         aiPlayer: Player,
         iActBeforePartner: Boolean
     ): Pair<GameAction, String>? {
+        if (gameState.musCorrido) return null
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
         if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {

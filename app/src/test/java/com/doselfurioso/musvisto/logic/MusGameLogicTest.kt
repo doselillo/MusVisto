@@ -28,6 +28,40 @@ class MusGameLogicTest {
         deck = gameLogic.createDeck()
     }
 
+    // --- MUS CORRIDO (#17) ---
+
+    @Test
+    fun `mus corrido - cutting the mus makes the cutter the new mano`() {
+        val state = GameState(
+            players = players,
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = "p1",
+            currentTurnPlayerId = "p3",
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+            musCorrido = true
+        )
+        val result = gameLogic.processAction(state, GameAction.NoMus, "p3")
+        assertEquals("p3", result.manoPlayerId)
+        assertEquals("p3", result.currentTurnPlayerId)
+        assertFalse("El modo mus corrido debe terminar al cortar", result.musCorrido)
+        assertEquals(GamePhase.GRANDE, result.gamePhase)
+    }
+
+    @Test
+    fun `normal mus (no corrido) - cutting does NOT change the mano`() {
+        val state = GameState(
+            players = players,
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = "p1",
+            currentTurnPlayerId = "p3",
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+            musCorrido = false
+        )
+        val result = gameLogic.processAction(state, GameAction.NoMus, "p3")
+        assertEquals("p1", result.manoPlayerId)
+        assertEquals(GamePhase.GRANDE, result.gamePhase)
+    }
+
     @Test
     fun `createDeck should return a deck with 40 cards`() {
         assertEquals(40, deck.size)

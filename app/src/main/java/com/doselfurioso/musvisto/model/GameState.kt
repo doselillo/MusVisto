@@ -52,7 +52,10 @@ data class GameState(
     // limpia al salir.
     val pendingGestures: Map<String, Int> = emptyMap(),
     val playersInLance: Set<String> = emptySet(),
-    @Transient val isPaused: Boolean = false
+    @Transient val isPaused: Boolean = false,
+    // Mus corrido: 1ª ronda del juego, el que corta el mus se convierte en
+    // mano. Activo hasta el primer corte; mientras, sin señas (#17).
+    val musCorrido: Boolean = false
 )
 
 @Serializable

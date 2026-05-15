@@ -154,6 +154,8 @@ class GameViewModel constructor(
         }
 
         if (action is GameAction.ShowGesture) {
+            // Mus corrido (#17): prohibidas las señas hasta que alguien corte.
+            if (_gameState.value.musCorrido) return
             val player = _gameState.value.players.find { it.id == playerId } ?: return
 
             // Si el jugador está intentando desactivar su propia seña
@@ -480,6 +482,10 @@ class GameViewModel constructor(
 
         val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
 
+        // 1ª mano del juego (sin mano previa) → mus corrido (#17): el que corta
+        // se vuelve mano; mientras, sin señas.
+        val isFirstHand = lastManoPlayerId == null
+
         _gameState.value = onEnterMusPhase(
             GameState(
                 players = updatedPlayers,
@@ -488,12 +494,13 @@ class GameViewModel constructor(
                 manoPlayerId = newManoId,
                 currentTurnPlayerId = newManoId,
                 gamePhase = GamePhase.MUS,
-                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+                musCorrido = isFirstHand
             )
         )
 
         handleAiTurn()
-        triggerAiGestures()
+        if (!isFirstHand) triggerAiGestures()
     }
 
     fun onBetAmountSelected(amount: Int) {
@@ -590,6 +597,11 @@ class GameViewModel constructor(
      * del mismo state.
      */
     private fun onEnterMusPhase(state: GameState): GameState {
+        // Mus corrido (#17): hasta el primer corte no hay señas → no se
+        // planifican gestos. Sin `pendingGestures`, la delegación de corte #20
+        // tampoco se dispara (su gate exige id en pendingGestures): cada uno
+        // corta por su propia mano, como exige el modo.
+        if (state.musCorrido) return state
         val humanTeam = state.players.find { it.id == humanPlayerId }?.team
         val pending = state.players.filter { ai ->
             ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }

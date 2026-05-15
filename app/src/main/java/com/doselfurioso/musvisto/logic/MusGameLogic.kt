@@ -476,6 +476,10 @@ class MusGameLogic constructor(private val random: Random){
     }
 
     private fun handleNoMus(currentState: GameState, playerId: String): GameState {
+        // Mus corrido (#17): el que corta el mus se convierte en mano (postre =
+        // su izquierda, implícito por el orden de turno desde manoPlayerId).
+        // Termina el modo inicial; a partir de aquí, juego normal.
+        val newManoId = if (currentState.musCorrido) playerId else currentState.manoPlayerId
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
@@ -486,13 +490,15 @@ class MusGameLogic constructor(private val random: Random){
             // fase de Mus/descarte).
             discardCounts = emptyMap(),
             currentBet = null,
-            currentTurnPlayerId = currentState.manoPlayerId,
+            manoPlayerId = newManoId,
+            currentTurnPlayerId = newManoId,
             isNewLance = true,
             currentLanceActions = emptyMap(),
             noMusPlayer = playerId,
             // El plan de señas era solo para el Mus que acaba de cerrarse;
             // los lances de envite ya no lo usan.
-            pendingGestures = emptyMap()
+            pendingGestures = emptyMap(),
+            musCorrido = false
         )
     }
 
