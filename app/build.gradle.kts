@@ -45,6 +45,19 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            all {
+                // Pasa al test cualquier -Dmusvisto.* (p. ej. -Dmusvisto.sim,
+                // -Dmusvisto.games) y muestra el stdout del simulador.
+                it.systemProperties(
+                    System.getProperties()
+                        .filterKeys { k -> (k as String).startsWith("musvisto.") }
+                        .mapKeys { (k, _) -> k as String }
+                )
+                it.testLogging {
+                    events("passed", "failed", "skipped", "standardOut", "standardError")
+                    showStandardStreams = true
+                }
+            }
         }
     }
 }
