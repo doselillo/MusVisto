@@ -337,21 +337,38 @@ class GameSimulatorTest {
             out += "ℹ️ Pocas partidas terminadas ($finished) para juzgar equilibrio; sube -Dmusvisto.games."
         }
 
-        // Coherencia Mus vs envite (backlog #1).
-        val musTotal = s.musDecisions + s.noMusDecisions
-        val cutRate = if (musTotal == 0) 0.0 else 100.0 * s.noMusDecisions / musTotal
+        // Timidez / pasividad (backlog #1). Dos señales:
+        //  - tasa de aceptación: cuando hay envite, ¿se quiere o se pliega?
+        //  - tasa de paso: ¿se abre alguna vez o casi todo es paso?
         val totalEnvido = bettingLances.sumOf { s.envido[it] ?: 0 }
         val totalPaso = bettingLances.sumOf { s.paso[it] ?: 0 }
-        val envRate = if (totalEnvido + totalPaso == 0) 0.0
-            else 100.0 * totalEnvido / (totalEnvido + totalPaso)
+        val totalQuiero = bettingLances.sumOf { s.quiero[it] ?: 0 }
+        val totalNoQuiero = bettingLances.sumOf { s.noQuiero[it] ?: 0 }
+        val totalOrdago = bettingLances.sumOf { s.ordago[it] ?: 0 }
+        val faced = totalQuiero + totalNoQuiero
+        val acceptRate = if (faced == 0) 0.0 else 100.0 * totalQuiero / faced
+        val passRate = if (totalEnvido + totalPaso == 0) 0.0
+            else 100.0 * totalPaso / (totalEnvido + totalPaso)
+
         when {
-            cutRate > 55 && envRate < 15 ->
-                out += "⚠️ Corta el Mus mucho (${"%.0f".format(cutRate)}%) pero envida poco " +
-                    "(${"%.0f".format(envRate)}% de las decisiones de apuesta). Incoherencia clásica del backlog #1."
+            faced < 30 ->
+                out += "ℹ️ Pocos envites afrontados ($faced) para juzgar pasividad; sube -Dmusvisto.games."
+            acceptRate < 20.0 ->
+                out += "⚠️ IA demasiado tímida: ante un envite SOLO acepta el " +
+                    "${"%.0f".format(acceptRate)}% (quiere $totalQuiero / no quiere $totalNoQuiero). " +
+                    "Casi ningún lance se disputa. Backlog #1: umbrales de querer/envidar altos."
+            acceptRate < 35.0 ->
+                out += "⚠️ Aceptación baja (${"%.0f".format(acceptRate)}% de los envites). " +
+                    "Roza la pasividad; revisar umbral de 'quiero'. Backlog #1."
             else ->
-                out += "✅ Relación cortar-Mus / envidar razonable " +
-                    "(corta ${"%.0f".format(cutRate)}%, envida ${"%.0f".format(envRate)}%)."
+                out += "✅ Aceptación de envites razonable (${"%.0f".format(acceptRate)}%)."
         }
+        if (passRate > 85.0 && totalEnvido + totalPaso >= 200)
+            out += "⚠️ Se pasa el ${"%.0f".format(passRate)}% de las veces que se podría abrir: " +
+                "la IA apenas inicia apuestas. Backlog #1 (umbral de envidar)."
+        if (totalQuiero in 1..Int.MAX_VALUE && totalOrdago > totalQuiero)
+            out += "⚠️ Apuestas bimodales: hay más órdagos ($totalOrdago) que 'quiero' " +
+                "($totalQuiero). La IA o pliega o va a por todas; falta el envite medio jugado."
 
         // Rol de apoyo (#1/#4).
         val supTotal = bettingLances.sumOf { s.supportFired[it] ?: 0 }
