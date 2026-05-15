@@ -998,8 +998,10 @@ fun VerticalPlayerArea(
         Box(
             modifier = Modifier.layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                layout(placeable.width, 0) {
-                    placeable.placeRelative(0, -placeable.height)
+                // Tamaño 0 en ambos ejes: overlay puro, no desplaza a los hermanos
+                // por mucho que crezca el texto. Se centra sobre el avatar.
+                layout(0, 0) {
+                    placeable.placeRelative(-placeable.width / 2, -placeable.height)
                 }
             }
         ) {
@@ -1041,8 +1043,9 @@ fun HorizontalPlayerArea(
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                        layout(placeable.width, 0) {
-                            placeable.placeRelative(0, -placeable.height)
+                        // Tamaño 0: overlay centrado sobre el avatar, no reordena la fila.
+                        layout(0, 0) {
+                            placeable.placeRelative(-placeable.width / 2, -placeable.height)
                         }
                     }
                 ) {
@@ -1054,8 +1057,9 @@ fun HorizontalPlayerArea(
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                        layout(placeable.width, 0) {
-                            placeable.placeRelative(0, 0)
+                        // Tamaño 0: overlay centrado bajo el avatar, no reordena la fila.
+                        layout(0, 0) {
+                            placeable.placeRelative(-placeable.width / 2, 0)
                         }
                     }
                 ) {
