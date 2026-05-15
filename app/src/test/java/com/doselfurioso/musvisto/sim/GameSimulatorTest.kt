@@ -54,6 +54,14 @@ class GameSimulatorTest {
         var postre31NoQuiero = 0
         var postre31Subio = 0
 
+        // CALIDAD: ¿las decisiones tienen sentido? Se mide contra el showdown
+        // real (manos fijas en la ronda): quién gana el lance de verdad.
+        var acceptWon = 0          // dijo "quiero" y su equipo gana ese lance
+        var acceptLost = 0         // dijo "quiero" y lo pierde
+        var acceptNet = 0          // tantos netos de aceptar (gana +amount / pierde -amount)
+        var envidoWon = 0          // abrió envite y su equipo gana el lance
+        var envidoLost = 0         // abrió envite y lo pierde (incluye faroles)
+
         fun inc(m: MutableMap<GamePhase, Int>, p: GamePhase) { m[p] = (m[p] ?: 0) + 1 }
     }
 
@@ -255,6 +263,31 @@ class GameSimulatorTest {
             stats.inc(stats.supportFired, phase)
         }
 
+        // CALIDAD: contra el ganador REAL del lance (showdown con manos fijas).
+        if (phase in bettingLances) {
+            val lanceWinnerTeam = when (phase) {
+                GamePhase.GRANDE -> gameLogic.getGrandeWinner(state)?.team
+                GamePhase.CHICA -> gameLogic.getChicaWinner(state)?.team
+                GamePhase.PARES -> gameLogic.getParesWinner(state)?.team
+                GamePhase.JUEGO -> gameLogic.getJuegoWinner(state)?.team
+                else -> null
+            }
+            if (lanceWinnerTeam != null) {
+                val mineWins = lanceWinnerTeam == player.team
+                when (val a = decision.action) {
+                    is GameAction.Quiero -> {
+                        val amt = state.currentBet?.amount ?: 0
+                        if (mineWins) { stats.acceptWon++; stats.acceptNet += amt }
+                        else { stats.acceptLost++; stats.acceptNet -= amt }
+                    }
+                    is GameAction.Envido -> {
+                        if (mineWins) stats.envidoWon++ else stats.envidoLost++
+                    }
+                    else -> {}
+                }
+            }
+        }
+
         // 31 en postre respondiendo a un envite de Juego
         if (phase == GamePhase.JUEGO && state.currentBet != null &&
             gameLogic.getHandJuegoValue(player.hand) == 31
@@ -313,6 +346,16 @@ class GameSimulatorTest {
             "(${pct(s.postre31Quiero, s.postre31Faced)}) | noquiero ${s.postre31NoQuiero} " +
             "(${pct(s.postre31NoQuiero, s.postre31Faced)}) | subió ${s.postre31Subio}")
         sb.appendLine()
+        sb.appendLine("CALIDAD DE DECISIONES (contra el ganador real del lance)")
+        val accTotal = s.acceptWon + s.acceptLost
+        sb.appendLine("- Aceptar 'quiero': gana ${s.acceptWon}/${accTotal} " +
+            "(${pct(s.acceptWon, accTotal)}) | tantos netos: ${s.acceptNet}")
+        val envTotal = s.envidoWon + s.envidoLost
+        sb.appendLine("- Envites abiertos que el equipo gana en showdown: " +
+            "${s.envidoWon}/${envTotal} (${pct(s.envidoWon, envTotal)}) " +
+            "(ojo: un farol que gana porque el rival pliega NO cuenta aquí; " +
+            "% bajo puede ser farol legítimo)")
+        sb.appendLine()
         sb.appendLine("=".repeat(56))
         sb.appendLine("DIAGNÓSTICO (heurístico, en lenguaje claro)")
         sb.appendLine("=".repeat(56))
@@ -369,6 +412,32 @@ class GameSimulatorTest {
         if (totalQuiero in 1..Int.MAX_VALUE && totalOrdago > totalQuiero)
             out += "⚠️ Apuestas bimodales: hay más órdagos ($totalOrdago) que 'quiero' " +
                 "($totalQuiero). La IA o pliega o va a por todas; falta el envite medio jugado."
+
+        // CALIDAD: ¿las aceptaciones tienen sentido? (vs ganador real del lance)
+        val accTotal = s.acceptWon + s.acceptLost
+        when {
+            accTotal < 30 ->
+                out += "ℹ️ Pocas aceptaciones ($accTotal) para juzgar su calidad; sube -Dmusvisto.games."
+            else -> {
+                val wr = 100.0 * s.acceptWon / accTotal
+                when {
+                    wr < 40.0 ->
+                        out += "⚠️ Las aceptaciones NO compensan: al decir 'quiero' solo gana el " +
+                            "${"%.0f".format(wr)}% de los lances (neto ${s.acceptNet} tantos). " +
+                            "Acepta demasiado flojo: subir más la aceptación sería contraproducente."
+                    s.acceptNet < 0 ->
+                        out += "⚠️ Aceptar es deficitario: gana ${"%.0f".format(wr)}% pero el neto " +
+                            "es ${s.acceptNet} tantos (pierde más de lo que gana apostando)."
+                    wr > 70.0 ->
+                        out += "ℹ️ Aceptaciones muy ganadoras (${"%.0f".format(wr)}%, neto " +
+                            "+${s.acceptNet}): probablemente AÚN demasiado selectiva (deja de querer " +
+                            "lances rentables). Hay margen para aceptar más."
+                    else ->
+                        out += "✅ Las aceptaciones tienen sentido: gana ${"%.0f".format(wr)}% de los " +
+                            "lances aceptados, neto +${s.acceptNet} tantos. Subir la aceptación fue sano."
+                }
+            }
+        }
 
         // Rol de apoyo (#1/#4).
         val supTotal = bettingLances.sumOf { s.supportFired[it] ?: 0 }
