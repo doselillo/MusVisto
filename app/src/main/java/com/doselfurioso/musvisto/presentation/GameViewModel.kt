@@ -350,30 +350,36 @@ class GameViewModel constructor(
 
         // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
         viewModelScope.launch {
-            // SI LA FASE HA CAMBIADO, significa que un lance acaba de terminar.
-            // Ahora, nos detenemos y esperamos a que su último anuncio desaparezca.
+            // Si la fase ha cambiado, damos al composable ActionAnnouncement el
+            // tiempo mínimo visible para mostrar la acción que cerró el lance
+            // (y mantener visibles los anuncios de los demás jugadores). Pasado
+            // ese tiempo, limpiamos el estado de anuncios ANTES de continuar para
+            // que el siguiente lance no arrastre nada. Cada composable aplica su
+            // propia animación de salida respetando su mínimo individual.
             if (phaseChanged) {
-                // La información del último anuncio está en `newState.transientAction`
-                // Le damos 1.5 segundos para que se muestre y su animación de salida termine.
-                delay(500)
+                // Capturamos los anuncios del lance que acaba de cerrar ANTES de
+                // esperar. Tras el tiempo mínimo solo eliminamos esas instancias
+                // concretas: si el jugador ya actuó en el lance nuevo, su nueva
+                // acción tiene otro `seq` (LastActionInfo.seq es único por
+                // instancia) y NO se borra, aunque sea la misma acción repetida.
+                val staleActions = _gameState.value.currentLanceActions
+                val staleTransient = _gameState.value.transientAction
+                delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
                 awaitNotPaused()
-                _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
-                delay(500)
-                awaitNotPaused()
-
-
-                // Pasado el tiempo, nos aseguramos de que el estado esté limpio
-                // antes de continuar.
-                if (_gameState.value.transientAction == newState.transientAction) {
-                    _gameState.value = _gameState.value.copy(
-                        transientAction = null,
-                        currentLanceActions = emptyMap()
-                    )
-                }
+                val current = _gameState.value
+                _gameState.value = current.copy(
+                    currentLanceActions = current.currentLanceActions
+                        .filterNot { (id, info) -> staleActions[id] == info },
+                    transientAction = if (current.transientAction == staleTransient) {
+                        null
+                    } else {
+                        current.transientAction
+                    }
+                )
             }
 
-            // AHORA que la pantalla está limpia, continuamos con el lance actual.
-            val currentState = _gameState.value // Volvemos a leer el estado por si ha cambiado
+            // Continuamos con el lance actual.
+            val currentState = _gameState.value
             if (currentState.gamePhase == GamePhase.PARES_CHECK || currentState.gamePhase == GamePhase.JUEGO_CHECK) {
                 handleDeclarationSequence(currentState)
             } else {
@@ -409,8 +415,9 @@ class GameViewModel constructor(
                 setGameState(tempState)
             }
 
-            // Una vez que todos han hablado, hacemos una última pausa y avanzamos a la siguiente fase
-            delay(1000)
+            // Una vez que todos han hablado, hacemos una última pausa (alineada
+            // con el mínimo visible del composable) y avanzamos a la siguiente fase.
+            delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
             awaitNotPaused()
             // La función endLanceAndAdvance es la que contiene la lógica para saltar lances si es necesario
             val finalState = gameLogic.resolveDeclaration(tempState)

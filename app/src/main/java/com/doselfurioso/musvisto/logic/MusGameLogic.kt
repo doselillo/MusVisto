@@ -268,18 +268,20 @@ class MusGameLogic constructor(private val random: Random){
 
         if (nextState == currentState) return currentState
 
-        // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS (LÓGICA SIMPLIFICADA) ----
+        // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS ----
+        // Mantenemos TODOS los anuncios del lance en el mapa para que coexistan en
+        // pantalla. El ViewModel limpia el mapa tras el tiempo mínimo visible,
+        // justo antes de iniciar el siguiente lance (no aquí, para no borrar de
+        // golpe los anuncios de los demás cuando el último jugador cierra el lance).
         val newActionInfo = LastActionInfo(playerId, action)
         val phaseChanged = currentState.gamePhase != nextState.gamePhase
 
-        // Siempre añadimos la acción al mapa de anuncios. El ViewModel se encargará de limpiarlo.
         val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)
 
         return nextState.copy(
             lastAction = newActionInfo,
             actionLog = (nextState.actionLog + newActionInfo).takeLast(4),
             currentLanceActions = updatedLanceActions,
-            // Si la fase cambió, marcamos la acción como transitoria.
             transientAction = if (phaseChanged) newActionInfo else null
         )
     }

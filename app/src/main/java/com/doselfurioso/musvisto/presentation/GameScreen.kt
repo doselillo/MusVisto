@@ -1,13 +1,16 @@
 package com.doselfurioso.musvisto.presentation
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -60,6 +63,7 @@ import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LanceResult
+import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
@@ -67,6 +71,15 @@ import kotlinx.coroutines.delay
 import kotlin.math.abs
 import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.model.Card as CardData
+
+internal const val ANNOUNCEMENT_MIN_VISIBLE_MS = 1200L
+// Piso corto cuando el anuncio es REEMPLAZADO por otra acción (no ocultado):
+// basta un golpe de vista + cross-fade. Evita que la acción anterior del propio
+// jugador se quede colgada cuando actúa muy rápido (p. ej. No Mus -> Paso).
+private const val ANNOUNCEMENT_MIN_BEFORE_REPLACE_MS = 450L
+private const val ANNOUNCEMENT_ENTER_MS = 200
+private const val ANNOUNCEMENT_EXIT_MS = 250
+private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
@@ -784,45 +797,70 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // transientAction takes priority (end-of-phase action), then persistent — but hide
-    // the persistent action while it's the player's turn to avoid showing a stale
-    // action from a previous betting round within the same lance.
-    // Hide a stale persistent action only when the game is actively waiting for this
-    // player to make a choice (availableActions non-empty). During auto-declaration
-    // sequences (PARES_CHECK / JUEGO_CHECK) availableActions is empty, so announcements
-    // show correctly even for the first player in declaration order.
-    val isWaitingForInput = gameState.currentTurnPlayerId == player.id &&
-            gameState.availableActions.isNotEmpty()
-    val actionToShow = when {
+    // El game state declara QUÉ anuncio quiere mostrar; el composable decide CUÁNDO y CÓMO.
+    // transientAction (la acción que cerró el lance) tiene prioridad sobre la persistente.
+    val targetAction: LastActionInfo? = when {
         gameState.transientAction?.playerId == player.id -> gameState.transientAction
-        isWaitingForInput -> null
         else -> gameState.currentLanceActions[player.id]
     }
 
-    val visible = actionToShow != null
+    var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
+    var shownAt by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(targetAction) {
+        val now = System.currentTimeMillis()
+        when {
+            targetAction != null && targetAction != displayedAction -> {
+                if (displayedAction != null) {
+                    val remaining = ANNOUNCEMENT_MIN_BEFORE_REPLACE_MS - (now - shownAt)
+                    if (remaining > 0) delay(remaining)
+                }
+                displayedAction = targetAction
+                shownAt = System.currentTimeMillis()
+            }
+            targetAction == null && displayedAction != null -> {
+                val remaining = ANNOUNCEMENT_MIN_VISIBLE_MS - (now - shownAt)
+                if (remaining > 0) delay(remaining)
+                displayedAction = null
+            }
+        }
+    }
 
     AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn() + slideInVertically(),
-        exit = fadeOut() + slideOutVertically()
+        visible = displayedAction != null,
+        enter = fadeIn(tween(ANNOUNCEMENT_ENTER_MS)) +
+                slideInVertically(tween(ANNOUNCEMENT_ENTER_MS)),
+        exit = fadeOut(tween(ANNOUNCEMENT_EXIT_MS)) +
+                slideOutVertically(tween(ANNOUNCEMENT_EXIT_MS))
     ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
             modifier = Modifier.padding(4.dp * dimens.scaleFactor)
         ) {
-            if (actionToShow?.action is GameAction.ConfirmDiscard) Text(
-                text = ("Dame ${gameState.discardCounts[player.id]}"),
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeLarge,
-                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
-            ) else Text(
-                text = actionToShow?.action?.displayText ?: "",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = dimens.fontSizeLarge,
-                modifier = Modifier.padding(horizontal = 12.dp * dimens.scaleFactor, vertical = 5.dp * dimens.scaleFactor)
-            )
+            AnimatedContent(
+                targetState = displayedAction,
+                transitionSpec = {
+                    fadeIn(tween(ANNOUNCEMENT_TEXT_FADE_MS)) togetherWith
+                            fadeOut(tween(ANNOUNCEMENT_TEXT_FADE_MS))
+                },
+                label = "ActionAnnouncementText"
+            ) { action ->
+                val text = if (action?.action is GameAction.ConfirmDiscard) {
+                    "Dame ${gameState.discardCounts[player.id]}"
+                } else {
+                    action?.action?.displayText ?: ""
+                }
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = dimens.fontSizeLarge,
+                    modifier = Modifier.padding(
+                        horizontal = 12.dp * dimens.scaleFactor,
+                        vertical = 5.dp * dimens.scaleFactor
+                    )
+                )
+            }
         }
     }
 }
