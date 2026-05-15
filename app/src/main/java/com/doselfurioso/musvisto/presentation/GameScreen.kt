@@ -316,7 +316,8 @@ fun GameScreen(
                         dimens = dimens,
                         modifier = Modifier.align(Alignment.BottomCenter),
                         gameState = gameState,
-                        announcementAbove = true
+                        announcementAbove = true,
+                        avatarLeadingPadding = dimens.defaultPadding * 2
                     )
 
                     // Botones de acción — superpuestos en la parte superior, encima de las cartas
