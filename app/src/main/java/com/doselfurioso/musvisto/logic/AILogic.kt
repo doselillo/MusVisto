@@ -56,9 +56,14 @@ class AILogic constructor(
         val decisionId = UUID.randomUUID().toString().substring(0, 5)
         val logBuilder = StringBuilder()
 
+        val rivalTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val myScore = gameState.score[aiPlayer.team] ?: 0
+        val rivalScore = gameState.score[rivalTeam] ?: 0
+        val handStr = handToShortString(aiPlayer.hand)
+
         logBuilder.appendLine("================ AI DECISION [$decisionId] ================")
-        logBuilder.appendLine("Player: ${aiPlayer.name} | Hand: ${aiPlayer.hand.joinToString { cardToShortString(it) }}")
-        logBuilder.appendLine("Phase: ${gameState.gamePhase} | Score: Nosotros ${gameState.score["teamA"]} - Ellos ${gameState.score["teamB"]}")
+        logBuilder.appendLine("Player: ${aiPlayer.name} | Mano: $handStr")
+        logBuilder.appendLine("Phase: ${gameState.gamePhase} | Marcador: Mi equipo $myScore - Rival $rivalScore")
         logBuilder.appendLine("-------------------------------------------------")
 
         val evaluation = evaluateHand(aiPlayer.hand, aiPlayer, gameState)
@@ -83,7 +88,21 @@ class AILogic constructor(
             pares = (gestureAdjustedStrength.pares + riskFactor).coerceIn(0, 100),
             juego = (gestureAdjustedStrength.juego + riskFactor).coerceIn(0, 100)
         )
-        logBuilder.appendLine("4. Final Strength -> G:${finalStrength.grande}, C:${finalStrength.chica}, P:${finalStrength.pares}, J:${finalStrength.juego}")
+        // Resalta [..*] la cifra del lance que se está decidiendo.
+        val activeLance = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> "G"; GamePhase.CHICA -> "C"
+            GamePhase.PARES -> "P"; GamePhase.JUEGO -> "J"
+            else -> ""
+        }
+        fun lancePart(letter: String, value: Int) =
+            if (letter == activeLance) "[$letter:$value*]" else "$letter:$value"
+        val finalLine = listOf(
+            lancePart("G", finalStrength.grande),
+            lancePart("C", finalStrength.chica),
+            lancePart("P", finalStrength.pares),
+            lancePart("J", finalStrength.juego)
+        ).joinToString(" ")
+        logBuilder.appendLine("4. Final Strength -> $finalLine")
         logBuilder.appendLine("-------------------------------------------------")
 
         val decision: AIDecision
@@ -160,7 +179,23 @@ class AILogic constructor(
 
         logBuilder.appendLine(actionLog)
         logBuilder.appendLine("================ END AI DECISION [$decisionId] ================\n")
-        val log = logBuilder.toString()
+
+        // Línea TL;DR al principio: lo esencial de un vistazo. El detalle
+        // verboso queda debajo para cuando haga falta profundizar.
+        val activeVal = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> finalStrength.grande
+            GamePhase.CHICA -> finalStrength.chica
+            GamePhase.PARES -> finalStrength.pares
+            GamePhase.JUEGO -> finalStrength.juego
+            else -> null
+        }
+        val tldr = buildString {
+            append("» ${gameState.gamePhase} | $handStr")
+            if (activeLance.isNotEmpty() && activeVal != null) append(" | $activeLance:$activeVal")
+            if (playSupport) append(" | APOYO")
+            append(" -> ${decision.action.displayText}")
+        }
+        val log = "$tldr\n${logBuilder}"
         Log.d(TAG, log)
         return decision.copy(debugLog = log)
     }
@@ -188,19 +223,21 @@ class AILogic constructor(
         else      -> card.rank.value
     }
 
-    private fun cardToShortString(card: Card): String {
-        val r = when (card.rank) {
-            Rank.AS -> "A"
-            Rank.DOS -> "2"
-            Rank.TRES -> "3"
-            Rank.SOTA -> "S"
-            Rank.CABALLO -> "C"
-            Rank.REY -> "R"
-            else -> card.rank.value.toString()
-        }
-        val s = card.suit.name.first()
-        return "$r$s"
+    // Solo el rango: en Mus el palo no influye en puntuación, pares ni juego.
+    private fun cardToShortString(card: Card): String = when (card.rank) {
+        Rank.AS -> "A"
+        Rank.DOS -> "2"
+        Rank.TRES -> "3"
+        Rank.SOTA -> "S"
+        Rank.CABALLO -> "C"
+        Rank.REY -> "R"
+        else -> card.rank.value.toString()
     }
+
+    // Mano ordenada de mayor a menor para lectura rápida en el log.
+    private fun handToShortString(hand: List<Card>): String =
+        hand.sortedByDescending { getCardGrandeValue(it) }
+            .joinToString(" ") { cardToShortString(it) }
 
     // ---------------- Responder a apuestas activas ----------------
     private fun decideResponse(
@@ -611,8 +648,7 @@ class AILogic constructor(
         // --- CÁLCULO DE JUEGO ---
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         var juegoStrength = 0
-        explanation.appendLine("   - Juego (Valor: $juegoValue, Es Mano: $isMano):")
-        explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}):")
+        explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}, Es Mano: $isMano):")
 
         if (juegoValue >= 31) {
             // El 31 es premium (además suma +1 tanto por "juego de 31"). El resto
