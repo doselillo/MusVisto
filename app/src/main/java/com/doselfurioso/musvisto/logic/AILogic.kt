@@ -17,6 +17,11 @@ import kotlin.math.max
 // posición, conviene jugar de apoyo en vez de pisarle el envite.
 private const val SUPPORT_OWN_FLOOR = 70
 
+// Probabilidad de que un rival INTERCEPTE una seña del equipo contrario.
+// Baja: en el Mus real solo se cazan algunas, de vez en cuando. Antes era
+// 100% (omnisciencia) -> usar señas era perjudicial. (Backlog #7)
+private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -827,6 +832,20 @@ class AILogic constructor(
         }
     }
 
+    // ¿Este observador intercepta esta seña rival? Determinista y ESTABLE
+    // dentro de la ronda (no parpadea entre lances): hash de mano (rota cada
+    // ronda) + emisor + observador + seña. Re-tira solo al cambiar de ronda.
+    private fun opponentSignPerceived(
+        gameState: GameState,
+        observer: Player,
+        gesturerId: String,
+        gestureResId: Int
+    ): Boolean {
+        val seed = "${gameState.manoPlayerId}|$gesturerId|${observer.id}|$gestureResId"
+        val r = seed.hashCode().mod(1000) / 1000.0
+        return r < OPPONENT_SIGN_INTERCEPT_PROB
+    }
+
     private fun adjustStrengthsBasedOnKnownGestures(
         baseStrength: HandStrength,
         gameState: GameState,
@@ -895,8 +914,13 @@ class AILogic constructor(
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team != aiPlayer.team) {
+                // El rival NO siempre caza la seña: solo a veces (#7).
+                if (!opponentSignPerceived(gameState, aiPlayer, playerId, gesture.gestureResId)) {
+                    logBuilder.appendLine("   - (Defensive) Seña de ${gesturer.name} NO interceptada por ${aiPlayer.name}.")
+                    continue
+                }
                 val gestureName = gestureIdToName(gesture.gestureResId)
-                logBuilder.appendLine("   - (Defensive) Opponent ${gesturer.name} has '$gestureName'.")
+                logBuilder.appendLine("   - (Defensive) Opponent ${gesturer.name} has '$gestureName' (interceptada).")
 
                 when (val meaning = getGestureMeaning(gesture.gestureResId)) {
                     is GestureMeaning.Pares -> {
