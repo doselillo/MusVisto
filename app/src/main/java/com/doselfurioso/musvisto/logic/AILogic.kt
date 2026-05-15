@@ -273,8 +273,17 @@ class AILogic constructor(
             // para que la IA sea menos predecible.
             advantage > 85 -> GameAction.Envido(betAmount(adjustedStrength))
 
-            // REGLA 3: El umbral para aceptar un envite ("Quiero") es más exigente.
-            advantage > 70 -> GameAction.Quiero
+            // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
+            // explotable: cuanto mayor el envite (y la ventaja no aplastante,
+            // que ya cae en REGLA 2), alguna probabilidad de no querer. Evita
+            // que un rival farmee envidando grande contra, p. ej., un 31 en
+            // postre (que pierde el desempate). Los envites pequeños se quieren.
+            advantage > 70 -> {
+                val foldChance = (((currentBetAmount - 2).coerceAtLeast(0)) * 4)
+                    .coerceAtMost(25)
+                if (rng.nextInt(100) < foldChance) GameAction.NoQuiero
+                else GameAction.Quiero
+            }
 
             // REGLA 4: La probabilidad de "pagar por ver" con una mano mediocre es menor.
             advantage > 60 && rng.nextInt(100) < 20 -> GameAction.Quiero // 20% de probabilidad
@@ -666,9 +675,13 @@ class AILogic constructor(
             juegoStrength = baseJuegoStrength
             explanation.appendLine("     - JUEGO: Base por valor $juegoValue -> $juegoStrength pts")
 
-            if (juegoValue == 31 && !isMano) {
-                juegoStrength -= 15
-                explanation.appendLine("     - Penalización por tener 31 sin ser mano -> -15 pts")
+            // El 31 gana a TODO salvo a otro 31 más cercano a mano. Penaliza
+            // por posición (suave: el único riesgo es "otro 31"), no plano:
+            // un 31 en postre puede perder ante 31 de pos 1, 2 ó 3.
+            if (juegoValue == 31 && playerPositionInTurn > 0) {
+                val posPenalty = playerPositionInTurn * 5
+                juegoStrength -= posPenalty
+                explanation.appendLine("     - 31 sin ser mano, posición ${playerPositionInTurn + 1} -> -$posPenalty pts")
             }
 
             // Los empates de Juego los gana quien está más cerca de mano. Con un

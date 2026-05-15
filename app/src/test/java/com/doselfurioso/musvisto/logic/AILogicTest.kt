@@ -146,6 +146,59 @@ class AILogicTest {
         assertFalse("Mano propia fuerte no cede la iniciativa", decision.action is GameAction.Paso)
     }
 
+    // --- TESTS 31 EN POSTRE ANTE ENVITE A JUEGO ---
+
+    private fun postre31JuegoState(betAmount: Int): Pair<GameState, Player> {
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS)) // 31
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        // Orden empezando en opp1 -> [opp1, partner, opp2, ai]: ai es postre.
+        val gs = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.JUEGO,
+            manoPlayerId = opp1.id,
+            currentBet = BetInfo(betAmount, opp1.id, ai.id)
+        )
+        return gs to ai
+    }
+
+    // Garantía de buen Mus: un envite pequeño con 31 (aunque sea postre)
+    // NUNCA se pliega — puede quererse o subirse (ambas correctas), pero
+    // jamás NoQuiero/Paso. Esto verifica que el fix anti-exploit no degrada
+    // el juego con la mejor jugada ante envites baratos.
+    @Test
+    fun `postre 31 never folds a small Juego bet`() {
+        val (gs, ai) = postre31JuegoState(betAmount = 2)
+        repeat(30) {
+            val action = aiLogic.makeDecision(gs, ai).action
+            assertFalse(
+                "31 no debe plegar un envite pequeño, fue $action",
+                action is GameAction.NoQuiero || action is GameAction.Paso
+            )
+        }
+    }
+
+    // Anti-exploit: ante un envite mayor, el 31 en postre NO acepta el 100%
+    // de las veces (no es farmeable de forma determinista) — pero tampoco
+    // pliega siempre (seguiría siendo buena mano).
+    @Test
+    fun `postre 31 facing a bigger Juego bet is not deterministic`() {
+        val (gs, ai) = postre31JuegoState(betAmount = 5)
+        var quiero = 0
+        var noQuiero = 0
+        repeat(200) {
+            when (aiLogic.makeDecision(gs, ai).action) {
+                is GameAction.Quiero -> quiero++
+                is GameAction.NoQuiero -> noQuiero++
+                else -> {}
+            }
+        }
+        assertTrue("Debe querer la mayoría de las veces", quiero > 0)
+        assertTrue("No debe ser determinista (a veces no quiere)", noQuiero > 0)
+    }
+
     // --- NUEVOS TESTS DE DECISIONES DE LA IA ---
 
     @Test
