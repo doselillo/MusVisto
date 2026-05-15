@@ -41,6 +41,51 @@ class AILogicTest {
         assertFalse("No debe tirar el As (preserva Chica)", decision.cardsToDiscard.contains(Card(Suit.BASTOS, Rank.AS)))
     }
 
+    // --- TESTS DECISIÓN DE MUS (#5: no quitar mano al compañero) ---
+
+    @Test
+    fun `decideMus - clearly strong hand still cuts Mus even if partner is mano`() {
+        // 4 Reyes (Grande=100). Aunque el compañero sea mano (umbral +10 -> 95),
+        // 100 >= 95: una mano claramente buena se corta igual (beneficia al equipo).
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))
+        val ai = testPlayer.copy(hand = hand)            // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val gameState = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = partner.id                     // el compañero es mano
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(decision.action is GameAction.NoMus)
+    }
+
+    @Test
+    fun `decideMus - partner-mano bias never makes the AI cut more (no inversion)`() {
+        // Invariante: subir el umbral solo puede convertir NoMus -> Mus, nunca al
+        // revés. Para CUALQUIER mano, si con rival-mano pide Mus, con compañero-mano
+        // también debe pedir Mus.
+        val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.CINCO))
+        val ai = testPlayer.copy(hand = hand)            // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+
+        val opponentMano = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = opponentPlayer.id
+        )
+        val partnerMano = opponentMano.copy(manoPlayerId = partner.id)
+
+        val withOpponentMano = aiLogic.makeDecision(opponentMano, ai).action
+        val withPartnerMano = aiLogic.makeDecision(partnerMano, ai).action
+
+        if (withOpponentMano is GameAction.Mus) {
+            assertTrue(
+                "El sesgo de compañero-mano no debe hacer que la IA corte más",
+                withPartnerMano is GameAction.Mus
+            )
+        }
+    }
+
     // --- NUEVOS TESTS DE DECISIONES DE LA IA ---
 
     @Test

@@ -105,7 +105,7 @@ class AILogic constructor(
         } else {
             when (gameState.gamePhase) {
                 GamePhase.MUS -> {
-                    val musResult = decideMus(finalStrength, aiPlayer, riskFactor)
+                    val musResult = decideMus(finalStrength, aiPlayer, riskFactor, gameState)
                     decision = AIDecision(musResult.first)
                     actionLog = ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
                 }
@@ -222,21 +222,36 @@ class AILogic constructor(
     private fun decideMus(
         strength: HandStrength,
         aiPlayer: Player,
-        riskFactor: Int
+        riskFactor: Int,
+        gameState: GameState
     ): Pair<GameAction, String> {
         // --- LÓGICA DE CORTAR MUS MEJORADA ---
         // Ya no se basa en el tipo de jugada, sino en la fuerza calculada.
-        val paresCutThreshold = 75 - riskFactor // Umbral para cortar por pares
-        val juegoCutThreshold = 75 - riskFactor
-        val grandeCutThreshold = 85 - riskFactor
-        val chicaCutThreshold = 85 - riskFactor
 
-        if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold")
-        if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold")
-        if (strength.grande >= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeCutThreshold")
-        if (strength.chica >= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaCutThreshold")
+        // "No quitar mano al compañero": si el compañero es mano, cortar el Mus
+        // con una mano solo normalita le roba la opción de mejorar y su ventaja
+        // posicional/de desempate. Subimos el listón de corte: solo se corta con
+        // mano claramente buena (que supera incluso el umbral elevado).
+        val partner = gameState.players.firstOrNull { it.team == aiPlayer.team && it.id != aiPlayer.id }
+        val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
+        val manoBias = if (partnerIsMano) 10 else 0
 
-        return Pair(GameAction.Mus, "Reason: No strength exceeds thresholds to cut mus (treshold - riskfactor) Grande/Chica = 85. Pares/Juego = 75")
+        val paresCutThreshold = 75 - riskFactor + manoBias // Umbral para cortar por pares
+        val juegoCutThreshold = 75 - riskFactor + manoBias
+        val grandeCutThreshold = 85 - riskFactor + manoBias
+        val chicaCutThreshold = 85 - riskFactor + manoBias
+
+        if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
+        if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
+        if (strength.grande >= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)")
+        if (strength.chica >= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)")
+
+        val musReason = if (partnerIsMano) {
+            "Reason: No strength exceeds thresholds; compañero es mano, sesgo a Mus (manoBias +$manoBias)"
+        } else {
+            "Reason: No strength exceeds thresholds to cut mus"
+        }
+        return Pair(GameAction.Mus, musReason)
     }
 
 
