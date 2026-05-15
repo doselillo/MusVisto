@@ -17,6 +17,11 @@ import kotlin.math.max
 // posición, conviene jugar de apoyo en vez de pisarle el envite.
 private const val SUPPORT_OWN_FLOOR = 70
 
+// Probabilidad de que un rival INTERCEPTE una seña del equipo contrario.
+// Baja: en el Mus real solo se cazan algunas, de vez en cuando. Antes era
+// 100% (omnisciencia) -> usar señas era perjudicial. (Backlog #7)
+private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -399,20 +404,51 @@ class AILogic constructor(
             return Pair(GameAction.Órdago, "Reason: Closing the game (my $myTeamScore, opp $opponentScore, strength $strength)")
         }
 
-        val betThreshold = 80
-        val bluffThreshold = 60
-        val bluffChance = 5 + (strength / 10)
-
-        if (strength > betThreshold) {
-            val amount = betAmount(strength)
-            return Pair(GameAction.Envido(amount), "Reason: Strength $strength > bet threshold $betThreshold")
+        // --- APERTURA POR BANDAS CON CONTEXTO (farol / valor controlado) ---
+        // Antes solo abría con casi la nuts (>80): los lances morían a paso.
+        // Ahora: valor fuerte siempre; valor fino de manos medias con prob.
+        // según contexto posicional; farol barato solo en spots de robo.
+        val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val myPos = order.indexOfFirst { it.id == aiPlayer.id }
+        val isMano = myPos == 0
+        val isLate = myPos >= 0 && myPos >= order.size - 2 // postre o penúltimo
+        // Rivales que YA han pasado este lance => iniciativa más libre (robo).
+        val opponentsPassed = gameState.playersWhoPassed.count { pid ->
+            gameState.players.find { it.id == pid }?.team != aiPlayer.team &&
+                gameState.players.any { it.id == pid }
         }
-        if (strength > bluffThreshold && rng.nextInt(100) < bluffChance) {
-            // El farol se mantiene barato a propósito: mano débil, limitar pérdida.
-            return Pair(GameAction.Envido(rng.nextInt(2, 4)), "Reason: Bluff! Strength $strength > bluff threshold $bluffThreshold (Chance: $bluffChance%)")
+        val stealSpot = opponentsPassed >= 1
+        val scoreRisky = opponentScore >= 33 || myTeamScore >= 33
+
+        // 1) Valor fuerte: como siempre.
+        if (strength > 78) {
+            return Pair(GameAction.Envido(betAmount(strength)),
+                "Reason: Valor fuerte ($strength)")
         }
 
-        return Pair(GameAction.Paso, "Reason: Strength $strength is below thresholds (Bet > $betThreshold, Bluff > $bluffThreshold)")
+        // 2) Banda media (55-78): valor fino, prob. sube con fuerza y contexto.
+        if (strength in 55..78) {
+            var p = (strength - 55) / 23.0
+            if (isMano) p += 0.15
+            if (isLate) p += 0.20
+            if (opponentsPassed >= 1) p += 0.15
+            p = p.coerceIn(0.0, 0.85) // nunca 100%: no ser leíble
+            if (rng.nextDouble() < p) {
+                return Pair(GameAction.Envido(betAmount(strength)),
+                    "Reason: Valor fino media-banda ($strength, p=${"%.2f".format(p)})")
+            }
+        }
+
+        // 3) Farol barato: solo si alguien ya pasó (robo) y marcador no delicado.
+        if (strength < 55 && stealSpot && !scoreRisky) {
+            val bluffP = (0.10 + if (isLate) 0.10 else 0.0).coerceAtMost(0.20)
+            if (rng.nextDouble() < bluffP) {
+                return Pair(GameAction.Envido(2),
+                    "Reason: Farol de robo ($strength, p=${"%.2f".format(bluffP)})")
+            }
+        }
+
+        return Pair(GameAction.Paso, "Reason: No abre (strength $strength, robo=$stealSpot)")
     }
 
     // ---------------- Descarte (heurística por scoring de carta) ----------------
@@ -796,6 +832,20 @@ class AILogic constructor(
         }
     }
 
+    // ¿Este observador intercepta esta seña rival? Determinista y ESTABLE
+    // dentro de la ronda (no parpadea entre lances): hash de mano (rota cada
+    // ronda) + emisor + observador + seña. Re-tira solo al cambiar de ronda.
+    private fun opponentSignPerceived(
+        gameState: GameState,
+        observer: Player,
+        gesturerId: String,
+        gestureResId: Int
+    ): Boolean {
+        val seed = "${gameState.manoPlayerId}|$gesturerId|${observer.id}|$gestureResId"
+        val r = seed.hashCode().mod(1000) / 1000.0
+        return r < OPPONENT_SIGN_INTERCEPT_PROB
+    }
+
     private fun adjustStrengthsBasedOnKnownGestures(
         baseStrength: HandStrength,
         gameState: GameState,
@@ -864,8 +914,13 @@ class AILogic constructor(
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team != aiPlayer.team) {
+                // El rival NO siempre caza la seña: solo a veces (#7).
+                if (!opponentSignPerceived(gameState, aiPlayer, playerId, gesture.gestureResId)) {
+                    logBuilder.appendLine("   - (Defensive) Seña de ${gesturer.name} NO interceptada por ${aiPlayer.name}.")
+                    continue
+                }
                 val gestureName = gestureIdToName(gesture.gestureResId)
-                logBuilder.appendLine("   - (Defensive) Opponent ${gesturer.name} has '$gestureName'.")
+                logBuilder.appendLine("   - (Defensive) Opponent ${gesturer.name} has '$gestureName' (interceptada).")
 
                 when (val meaning = getGestureMeaning(gesture.gestureResId)) {
                     is GestureMeaning.Pares -> {
