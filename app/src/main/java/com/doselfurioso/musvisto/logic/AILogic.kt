@@ -399,10 +399,12 @@ class AILogic constructor(
         if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
             return Pair(GameAction.Órdago, "Reason: Block opponent win (opp $opponentScore, diff $scoreDifference, strength $strength)")
         }
-        // 3) Cerrar partida: estamos a un envite de ganar nosotros con mano decente.
-        if (myTeamScore >= 35 && opponentScore < 35 && strength > 50) {
-            return Pair(GameAction.Órdago, "Reason: Closing the game (my $myTeamScore, opp $opponentScore, strength $strength)")
-        }
+        // (Antes había una condición 3 "cerrar partida" con strength > 50:
+        // regalaba el chico yendo por delante con mano floja —ordagar 36-29 sin
+        // nada— porque jugando valor normal se cierra igual sin downside
+        // catastrófico. Eliminada (#25). El órdago de cierre legítimo (filo
+        // mutuo cerca de 40, casi la nuts) se diseñará junto a #16 como módulo
+        // de endgame, no como parche aquí.)
 
         // --- APERTURA POR BANDAS CON CONTEXTO (farol / valor controlado) ---
         // Antes solo abría con casi la nuts (>80): los lances morían a paso.
