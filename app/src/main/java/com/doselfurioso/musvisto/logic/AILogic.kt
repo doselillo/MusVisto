@@ -252,15 +252,45 @@ class AILogic constructor(
     ): GameAction {
         val currentBetAmount = gameState.currentBet?.amount ?: 0
 
-        // Lógica para responder a un ÓRDAGO (esta no cambia)
+        // Respuesta a un ÓRDAGO (#28). Antes solo se aceptaba con casi la nuts
+        // (adjustedStrength>=95) o perdiendo por >20: un humano spameaba órdago
+        // con cualquier mano y la IA plegaba siempre → free-roll explotable.
+        // Ahora: umbral por posición (mano gana desempates → acepta más liviano;
+        // postre los pierde → exige más), banda muerta para no regalar el chico
+        // (#25), zona probabilística estrecha para que el farol puro no sea
+        // gratis, y conciencia de marcador simétrica (Hail Mary si el rival
+        // está al borde de 40 y no vamos por delante: plegar también pierde).
         if (gameState.currentBet?.isOrdago == true) {
             val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
-            if (adjustedStrength >= 95 || ((gameState.score[opponentTeam]
-                    ?: 0) - (gameState.score[aiPlayer.team] ?: 0) > 20)
-            ) {
-                return GameAction.Quiero
-            } else {
-                return GameAction.NoQuiero
+            val opponentScore = gameState.score[opponentTeam] ?: 0
+            val myScore = gameState.score[aiPlayer.team] ?: 0
+
+            // Desesperación / Hail Mary: rechazar también pierde la partida.
+            if (opponentScore - myScore > 20) return GameAction.Quiero
+            if (opponentScore >= 33 && myScore <= opponentScore) return GameAction.Quiero
+
+            val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+            val pos = order.indexOfFirst { it.id == aiPlayer.id }
+            val isMano = pos == 0
+            val isPostre = pos >= 0 && pos == order.size - 1
+
+            // Umbral base de aceptación (mano legítimamente buena: 31, duples,
+            // 3 reyes…), muy por debajo del 95 plano anterior. Ajustado por
+            // posición de desempate y por si ganar este lance cierra la partida.
+            var acceptThreshold = 84
+            if (isMano) acceptThreshold -= 6
+            if (isPostre) acceptThreshold += 6
+            if (myScore >= 35) acceptThreshold -= 4 // ganarlo cierra: vale el riesgo
+
+            val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
+
+            return when {
+                adjustedStrength >= acceptThreshold -> GameAction.Quiero
+                adjustedStrength < deadFloor -> GameAction.NoQuiero
+                // Banda media [deadFloor, umbral): llamada probabilística para
+                // que spamear órdago con mano floja no sea gratis.
+                rng.nextInt(100) < 30 -> GameAction.Quiero
+                else -> GameAction.NoQuiero
             }
         }
 
