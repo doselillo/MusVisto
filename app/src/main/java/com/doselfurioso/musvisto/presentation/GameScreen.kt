@@ -16,6 +16,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
@@ -1114,7 +1116,12 @@ fun GameOverOverlay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(bottom = bottomPadding)
+            // Scrollable: con el resumen de la ronda (#26) un desglose largo
+            // (p. ej. órdago) no debe recortar el título ni el botón en
+            // pantallas bajas.
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = bottomPadding)
         ) {
             Text(
                 text = titleText,
