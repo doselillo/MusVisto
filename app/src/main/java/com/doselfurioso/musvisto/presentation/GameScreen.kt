@@ -16,8 +16,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
@@ -331,6 +329,7 @@ fun GameScreen(
                         selectedCardCount = gameState.selectedCardsForDiscard.size,
                         isEnabled = isMyTurn,
                         currentPlayerId = gameViewModel.humanPlayerId,
+                        isRaise = gameState.currentBet != null,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
@@ -402,7 +401,8 @@ fun GameScreen(
                         },
                         onCancel = {
                             gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
-                        }
+                        },
+                        isRaise = gameState.currentBet != null
                     )
                 }
             }
@@ -412,8 +412,6 @@ fun GameScreen(
                     winnerTeam = gameState.winningTeam!!,
                     ordagoInfo = gameState.ordagoInfo,
                     players = players,
-                    breakdown = gameState.scoreBreakdown,
-                    dimens = dimens,
                     bottomPadding = screenHeight * 0.28f,
                     onNewGameClick = {
                         gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
@@ -467,7 +465,8 @@ private fun GameActionButton(
     action: GameAction,
     onClick: () -> Unit,
     isEnabled: Boolean,
-    dimens: ResponsiveDimens
+    dimens: ResponsiveDimens,
+    labelOverride: String? = null
 ) {
     val buttonColors = when (action.actionType) {
         ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
@@ -523,12 +522,13 @@ private fun GameActionButton(
             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         }
 
+        val label = labelOverride ?: action.displayText
         if (action.actionType == ActionType.BET && isEnabled) {
-            Text(text = action.displayText, color = secondaryColor, fontSize = dimens.fontSizeMedium)
+            Text(text = label, color = secondaryColor, fontSize = dimens.fontSizeMedium)
         } else if (action.actionType == ActionType.DISCARD) {
             Text(text = "Descartar", fontSize = dimens.fontSizeMedium)
         } else {
-            Text(text = action.displayText, fontSize = dimens.fontSizeMedium)
+            Text(text = label, fontSize = dimens.fontSizeMedium)
         }
     }
 }
@@ -542,6 +542,7 @@ fun ActionButtons(
     selectedCardCount: Int,
     isEnabled: Boolean,
     currentPlayerId: String,
+    isRaise: Boolean,
     modifier: Modifier = Modifier,
     dimens: ResponsiveDimens
 ) {
@@ -630,7 +631,7 @@ fun ActionButtons(
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class),
                             dimens = dimens
                         )
-                        val envidoAction = GameAction.ToggleBetSelector // <-- CAMBIA ESTO
+                        val envidoAction = GameAction.ToggleBetSelector
                         GameActionButton(
                             action = envidoAction,
                             onClick = {
@@ -640,7 +641,9 @@ fun ActionButtons(
                                 )
                             }, // Ahora envía la acción de mostrar el selector
                             isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class),
-                            dimens = dimens
+                            dimens = dimens,
+                            // Si ya hay envite en juego, este botón sube, no abre (#18).
+                            labelOverride = if (isRaise) "Subir" else null
                         )
                         val ordagoAction = GameAction.Órdago
                         GameActionButton(
@@ -1089,8 +1092,6 @@ fun GameOverOverlay(
     winnerTeam: String,
     ordagoInfo: OrdagoInfo?,
     players: List<Player>,
-    breakdown: ScoreBreakdown?,
-    dimens: ResponsiveDimens,
     bottomPadding: Dp = 240.dp,
     onNewGameClick: () -> Unit
 ) {
@@ -1116,12 +1117,7 @@ fun GameOverOverlay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            // Scrollable: con el resumen de la ronda (#26) un desglose largo
-            // (p. ej. órdago) no debe recortar el título ni el botón en
-            // pantallas bajas.
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = bottomPadding)
+            modifier = Modifier.padding(bottom = bottomPadding)
         ) {
             Text(
                 text = titleText,
@@ -1133,23 +1129,6 @@ fun GameOverOverlay(
                 color = Color.White,
                 fontSize = 18.sp
             )
-            // Resumen de la ronda decisiva (#26): al ganar se va directo a
-            // GAME_OVER sin pasar por ROUND_OVER, así que aquí no se veía.
-            breakdown?.let {
-                Text(
-                    "RESUMEN DE LA ÚLTIMA RONDA",
-                    color = Color.Yellow,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    TeamScoreColumn("NOSOTROS", it.teamAScoreDetails, dimens)
-                    TeamScoreColumn("ELLOS", it.teamBScoreDetails, dimens)
-                }
-            }
             Button(onClick = onNewGameClick) {
                 Text(text = "Jugar de Nuevo", fontSize = 18.sp)
             }
@@ -1380,7 +1359,8 @@ fun LanceTracker(
 @Composable
 fun BetSelector(
     onBet: (Int) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    isRaise: Boolean = false
 ) {
     var betAmount by remember { mutableStateOf(2) }
 
@@ -1395,7 +1375,11 @@ fun BetSelector(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("¿Cuántos quieres envidar?", color = Color.White, fontSize = 18.sp)
+            Text(
+                if (isRaise) "¿Cuánto quieres subir?" else "¿Cuántos quieres envidar?",
+                color = Color.White,
+                fontSize = 18.sp
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)

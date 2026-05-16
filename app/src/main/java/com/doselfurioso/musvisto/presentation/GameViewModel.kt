@@ -170,7 +170,19 @@ class GameViewModel constructor(
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
-                startNewGame(currentState.score, currentState.manoPlayerId)
+                if (currentState.winningTeam != null) {
+                    // La ronda que acaba de verse era la decisiva: tras el
+                    // resumen normal, pasamos a la pantalla de fin de partida
+                    // (#26 - flujo secuencia).
+                    setGameState(
+                        currentState.copy(
+                            gamePhase = GamePhase.GAME_OVER,
+                            availableActions = emptyList()
+                        )
+                    )
+                } else {
+                    startNewGame(currentState.score, currentState.manoPlayerId)
+                }
                 return
             }
             is GameAction.NewGame -> {
@@ -242,11 +254,15 @@ class GameViewModel constructor(
 
         if (winner != null) {
             gameRepository.deleteState()
+            // Ronda decisiva: mostramos primero el resumen normal de fin de
+            // ronda (RoundEndOverlay) y, al pulsar Continuar, la pantalla de
+            // fin de partida (#26 - flujo secuencia). winningTeam ya marcado
+            // para que el handler de Continue sepa ir a GAME_OVER.
             setGameState(stateWithBreakdown.copy(
                 score = newScore,
-                gamePhase = GamePhase.GAME_OVER,
+                gamePhase = GamePhase.ROUND_OVER,
                 winningTeam = winner,
-                availableActions = emptyList(),
+                availableActions = listOf(GameAction.Continue),
                 revealAllHands = true
             ))
         } else {
