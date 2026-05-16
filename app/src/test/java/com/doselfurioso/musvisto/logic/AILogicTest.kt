@@ -454,9 +454,12 @@ class AILogicTest {
     }
 
     @Test
-    fun `proactive Órdago - closing the game when we are near 40`() {
-        // Regla 3: myTeamScore >= 35 && opponentScore < 35 && strength > 50
-        // Mano decente (REY + AS): strength > 50.
+    fun `no proactive Órdago to close the game with a mediocre hand while ahead (#25)`() {
+        // #25: la antigua condición 3 (myTeamScore>=35 && opponentScore<35 &&
+        // strength>50) regalaba el chico ordagando con mano floja yendo por
+        // delante (jugando valor normal se cierra igual sin downside
+        // catastrófico). Eliminada: yendo 36-20 con REY+REY+AS+AS NO debe
+        // ordagar.
         val hand = listOf(
             Card(Suit.OROS, Rank.REY),
             Card(Suit.COPAS, Rank.REY),
@@ -474,7 +477,10 @@ class AILogicTest {
 
         val decision = aiLogic.makeDecision(gameState, aiPlayer)
 
-        assertTrue("Debe cantar órdago para cerrar la partida", decision.action is GameAction.Órdago)
+        assertTrue(
+            "No debe ordagar para 'cerrar' con mano floja yendo por delante (#25)",
+            decision.action !is GameAction.Órdago
+        )
     }
 
     @Test
