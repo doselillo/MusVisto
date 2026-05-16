@@ -665,6 +665,11 @@ class AILogic constructor(
         // 2. Encontramos la posición del jugador actual EN ESA LISTA (0=mano, 1=segundo, etc.)
         val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
         val isMano = playerPositionInTurn == 0
+        // Rivales (no el compañero) que actúan ANTES que yo en el orden de
+        // turno. Clave para el 31: solo se pierde el lance si un RIVAL anterior
+        // también tiene 31 (un 31 del compañero por delante gana igual).
+        val rivalsAhead = orderedPlayers.take(playerPositionInTurn)
+            .count { it.team != player.team }
 
         when (paresPlay) {
             is ParesPlay.Duples -> {
@@ -713,13 +718,16 @@ class AILogic constructor(
             juegoStrength = baseJuegoStrength
             explanation.appendLine("     - JUEGO: Base por valor $juegoValue -> $juegoStrength pts")
 
-            // El 31 gana a TODO salvo a otro 31 más cercano a mano. Penaliza
-            // por posición (suave: el único riesgo es "otro 31"), no plano:
-            // un 31 en postre puede perder ante 31 de pos 1, 2 ó 3.
-            if (juegoValue == 31 && playerPositionInTurn > 0) {
-                val posPenalty = playerPositionInTurn * 5
+            // El 31 gana a TODO salvo a otro 31 de un RIVAL que actúe antes.
+            // Penalización derivada de P(perder) ≈ 1-(1-P_RIVAL_31)^rivalsAhead
+            // (no plana por posición: el compañero por delante NO es pérdida).
+            // P_RIVAL_31 calibrable. rivalsAhead 1 -> -10, 2 -> -19. #19.
+            if (juegoValue == 31 && rivalsAhead > 0) {
+                val pRival31 = 0.10
+                val pLose = 1.0 - Math.pow(1.0 - pRival31, rivalsAhead.toDouble())
+                val posPenalty = (pLose * 100).toInt()
                 juegoStrength -= posPenalty
-                explanation.appendLine("     - 31 sin ser mano, posición ${playerPositionInTurn + 1} -> -$posPenalty pts")
+                explanation.appendLine("     - 31 sin ser mano, $rivalsAhead rival(es) delante (P perder ${(pLose * 100).toInt()}%) -> -$posPenalty pts")
             }
 
             // Los empates de Juego los gana quien está más cerca de mano. Con un
