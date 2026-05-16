@@ -9,6 +9,33 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 
 (añadir aquí los cambios de la próxima versión)
 
+## [1.0.0-beta7] — 2026-05-15
+
+### Cambiado
+- IA: nueva apertura de apuestas con farol/valor controlado por contexto (mano, posición, rivales que ya han pasado). La IA deja de apostar solo con manos casi perfectas; los lances se disputan de verdad. (#1)
+
+### Corregido
+- IA: el rival ya **no intercepta el 100% de las señas** — solo algunas, de vez en cuando. Antes, usar señas era perjudicial porque la IA siempre las cazaba. (#7)
+- IA: al detectar una seña del rival, ahora también ajusta su juego de Grande/Chica (no solo Pares/Juego), y solo si esa seña supera su propia mano. (#9)
+
+## [1.0.0-beta6] — 2026-05-15
+
+### Cambiado
+- IA: el importe del envite escala con la fuerza de la mano (antes 2-4 aleatorio plano); manos fuertes apuestan más, faroles baratos.
+- IA: valor de Juego recalibrado — el 32 ya no se sobrevalora; los juegos no-31 pierden valor según la posición (postre pierde desempates).
+- IA: coordinación de pareja — si el compañero señaliza fuerza y tiene mejor posición, la IA con mano floja juega de apoyo en vez de pisarle el envite.
+- IA: con el compañero de mano y mano normalita, pide Mus en vez de cortársela.
+- UI: anuncios de acción rediseñados (aparición/desaparición clara, duración mínima legible, animaciones explícitas).
+
+### Corregido
+- IA: un 31 en postre ya no acepta envites a Juego de forma 100% determinista (era farmeable por un rival con 31 más cerca de mano).
+- UI: los anuncios de acción ya no desplazan las cartas ni otros elementos por largos que sean.
+- UI: el avatar del jugador inferior ya no queda pegado al borde izquierdo.
+- Debug: el panel de AI logs ya no queda tapado por la barra de navegación; log más legible (cartas sin palo, resumen al inicio).
+
+### Añadido
+- Tests JUnit de regresión para capitanía de pareja, decisión de Mus y 31 en postre.
+
 ## [1.0.0-beta5] — 2026-05-14
 
 ### Añadido
