@@ -273,7 +273,14 @@ class MusGameLogic constructor(private val random: Random){
         // pantalla. El ViewModel limpia el mapa tras el tiempo mínimo visible,
         // justo antes de iniciar el siguiente lance (no aquí, para no borrar de
         // golpe los anuncios de los demás cuando el último jugador cierra el lance).
-        val newActionInfo = LastActionInfo(playerId, action)
+        // Un Envido sobre un envite ya existente es una SUBIDA: guardamos el
+        // importe previo (no nulo ⇒ subida) para que el anuncio diga "N más"
+        // en vez de "Envido N" (#18).
+        val newActionInfo = if (action is GameAction.Envido && currentState.currentBet != null) {
+            LastActionInfo(playerId, action, amount = currentState.currentBet.amount)
+        } else {
+            LastActionInfo(playerId, action)
+        }
         val phaseChanged = currentState.gamePhase != nextState.gamePhase
 
         val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)

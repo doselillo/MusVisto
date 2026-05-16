@@ -67,6 +67,7 @@ import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
+import com.doselfurioso.musvisto.model.ScoreDetail
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import com.doselfurioso.musvisto.debug.DebugFeatures
@@ -409,6 +410,8 @@ fun GameScreen(
                     winnerTeam = gameState.winningTeam!!,
                     ordagoInfo = gameState.ordagoInfo,
                     players = players,
+                    breakdown = gameState.scoreBreakdown,
+                    dimens = dimens,
                     bottomPadding = screenHeight * 0.28f,
                     onNewGameClick = {
                         gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
@@ -846,10 +849,15 @@ fun ActionAnnouncement(
                 },
                 label = "ActionAnnouncementText"
             ) { action ->
-                val text = if (action?.action is GameAction.ConfirmDiscard) {
-                    "Dame ${gameState.discardCounts[player.id]}"
-                } else {
-                    action?.action?.displayText ?: ""
+                val act = action?.action
+                val text = when {
+                    act is GameAction.ConfirmDiscard ->
+                        "Dame ${gameState.discardCounts[player.id]}"
+                    // Subida de envite (amount != null ⇒ había envite previo):
+                    // mostrar el incremento como "N más", no "Envido N" (#18).
+                    act is GameAction.Envido && action.amount != null ->
+                        "${act.amount} más"
+                    else -> act?.displayText ?: ""
                 }
                 Text(
                     text = text,
@@ -1079,6 +1087,8 @@ fun GameOverOverlay(
     winnerTeam: String,
     ordagoInfo: OrdagoInfo?,
     players: List<Player>,
+    breakdown: ScoreBreakdown?,
+    dimens: ResponsiveDimens,
     bottomPadding: Dp = 240.dp,
     onNewGameClick: () -> Unit
 ) {
@@ -1116,6 +1126,23 @@ fun GameOverOverlay(
                 color = Color.White,
                 fontSize = 18.sp
             )
+            // Resumen de la ronda decisiva (#26): al ganar se va directo a
+            // GAME_OVER sin pasar por ROUND_OVER, así que aquí no se veía.
+            breakdown?.let {
+                Text(
+                    "RESUMEN DE LA ÚLTIMA RONDA",
+                    color = Color.Yellow,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TeamScoreColumn("NOSOTROS", it.teamAScoreDetails, dimens)
+                    TeamScoreColumn("ELLOS", it.teamBScoreDetails, dimens)
+                }
+            }
             Button(onClick = onNewGameClick) {
                 Text(text = "Jugar de Nuevo", fontSize = 18.sp)
             }
@@ -1162,7 +1189,66 @@ fun GameEventNotification(event: GameEvent?) {
 }
 
 // En: GameScreen.kt
-// Reemplaza la función RoundEndOverlay entera por esta
+// Orden canónico de los lances para mostrar el desglose (#24): el `reason`
+// es texto libre ("GRANDE (Apuesta)", "Duples (nombre)", "Juego 31...", "Punto").
+private fun lanceOrderRank(reason: String): Int {
+    val r = reason.uppercase()
+    return when {
+        r.contains("GRANDE") -> 0
+        r.contains("CHICA") -> 1
+        r.contains("PARES") || r.contains("MEDIAS") || r.contains("DUPLES") -> 2
+        r.contains("JUEGO") || r.contains("PUNTO") -> 3
+        else -> 4
+    }
+}
+
+// Columna de puntuación de un equipo, ordenada por lance. Reutilizada por el
+// fin de ronda (#24) y el resumen de fin de partida (#26); antes eran dos
+// bloques casi idénticos inline.
+@Composable
+private fun TeamScoreColumn(
+    title: String,
+    details: List<ScoreDetail>,
+    dimens: ResponsiveDimens
+) {
+    val ordered = details.sortedWith(compareBy { lanceOrderRank(it.reason) })
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            title,
+            fontSize = dimens.fontSizeMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        ordered.forEach { detail ->
+            Row(
+                modifier = Modifier.width(150.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
+                Text(
+                    "+${detail.points}",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
+        Row(
+            modifier = Modifier.width(150.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                "+${details.sumOf { it.points }}",
+                color = Color.Yellow,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
@@ -1192,79 +1278,8 @@ fun RoundEndOverlay(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                // Columna para "Nosotros" (sin cambios)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "NOSOTROS",
-                        fontSize = dimens.fontSizeMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    breakdown.teamAScoreDetails.forEach { detail ->
-                        Row(
-                            modifier = Modifier.width(150.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
-                            Text(
-                                "+${detail.points}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
-                    Row(
-                        modifier = Modifier.width(150.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(
-                            "+${breakdown.teamAScoreDetails.sumOf { it.points }}",
-                            color = Color.Yellow,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Columna para "Ellos" (sin cambios)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "ELLOS",
-                        fontSize = dimens.fontSizeMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    breakdown.teamBScoreDetails.forEach { detail ->
-                        Row(
-                            modifier = Modifier.width(150.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
-                            Text(
-                                "+${detail.points}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
-                    Row(
-                        modifier = Modifier.width(150.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(
-                            "+${breakdown.teamBScoreDetails.sumOf { it.points }}",
-                            color = Color.Yellow,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                TeamScoreColumn("NOSOTROS", breakdown.teamAScoreDetails, dimens)
+                TeamScoreColumn("ELLOS", breakdown.teamBScoreDetails, dimens)
             }
 
             Button(onClick = onContinueClick) {
@@ -1285,6 +1300,14 @@ fun LanceTracker(
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
+    // En las fases de declaración (¿tengo pares/juego?) el nombre del lance
+    // debe iluminarse igual, para saber de qué lance se está decidiendo (#22).
+    val highlightedPhase = when (currentPhase) {
+        GamePhase.PARES_CHECK -> GamePhase.PARES
+        GamePhase.JUEGO_CHECK -> GamePhase.JUEGO
+        else -> currentPhase
+    }
+
     Card(
         modifier = modifier.fillMaxWidth().padding(horizontal = dimens.smallPadding),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
@@ -1294,7 +1317,7 @@ fun LanceTracker(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             lances.forEach { lance ->
-                val isCurrent = (currentPhase == lance)
+                val isCurrent = (highlightedPhase == lance)
                 val result = history.find { it.lance == lance }
                 val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
