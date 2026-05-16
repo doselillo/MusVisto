@@ -799,11 +799,18 @@ fun ActionAnnouncement(
     dimens: ResponsiveDimens
 ) {
     // El game state declara QUÉ anuncio quiere mostrar; el composable decide CUÁNDO y CÓMO.
-    // transientAction (la acción que cerró el lance) tiene prioridad sobre la persistente.
-    val targetAction: LastActionInfo? = when {
-        gameState.transientAction?.playerId == player.id -> gameState.transientAction
-        else -> gameState.currentLanceActions[player.id]
-    }
+    // Elegimos por RECENCIA (LastActionInfo.seq, único por instancia) entre la
+    // acción que cerró el lance (transientAction) y la del lance actual
+    // (currentLanceActions). Antes transientAction tenía prioridad absoluta:
+    // el jugador que cerraba un lance Y hablaba primero en el siguiente (la
+    // mano) seguía mostrando la acción VIEJA hasta que el borrado asíncrono
+    // anulaba transientAction, y entonces saltaba a la nueva → parpadeo
+    // viejo↔nuevo (#27 / KNOWN_ISSUES). Por seq nunca se muestra la vieja si
+    // ya hay una más reciente, sin depender del timing del borrado.
+    val transient = gameState.transientAction?.takeIf { it.playerId == player.id }
+    val persistent = gameState.currentLanceActions[player.id]
+    val targetAction: LastActionInfo? =
+        listOfNotNull(transient, persistent).maxByOrNull { it.seq }
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
