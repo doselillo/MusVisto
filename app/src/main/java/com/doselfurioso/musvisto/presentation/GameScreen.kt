@@ -74,12 +74,6 @@ import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.model.Card as CardData
 
 internal const val ANNOUNCEMENT_MIN_VISIBLE_MS = 1200L
-// Techo de visibilidad: pasado este tiempo el anuncio se desvanece SOLO,
-// aunque nadie lo reemplace. Simétrico para todos los jugadores y puramente
-// local del composable (sin acoplar al ViewModel). Resuelve que la acción del
-// que CIERRA el lance se quedara colgada hasta que le volviera el turno (su
-// targetAction nunca pasaba a null; ver rework #27).
-private const val ANNOUNCEMENT_MAX_VISIBLE_MS = 2000L
 // Piso corto cuando el anuncio es REEMPLAZADO por otra acción (no ocultado):
 // basta un golpe de vista + cross-fade. Evita que la acción anterior del propio
 // jugador se quede colgada cuando actúa muy rápido (p. ej. No Mus -> Paso).
@@ -832,12 +826,6 @@ fun ActionAnnouncement(
                 }
                 displayedAction = targetAction
                 shownAt = System.currentTimeMillis()
-                // Auto-expiración: si nadie lo reemplaza ni lo oculta, se
-                // desvanece solo pasado el techo. Esta misma corrutina del
-                // LaunchedEffect se cancela si llega un targetAction nuevo
-                // (re-key), así que un reemplazo cancela este auto-ocultado.
-                delay(ANNOUNCEMENT_MAX_VISIBLE_MS)
-                displayedAction = null
             }
             targetAction == null && displayedAction != null -> {
                 val remaining = ANNOUNCEMENT_MIN_VISIBLE_MS - (now - shownAt)

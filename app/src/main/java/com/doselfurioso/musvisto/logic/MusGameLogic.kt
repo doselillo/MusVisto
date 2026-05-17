@@ -270,16 +270,18 @@ class MusGameLogic constructor(private val random: Random){
 
         // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS ----
         // `currentLanceActions` es la ÚNICA fuente de verdad de los anuncios:
-        // mapa jugador→última acción del lance EN CURSO. Mutado solo de forma
-        // síncrona aquí (sin limpieza asíncrona en el ViewModel, sin campo
-        // transient), de modo que cada `ActionAnnouncement` observe un único
-        // valor monótono y no haya carrera de timing entre capas (#27).
+        // mapa jugador→última acción del lance. Mutado solo de forma SÍNCRONA
+        // (aquí, acumulando por jugador; y el ViewModel lo vacía de golpe en
+        // la frontera de lance, sin campo transient ni filterNot parcial), de
+        // modo que cada `ActionAnnouncement` observe un único valor monótono
+        // y no haya carrera de timing entre capas (#27).
         //
-        // Si esta acción CIERRA el lance (cambia de fase), el lance nuevo
-        // arranca con SOLO la acción que lo cerró: así el que cierra mantiene
-        // su anuncio visible y a los demás se les vacía el target de golpe
-        // (su composable lo retiene su mínimo y se desvanece limpio). En el
-        // mismo lance, acumulamos por jugador.
+        // PERSISTENCIA dentro del lance: la acción de cada jugador queda
+        // visible hasta que el lance se resuelve (el jugador llega a su turno
+        // sabiendo a qué responde). NO se reduce al cerrar lance: se conservan
+        // TODAS las acciones del lance cerrado durante el beat de ritmo del
+        // ViewModel (lance resuelto legible) y este las vacía juntas antes de
+        // la primera acción del lance nuevo.
         //
         // Un Envido sobre un envite ya existente es una SUBIDA: guardamos el
         // importe previo (no nulo ⇒ subida) para que el anuncio diga "N más"
@@ -289,13 +291,8 @@ class MusGameLogic constructor(private val random: Random){
         } else {
             LastActionInfo(playerId, action)
         }
-        val phaseChanged = currentState.gamePhase != nextState.gamePhase
 
-        val updatedLanceActions = if (phaseChanged) {
-            mapOf(playerId to newActionInfo)
-        } else {
-            currentState.currentLanceActions + (playerId to newActionInfo)
-        }
+        val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)
 
         return nextState.copy(
             lastAction = newActionInfo,

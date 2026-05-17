@@ -366,17 +366,20 @@ class GameViewModel constructor(
 
         // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
         viewModelScope.launch {
-            // Si la fase ha cambiado (lance cerrado), pausamos para que la
-            // acción que cerró el lance sea legible antes de que la IA entre
-            // al siguiente. SOLO ritmo: NO mutamos el estado de anuncios. La
-            // limpieza la hace ya la lógica de forma síncrona (el lance nuevo
-            // arranca con solo la acción de cierre) y cada ActionAnnouncement
-            // gestiona su mínimo visible y su desvanecido localmente. Sin
-            // mutación asíncrona aquí no hay carrera de timing → sin parpadeo
-            // (#27).
+            // Frontera de lance. Durante este beat se mantienen visibles
+            // TODAS las acciones del lance que acaba de cerrar (incl. la de
+            // cierre) para que el jugador lea el lance resuelto sin perderse
+            // qué hizo la IA. Pasado el beat, vaciamos `currentLanceActions`
+            // de UNA SOLA VEZ y de forma SÍNCRONA, ANTES de que arranque la
+            // primera acción del lance nuevo: fuente única, sin campo
+            // transient, sin acción nueva concurrente ⇒ el toggle viejo↔nuevo
+            // de #27 es imposible. Cada ActionAnnouncement ya superó su mínimo
+            // visible durante el beat, así que su target→null se desvanece
+            // limpio y sincronizado.
             if (phaseChanged) {
                 delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
                 awaitNotPaused()
+                _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
             }
 
             // Continuamos con el lance actual.
