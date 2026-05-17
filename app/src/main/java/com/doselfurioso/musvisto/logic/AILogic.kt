@@ -703,7 +703,8 @@ class AILogic constructor(
 
         when (paresPlay) {
             is ParesPlay.Duples -> {
-                paresStrength = 100; explanation.appendLine("     - Duples -> 100 pts (max)")
+                paresStrength = duplesStrength(paresPlay)
+                explanation.appendLine("     - Duples ${paresPlay.highPair.name}/${paresPlay.lowPair.name} -> $paresStrength pts")
             }
 
             is ParesPlay.Medias -> {
@@ -1033,7 +1034,7 @@ class AILogic constructor(
 
     private fun getParesPlayStrength(paresPlay: ParesPlay, isMano: Boolean): Int {
         var strength = when (paresPlay) {
-            is ParesPlay.Duples -> 100
+            is ParesPlay.Duples -> duplesStrength(paresPlay)
             is ParesPlay.Medias -> 60 + (getPairingRankValue(paresPlay.rank) * 2)
             is ParesPlay.Pares -> 20 + (getPairingRankValue(paresPlay.rank) * 3)
             is ParesPlay.NoPares -> 0
@@ -1051,6 +1052,33 @@ class AILogic constructor(
             Rank.DOS -> 1   // As
             else -> rank.value
         }
+    }
+
+    // #12: valor de Duples ESCALONADO por rango (antes era 100 plano: unos
+    // duples de cincos valían igual que unos de reyes, sobrevalorando duples
+    // bajos en Mus/envite/defensa).
+    //
+    // Duples es categóricamente la mejor jugada de pares, así que su PISO debe
+    // quedar por encima del techo de Medias (60 + 12·2 = 84) para que la IA
+    // nunca valore unas medias por encima de unos duples. Escalamos en
+    // [88..100] ponderando SOBRE TODO el par alto, porque en el Mus los duples
+    // se comparan primero por el par alto y luego por el bajo. Duples de reyes
+    // = 100; duples bajos = 88.
+    //
+    // Piso 88 (no 84+1): en `getParesPlayStrength` se suma +15 si isMano antes
+    // del coerce, así que una Medias de reyes mano vale 84+15=99; con piso 88
+    // unos duples bajos mano valen 100 y mantienen el orden sobre esa Medias
+    // (con piso 85 quedaban empatados a 100, ver #13). Span 12 mantiene la
+    // compresión deseada (TODOS los duples son premium: ganan el lance de
+    // pares salvo duples superiores del rival, raro) sin escalones muertos.
+    // Validado con mus-strategy-reviewer; el sim simétrico es ciego a lo que
+    // este fix corrige (sobre-apuesta de duples bajos explotable por humano),
+    // como en #25 → no bloquear por su net, validar con playtest.
+    private fun duplesStrength(duples: ParesPlay.Duples): Int {
+        val hv = getPairingRankValue(duples.highPair) // 1..12
+        val lv = getPairingRankValue(duples.lowPair)   // 1..12
+        val raw = (hv - 1) * 12 + (lv - 1) * 3         // 0..165
+        return (88 + raw * 12 / 165).coerceIn(88, 100)
     }
 }
 
