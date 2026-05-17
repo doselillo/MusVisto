@@ -473,7 +473,11 @@ class MusGameLogic constructor(private val random: Random){
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet(),
-            discardCounts = emptyMap(),
+            // NO vaciamos discardCounts aquí: debe sobrevivir todo el resto de
+            // la ronda para que el indicador de descarte del avatar diga
+            // cuántas cartas tomó cada jugador. Se resetea solo en el reparto
+            // de la ronda siguiente (startNewRound construye un GameState nuevo
+            // con discardCounts por defecto vacío).
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
