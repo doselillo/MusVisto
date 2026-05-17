@@ -38,7 +38,6 @@ data class GameState(
     val noMusPlayer: String? = null,
     val isNewLance: Boolean = true,
     @Transient val currentLanceActions: Map<String, LastActionInfo> = emptyMap(),
-    @Transient val transientAction: LastActionInfo? = null,
     val scoreBreakdown: ScoreBreakdown? = null,
     val scoreEvents: List<ScoreEventInfo> = emptyList(),
     val ordagoInfo: OrdagoInfo? = null,

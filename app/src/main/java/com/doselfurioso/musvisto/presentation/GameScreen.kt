@@ -711,6 +711,7 @@ private fun PlayerAvatar(
     isMano: Boolean,
     hasCutMus: Boolean,
     activeGestureResId: Int?,
+    discardCount: Int? = null,
     dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
@@ -773,6 +774,35 @@ private fun PlayerAvatar(
                     .padding(4.dp)
             )
         }
+
+        // Indicador PERSISTENTE de descarte: cuántas cartas cambió este
+        // jugador en el Mus. Vive toda la ronda (discardCounts no se vacía
+        // hasta el reparto siguiente), por eso es un badge del avatar y no
+        // una burbuja de anuncio (esas se limpian por lance). Esquina libre
+        // (mano = abajo-dcha, corta-mus = abajo-izda, seña = centro).
+        if (discardCount != null && discardCount > 0) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cycle),
+                    contentDescription = "Cartas descartadas",
+                    tint = Color.White,
+                    modifier = Modifier.size(dimens.avatarSize / 5)
+                )
+                Text(
+                    text = "$discardCount",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = dimens.fontSizeMedium,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+        }
     }
 }
 
@@ -806,12 +836,12 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // El game state declara QUÉ anuncio quiere mostrar; el composable decide CUÁNDO y CÓMO.
-    // transientAction (la acción que cerró el lance) tiene prioridad sobre la persistente.
-    val targetAction: LastActionInfo? = when {
-        gameState.transientAction?.playerId == player.id -> gameState.transientAction
-        else -> gameState.currentLanceActions[player.id]
-    }
+    // El game state declara QUÉ anuncio quiere mostrar; el composable decide
+    // CUÁNDO y CÓMO. Fuente ÚNICA: currentLanceActions[player] (la lógica la
+    // muta solo de forma síncrona). Un único valor monótono por jugador ⇒ sin
+    // carrera viejo↔nuevo (#27). El mínimo visible y el desvanecido al quedar
+    // null los gestiona el LaunchedEffect de abajo, en local.
+    val targetAction: LastActionInfo? = gameState.currentLanceActions[player.id]
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
@@ -1025,7 +1055,8 @@ fun VerticalPlayerArea(
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
-            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,)
+            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+            discardCount = gameState.discardCounts[player.id])
         handContent()
     }
 }
@@ -1066,7 +1097,7 @@ fun HorizontalPlayerArea(
                     ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
                 }
             }
-            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null, discardCount = gameState.discardCounts[player.id])
             if (!announcementAbove) {
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
