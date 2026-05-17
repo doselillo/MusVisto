@@ -806,12 +806,12 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // El game state declara QUÉ anuncio quiere mostrar; el composable decide CUÁNDO y CÓMO.
-    // transientAction (la acción que cerró el lance) tiene prioridad sobre la persistente.
-    val targetAction: LastActionInfo? = when {
-        gameState.transientAction?.playerId == player.id -> gameState.transientAction
-        else -> gameState.currentLanceActions[player.id]
-    }
+    // El game state declara QUÉ anuncio quiere mostrar; el composable decide
+    // CUÁNDO y CÓMO. Fuente ÚNICA: currentLanceActions[player] (la lógica la
+    // muta solo de forma síncrona). Un único valor monótono por jugador ⇒ sin
+    // carrera viejo↔nuevo (#27). El mínimo visible y el desvanecido al quedar
+    // null los gestiona el LaunchedEffect de abajo, en local.
+    val targetAction: LastActionInfo? = gameState.currentLanceActions[player.id]
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
     var shownAt by remember { mutableStateOf(0L) }

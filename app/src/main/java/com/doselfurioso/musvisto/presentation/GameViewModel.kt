@@ -366,32 +366,17 @@ class GameViewModel constructor(
 
         // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
         viewModelScope.launch {
-            // Si la fase ha cambiado, damos al composable ActionAnnouncement el
-            // tiempo mínimo visible para mostrar la acción que cerró el lance
-            // (y mantener visibles los anuncios de los demás jugadores). Pasado
-            // ese tiempo, limpiamos el estado de anuncios ANTES de continuar para
-            // que el siguiente lance no arrastre nada. Cada composable aplica su
-            // propia animación de salida respetando su mínimo individual.
+            // Si la fase ha cambiado (lance cerrado), pausamos para que la
+            // acción que cerró el lance sea legible antes de que la IA entre
+            // al siguiente. SOLO ritmo: NO mutamos el estado de anuncios. La
+            // limpieza la hace ya la lógica de forma síncrona (el lance nuevo
+            // arranca con solo la acción de cierre) y cada ActionAnnouncement
+            // gestiona su mínimo visible y su desvanecido localmente. Sin
+            // mutación asíncrona aquí no hay carrera de timing → sin parpadeo
+            // (#27).
             if (phaseChanged) {
-                // Capturamos los anuncios del lance que acaba de cerrar ANTES de
-                // esperar. Tras el tiempo mínimo solo eliminamos esas instancias
-                // concretas: si el jugador ya actuó en el lance nuevo, su nueva
-                // acción tiene otro `seq` (LastActionInfo.seq es único por
-                // instancia) y NO se borra, aunque sea la misma acción repetida.
-                val staleActions = _gameState.value.currentLanceActions
-                val staleTransient = _gameState.value.transientAction
                 delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
                 awaitNotPaused()
-                val current = _gameState.value
-                _gameState.value = current.copy(
-                    currentLanceActions = current.currentLanceActions
-                        .filterNot { (id, info) -> staleActions[id] == info },
-                    transientAction = if (current.transientAction == staleTransient) {
-                        null
-                    } else {
-                        current.transientAction
-                    }
-                )
             }
 
             // Continuamos con el lance actual.

@@ -269,10 +269,18 @@ class MusGameLogic constructor(private val random: Random){
         if (nextState == currentState) return currentState
 
         // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS ----
-        // Mantenemos TODOS los anuncios del lance en el mapa para que coexistan en
-        // pantalla. El ViewModel limpia el mapa tras el tiempo mínimo visible,
-        // justo antes de iniciar el siguiente lance (no aquí, para no borrar de
-        // golpe los anuncios de los demás cuando el último jugador cierra el lance).
+        // `currentLanceActions` es la ÚNICA fuente de verdad de los anuncios:
+        // mapa jugador→última acción del lance EN CURSO. Mutado solo de forma
+        // síncrona aquí (sin limpieza asíncrona en el ViewModel, sin campo
+        // transient), de modo que cada `ActionAnnouncement` observe un único
+        // valor monótono y no haya carrera de timing entre capas (#27).
+        //
+        // Si esta acción CIERRA el lance (cambia de fase), el lance nuevo
+        // arranca con SOLO la acción que lo cerró: así el que cierra mantiene
+        // su anuncio visible y a los demás se les vacía el target de golpe
+        // (su composable lo retiene su mínimo y se desvanece limpio). En el
+        // mismo lance, acumulamos por jugador.
+        //
         // Un Envido sobre un envite ya existente es una SUBIDA: guardamos el
         // importe previo (no nulo ⇒ subida) para que el anuncio diga "N más"
         // en vez de "Envido N" (#18).
@@ -283,13 +291,16 @@ class MusGameLogic constructor(private val random: Random){
         }
         val phaseChanged = currentState.gamePhase != nextState.gamePhase
 
-        val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)
+        val updatedLanceActions = if (phaseChanged) {
+            mapOf(playerId to newActionInfo)
+        } else {
+            currentState.currentLanceActions + (playerId to newActionInfo)
+        }
 
         return nextState.copy(
             lastAction = newActionInfo,
             actionLog = (nextState.actionLog + newActionInfo).takeLast(4),
-            currentLanceActions = updatedLanceActions,
-            transientAction = if (phaseChanged) newActionInfo else null
+            currentLanceActions = updatedLanceActions
         )
     }
 
