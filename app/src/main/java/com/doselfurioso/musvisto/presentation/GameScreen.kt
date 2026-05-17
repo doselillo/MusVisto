@@ -67,6 +67,7 @@ import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.ScoreBreakdown
+import com.doselfurioso.musvisto.model.ScoreDetail
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import com.doselfurioso.musvisto.debug.DebugFeatures
@@ -328,6 +329,7 @@ fun GameScreen(
                         selectedCardCount = gameState.selectedCardsForDiscard.size,
                         isEnabled = isMyTurn,
                         currentPlayerId = gameViewModel.humanPlayerId,
+                        isRaise = gameState.currentBet != null,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
@@ -399,7 +401,8 @@ fun GameScreen(
                         },
                         onCancel = {
                             gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
-                        }
+                        },
+                        isRaise = gameState.currentBet != null
                     )
                 }
             }
@@ -462,7 +465,8 @@ private fun GameActionButton(
     action: GameAction,
     onClick: () -> Unit,
     isEnabled: Boolean,
-    dimens: ResponsiveDimens
+    dimens: ResponsiveDimens,
+    labelOverride: String? = null
 ) {
     val buttonColors = when (action.actionType) {
         ActionType.PASS -> ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
@@ -518,12 +522,13 @@ private fun GameActionButton(
             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         }
 
+        val label = labelOverride ?: action.displayText
         if (action.actionType == ActionType.BET && isEnabled) {
-            Text(text = action.displayText, color = secondaryColor, fontSize = dimens.fontSizeMedium)
+            Text(text = label, color = secondaryColor, fontSize = dimens.fontSizeMedium)
         } else if (action.actionType == ActionType.DISCARD) {
             Text(text = "Descartar", fontSize = dimens.fontSizeMedium)
         } else {
-            Text(text = action.displayText, fontSize = dimens.fontSizeMedium)
+            Text(text = label, fontSize = dimens.fontSizeMedium)
         }
     }
 }
@@ -537,6 +542,7 @@ fun ActionButtons(
     selectedCardCount: Int,
     isEnabled: Boolean,
     currentPlayerId: String,
+    isRaise: Boolean,
     modifier: Modifier = Modifier,
     dimens: ResponsiveDimens
 ) {
@@ -625,7 +631,7 @@ fun ActionButtons(
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class),
                             dimens = dimens
                         )
-                        val envidoAction = GameAction.ToggleBetSelector // <-- CAMBIA ESTO
+                        val envidoAction = GameAction.ToggleBetSelector
                         GameActionButton(
                             action = envidoAction,
                             onClick = {
@@ -635,7 +641,9 @@ fun ActionButtons(
                                 )
                             }, // Ahora envía la acción de mostrar el selector
                             isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class),
-                            dimens = dimens
+                            dimens = dimens,
+                            // Si ya hay envite en juego, este botón sube, no abre (#18).
+                            labelOverride = if (isRaise) "Subir" else null
                         )
                         val ordagoAction = GameAction.Órdago
                         GameActionButton(
@@ -703,6 +711,7 @@ private fun PlayerAvatar(
     isMano: Boolean,
     hasCutMus: Boolean,
     activeGestureResId: Int?,
+    discardCount: Int? = null,
     dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
@@ -765,6 +774,35 @@ private fun PlayerAvatar(
                     .padding(4.dp)
             )
         }
+
+        // Indicador PERSISTENTE de descarte: cuántas cartas cambió este
+        // jugador en el Mus. Vive toda la ronda (discardCounts no se vacía
+        // hasta el reparto siguiente), por eso es un badge del avatar y no
+        // una burbuja de anuncio (esas se limpian por lance). Esquina libre
+        // (mano = abajo-dcha, corta-mus = abajo-izda, seña = centro).
+        if (discardCount != null && discardCount > 0) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cycle),
+                    contentDescription = "Cartas descartadas",
+                    tint = Color.White,
+                    modifier = Modifier.size(dimens.avatarSize / 5)
+                )
+                Text(
+                    text = "$discardCount",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = dimens.fontSizeMedium,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+        }
     }
 }
 
@@ -798,12 +836,12 @@ fun ActionAnnouncement(
     gameState: GameState,
     dimens: ResponsiveDimens
 ) {
-    // El game state declara QUÉ anuncio quiere mostrar; el composable decide CUÁNDO y CÓMO.
-    // transientAction (la acción que cerró el lance) tiene prioridad sobre la persistente.
-    val targetAction: LastActionInfo? = when {
-        gameState.transientAction?.playerId == player.id -> gameState.transientAction
-        else -> gameState.currentLanceActions[player.id]
-    }
+    // El game state declara QUÉ anuncio quiere mostrar; el composable decide
+    // CUÁNDO y CÓMO. Fuente ÚNICA: currentLanceActions[player] (la lógica la
+    // muta solo de forma síncrona). Un único valor monótono por jugador ⇒ sin
+    // carrera viejo↔nuevo (#27). El mínimo visible y el desvanecido al quedar
+    // null los gestiona el LaunchedEffect de abajo, en local.
+    val targetAction: LastActionInfo? = gameState.currentLanceActions[player.id]
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
@@ -846,10 +884,15 @@ fun ActionAnnouncement(
                 },
                 label = "ActionAnnouncementText"
             ) { action ->
-                val text = if (action?.action is GameAction.ConfirmDiscard) {
-                    "Dame ${gameState.discardCounts[player.id]}"
-                } else {
-                    action?.action?.displayText ?: ""
+                val act = action?.action
+                val text = when {
+                    act is GameAction.ConfirmDiscard ->
+                        "Dame ${gameState.discardCounts[player.id]}"
+                    // Subida de envite (amount != null ⇒ había envite previo):
+                    // mostrar el incremento como "N más", no "Envido N" (#18).
+                    act is GameAction.Envido && action.amount != null ->
+                        "${act.amount} más"
+                    else -> act?.displayText ?: ""
                 }
                 Text(
                     text = text,
@@ -1012,7 +1055,8 @@ fun VerticalPlayerArea(
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
-            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,)
+            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+            discardCount = gameState.discardCounts[player.id])
         handContent()
     }
 }
@@ -1053,7 +1097,7 @@ fun HorizontalPlayerArea(
                     ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
                 }
             }
-            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null)
+            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null, discardCount = gameState.discardCounts[player.id])
             if (!announcementAbove) {
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
@@ -1162,7 +1206,66 @@ fun GameEventNotification(event: GameEvent?) {
 }
 
 // En: GameScreen.kt
-// Reemplaza la función RoundEndOverlay entera por esta
+// Orden canónico de los lances para mostrar el desglose (#24): el `reason`
+// es texto libre ("GRANDE (Apuesta)", "Duples (nombre)", "Juego 31...", "Punto").
+private fun lanceOrderRank(reason: String): Int {
+    val r = reason.uppercase()
+    return when {
+        r.contains("GRANDE") -> 0
+        r.contains("CHICA") -> 1
+        r.contains("PARES") || r.contains("MEDIAS") || r.contains("DUPLES") -> 2
+        r.contains("JUEGO") || r.contains("PUNTO") -> 3
+        else -> 4
+    }
+}
+
+// Columna de puntuación de un equipo, ordenada por lance. Reutilizada por el
+// fin de ronda (#24) y el resumen de fin de partida (#26); antes eran dos
+// bloques casi idénticos inline.
+@Composable
+private fun TeamScoreColumn(
+    title: String,
+    details: List<ScoreDetail>,
+    dimens: ResponsiveDimens
+) {
+    val ordered = details.sortedWith(compareBy { lanceOrderRank(it.reason) })
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            title,
+            fontSize = dimens.fontSizeMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        ordered.forEach { detail ->
+            Row(
+                modifier = Modifier.width(150.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
+                Text(
+                    "+${detail.points}",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
+        Row(
+            modifier = Modifier.width(150.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                "+${details.sumOf { it.points }}",
+                color = Color.Yellow,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
 @Composable
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
@@ -1192,79 +1295,8 @@ fun RoundEndOverlay(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                // Columna para "Nosotros" (sin cambios)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "NOSOTROS",
-                        fontSize = dimens.fontSizeMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    breakdown.teamAScoreDetails.forEach { detail ->
-                        Row(
-                            modifier = Modifier.width(150.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
-                            Text(
-                                "+${detail.points}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
-                    Row(
-                        modifier = Modifier.width(150.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(
-                            "+${breakdown.teamAScoreDetails.sumOf { it.points }}",
-                            color = Color.Yellow,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Columna para "Ellos" (sin cambios)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "ELLOS",
-                        fontSize = dimens.fontSizeMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    breakdown.teamBScoreDetails.forEach { detail ->
-                        Row(
-                            modifier = Modifier.width(150.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(detail.reason, color = Color.White, fontSize = dimens.fontSizeSmall)
-                            Text(
-                                "+${detail.points}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.height(1.dp).width(150.dp).background(Color.Gray))
-                    Row(
-                        modifier = Modifier.width(150.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Ronda", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(
-                            "+${breakdown.teamBScoreDetails.sumOf { it.points }}",
-                            color = Color.Yellow,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                TeamScoreColumn("NOSOTROS", breakdown.teamAScoreDetails, dimens)
+                TeamScoreColumn("ELLOS", breakdown.teamBScoreDetails, dimens)
             }
 
             Button(onClick = onContinueClick) {
@@ -1285,6 +1317,14 @@ fun LanceTracker(
 ) {
     val lances = listOf(GamePhase.GRANDE, GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
 
+    // En las fases de declaración (¿tengo pares/juego?) el nombre del lance
+    // debe iluminarse igual, para saber de qué lance se está decidiendo (#22).
+    val highlightedPhase = when (currentPhase) {
+        GamePhase.PARES_CHECK -> GamePhase.PARES
+        GamePhase.JUEGO_CHECK -> GamePhase.JUEGO
+        else -> currentPhase
+    }
+
     Card(
         modifier = modifier.fillMaxWidth().padding(horizontal = dimens.smallPadding),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
@@ -1294,7 +1334,7 @@ fun LanceTracker(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             lances.forEach { lance ->
-                val isCurrent = (currentPhase == lance)
+                val isCurrent = (highlightedPhase == lance)
                 val result = history.find { it.lance == lance }
                 val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
@@ -1350,7 +1390,8 @@ fun LanceTracker(
 @Composable
 fun BetSelector(
     onBet: (Int) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    isRaise: Boolean = false
 ) {
     var betAmount by remember { mutableStateOf(2) }
 
@@ -1365,7 +1406,11 @@ fun BetSelector(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("¿Cuántos quieres envidar?", color = Color.White, fontSize = 18.sp)
+            Text(
+                if (isRaise) "¿Cuánto quieres subir?" else "¿Cuántos quieres envidar?",
+                color = Color.White,
+                fontSize = 18.sp
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)

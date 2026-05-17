@@ -170,7 +170,19 @@ class GameViewModel constructor(
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
-                startNewGame(currentState.score, currentState.manoPlayerId)
+                if (currentState.winningTeam != null) {
+                    // La ronda que acaba de verse era la decisiva: tras el
+                    // resumen normal, pasamos a la pantalla de fin de partida
+                    // (#26 - flujo secuencia).
+                    setGameState(
+                        currentState.copy(
+                            gamePhase = GamePhase.GAME_OVER,
+                            availableActions = emptyList()
+                        )
+                    )
+                } else {
+                    startNewGame(currentState.score, currentState.manoPlayerId)
+                }
                 return
             }
             is GameAction.NewGame -> {
@@ -242,11 +254,15 @@ class GameViewModel constructor(
 
         if (winner != null) {
             gameRepository.deleteState()
+            // Ronda decisiva: mostramos primero el resumen normal de fin de
+            // ronda (RoundEndOverlay) y, al pulsar Continuar, la pantalla de
+            // fin de partida (#26 - flujo secuencia). winningTeam ya marcado
+            // para que el handler de Continue sepa ir a GAME_OVER.
             setGameState(stateWithBreakdown.copy(
                 score = newScore,
-                gamePhase = GamePhase.GAME_OVER,
+                gamePhase = GamePhase.ROUND_OVER,
                 winningTeam = winner,
-                availableActions = emptyList(),
+                availableActions = listOf(GameAction.Continue),
                 revealAllHands = true
             ))
         } else {
@@ -350,32 +366,20 @@ class GameViewModel constructor(
 
         // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
         viewModelScope.launch {
-            // Si la fase ha cambiado, damos al composable ActionAnnouncement el
-            // tiempo mínimo visible para mostrar la acción que cerró el lance
-            // (y mantener visibles los anuncios de los demás jugadores). Pasado
-            // ese tiempo, limpiamos el estado de anuncios ANTES de continuar para
-            // que el siguiente lance no arrastre nada. Cada composable aplica su
-            // propia animación de salida respetando su mínimo individual.
+            // Frontera de lance. Durante este beat se mantienen visibles
+            // TODAS las acciones del lance que acaba de cerrar (incl. la de
+            // cierre) para que el jugador lea el lance resuelto sin perderse
+            // qué hizo la IA. Pasado el beat, vaciamos `currentLanceActions`
+            // de UNA SOLA VEZ y de forma SÍNCRONA, ANTES de que arranque la
+            // primera acción del lance nuevo: fuente única, sin campo
+            // transient, sin acción nueva concurrente ⇒ el toggle viejo↔nuevo
+            // de #27 es imposible. Cada ActionAnnouncement ya superó su mínimo
+            // visible durante el beat, así que su target→null se desvanece
+            // limpio y sincronizado.
             if (phaseChanged) {
-                // Capturamos los anuncios del lance que acaba de cerrar ANTES de
-                // esperar. Tras el tiempo mínimo solo eliminamos esas instancias
-                // concretas: si el jugador ya actuó en el lance nuevo, su nueva
-                // acción tiene otro `seq` (LastActionInfo.seq es único por
-                // instancia) y NO se borra, aunque sea la misma acción repetida.
-                val staleActions = _gameState.value.currentLanceActions
-                val staleTransient = _gameState.value.transientAction
                 delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
                 awaitNotPaused()
-                val current = _gameState.value
-                _gameState.value = current.copy(
-                    currentLanceActions = current.currentLanceActions
-                        .filterNot { (id, info) -> staleActions[id] == info },
-                    transientAction = if (current.transientAction == staleTransient) {
-                        null
-                    } else {
-                        current.transientAction
-                    }
-                )
+                _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
             }
 
             // Continuamos con el lance actual.

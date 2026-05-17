@@ -269,20 +269,35 @@ class MusGameLogic constructor(private val random: Random){
         if (nextState == currentState) return currentState
 
         // ---- FINALIZACIÓN Y GESTIÓN DE ANUNCIOS ----
-        // Mantenemos TODOS los anuncios del lance en el mapa para que coexistan en
-        // pantalla. El ViewModel limpia el mapa tras el tiempo mínimo visible,
-        // justo antes de iniciar el siguiente lance (no aquí, para no borrar de
-        // golpe los anuncios de los demás cuando el último jugador cierra el lance).
-        val newActionInfo = LastActionInfo(playerId, action)
-        val phaseChanged = currentState.gamePhase != nextState.gamePhase
+        // `currentLanceActions` es la ÚNICA fuente de verdad de los anuncios:
+        // mapa jugador→última acción del lance. Mutado solo de forma SÍNCRONA
+        // (aquí, acumulando por jugador; y el ViewModel lo vacía de golpe en
+        // la frontera de lance, sin campo transient ni filterNot parcial), de
+        // modo que cada `ActionAnnouncement` observe un único valor monótono
+        // y no haya carrera de timing entre capas (#27).
+        //
+        // PERSISTENCIA dentro del lance: la acción de cada jugador queda
+        // visible hasta que el lance se resuelve (el jugador llega a su turno
+        // sabiendo a qué responde). NO se reduce al cerrar lance: se conservan
+        // TODAS las acciones del lance cerrado durante el beat de ritmo del
+        // ViewModel (lance resuelto legible) y este las vacía juntas antes de
+        // la primera acción del lance nuevo.
+        //
+        // Un Envido sobre un envite ya existente es una SUBIDA: guardamos el
+        // importe previo (no nulo ⇒ subida) para que el anuncio diga "N más"
+        // en vez de "Envido N" (#18).
+        val newActionInfo = if (action is GameAction.Envido && currentState.currentBet != null) {
+            LastActionInfo(playerId, action, amount = currentState.currentBet.amount)
+        } else {
+            LastActionInfo(playerId, action)
+        }
 
         val updatedLanceActions = currentState.currentLanceActions + (playerId to newActionInfo)
 
         return nextState.copy(
             lastAction = newActionInfo,
             actionLog = (nextState.actionLog + newActionInfo).takeLast(4),
-            currentLanceActions = updatedLanceActions,
-            transientAction = if (phaseChanged) newActionInfo else null
+            currentLanceActions = updatedLanceActions
         )
     }
 
@@ -458,7 +473,11 @@ class MusGameLogic constructor(private val random: Random){
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet(),
-            discardCounts = emptyMap(),
+            // NO vaciamos discardCounts aquí: debe sobrevivir todo el resto de
+            // la ronda para que el indicador de descarte del avatar diga
+            // cuántas cartas tomó cada jugador. Se resetea solo en el reparto
+            // de la ronda siguiente (startNewRound construye un GameState nuevo
+            // con discardCounts por defecto vacío).
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
