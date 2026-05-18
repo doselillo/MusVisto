@@ -33,6 +33,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.doselfurioso.musvisto.model.Card
+import com.doselfurioso.musvisto.model.DebugScenario
+import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -83,6 +87,121 @@ object DebugFeatures {
             Text(text = if (isDebugMode) "🐛 Debug: ON" else "🐛 Debug: OFF")
         }
     }
+
+    /**
+     * Overlay con la lista de escenarios de prueba. Tocando uno se reparten
+     * sus manos forzadas y la partida arranca en ese punto. Solo visible con
+     * el modo debug activado.
+     */
+    @Composable
+    fun ScenarioSelectorOverlay(viewModel: GameViewModel) {
+        val isDebugMode by viewModel.isDebugMode.collectAsState()
+        if (!isDebugMode) return
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+        ) {
+            ScenarioPanel(
+                onPick = { viewModel.startScenario(it) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScenarioPanel(onPick: (DebugScenario) -> Unit, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier.padding(4.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = if (expanded) "▼ Escenarios" else "▲ Escenarios",
+                color = Color(0xFFFFD24A),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (expanded) {
+            LazyColumn(
+                modifier = Modifier
+                    .width(260.dp)
+                    .heightIn(max = 360.dp)
+                    .padding(vertical = 4.dp)
+                    .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(DebugScenarios.all) { scenario ->
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF5D4037).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                            .clickable {
+                                expanded = false
+                                onPick(scenario)
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = scenario.name,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Catálogo de escenarios de prueba. Añade aquí los casos que quieras forzar:
+ * 4 cartas por jugador, sin repetir cartas entre manos. `manoId` decide quién
+ * es mano; con `startAtMus = true` la partida arranca en MUS (probar
+ * corte/descarte), si no aterriza en GRANDE con las manos intactas.
+ *
+ * Recuerda: Rey≡Tres y As≡Dos para pares y puntuación. "p1" = humano,
+ * "p3" = tu pareja, "p2"/"p4" = rivales.
+ */
+object DebugScenarios {
+    private fun c(suit: Suit, rank: Rank) = Card(suit, rank)
+
+    val all: List<DebugScenario> = listOf(
+        DebugScenario(
+            name = "Duples reyes (p1) vs duples cincos (p2)",
+            hands = mapOf(
+                "p1" to listOf(c(Suit.OROS, Rank.REY), c(Suit.OROS, Rank.CABALLO), c(Suit.COPAS, Rank.CABALLO), c(Suit.OROS, Rank.AS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.REY), c(Suit.BASTOS, Rank.REY), c(Suit.COPAS, Rank.CINCO), c(Suit.ESPADAS, Rank.CINCO)),
+                "p3" to listOf(c(Suit.OROS, Rank.REY), c(Suit.ESPADAS, Rank.CABALLO), c(Suit.OROS, Rank.SOTA), c(Suit.OROS, Rank.CUATRO)),
+                "p4" to listOf(c(Suit.BASTOS, Rank.CABALLO), c(Suit.BASTOS, Rank.CUATRO), c(Suit.BASTOS, Rank.AS), c(Suit.ESPADAS, Rank.AS))
+            ),
+            manoId = "p1"
+        ),
+        DebugScenario(
+            name = "p1 mano con 31 de Juego",
+            hands = mapOf(
+                "p1" to listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.SOTA), c(Suit.BASTOS, Rank.AS), c(Suit.ESPADAS, Rank.AS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.REY), c(Suit.COPAS, Rank.CABALLO), c(Suit.COPAS, Rank.CINCO), c(Suit.COPAS, Rank.CUATRO)),
+                "p3" to listOf(c(Suit.OROS, Rank.SOTA), c(Suit.OROS, Rank.CABALLO), c(Suit.OROS, Rank.CUATRO), c(Suit.OROS, Rank.DOS)),
+                "p4" to listOf(c(Suit.BASTOS, Rank.REY), c(Suit.BASTOS, Rank.CABALLO), c(Suit.BASTOS, Rank.SOTA), c(Suit.BASTOS, Rank.CUATRO))
+            ),
+            manoId = "p1"
+        )
+    )
 }
 
 @Composable

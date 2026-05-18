@@ -23,4 +23,9 @@ object DebugFeatures {
     fun DebugToggleButton(viewModel: GameViewModel) {
         // No-op en release.
     }
+
+    @Composable
+    fun ScenarioSelectorOverlay(viewModel: GameViewModel) {
+        // No-op en release.
+    }
 }
