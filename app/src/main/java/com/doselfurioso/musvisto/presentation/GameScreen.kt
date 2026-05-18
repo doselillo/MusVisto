@@ -82,6 +82,11 @@ private const val ANNOUNCEMENT_ENTER_MS = 200
 private const val ANNOUNCEMENT_EXIT_MS = 250
 private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 
+// Tope visual del selector de envite. En el Mus no hay límite real de
+// cuánto se puede envidar; lo acotamos al valor máximo de un juego (40 =
+// órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
+private const val MAX_BET = 40
+
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
 fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
@@ -1424,7 +1429,7 @@ fun BetSelector(
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Button(onClick = { betAmount++ }) {
+                Button(onClick = { if (betAmount < MAX_BET) betAmount++ }) {
                     Text("+", fontSize = 24.sp)
                 }
             }
