@@ -28,6 +28,19 @@ private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
 // mus-strategy-reviewer lo fijó en 82.
 private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
 
+// 1c: umbrales de decisión nombrados (mismos valores que los literales
+// previos). Las tablas-`when` de fuerza por jugada se dejan como están: ya
+// son auto-documentadas como tabla.
+// Corte de Mus: fuerza mínima para NoMus (ajustada por riskFactor y bias).
+private const val MUS_CUT_PARES_JUEGO = 75
+private const val MUS_CUT_GRANDE_CHICA = 85
+// Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
+private const val PARTNER_MANO_MUS_BIAS = 10
+// Apertura de envite por bandas: > fuerte = valor seguro; [piso..fuerte] =
+// banda media probabilística; < piso = solo farol de robo.
+private const val OPEN_STRONG_VALUE = 78
+private const val OPEN_MID_BAND_FLOOR = 55
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -419,12 +432,12 @@ class AILogic constructor(
         // mano claramente buena (que supera incluso el umbral elevado).
         val partner = gameState.players.firstOrNull { it.team == aiPlayer.team && it.id != aiPlayer.id }
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
-        val manoBias = if (partnerIsMano) 10 else 0
+        val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        val paresCutThreshold = 75 - riskFactor + manoBias // Umbral para cortar por pares
-        val juegoCutThreshold = 75 - riskFactor + manoBias
-        val grandeCutThreshold = 85 - riskFactor + manoBias
-        val chicaCutThreshold = 85 - riskFactor + manoBias
+        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
+        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
+        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
+        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
 
         if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
         if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
@@ -502,7 +515,7 @@ class AILogic constructor(
         val effStrength = if (duplesDeReyesMano) maxOf(strength, DUPLES_REY_MANO_GRANDE_STRENGTH) else strength
 
         // 1) Valor fuerte: como siempre.
-        if (effStrength > 78) {
+        if (effStrength > OPEN_STRONG_VALUE) {
             val why = if (duplesDeReyesMano)
                 "Valor fuerte ($effStrength) [#23: duples de reyes + mano; Grande base $strength → $effStrength]"
             else "Valor fuerte ($effStrength)"
@@ -510,8 +523,9 @@ class AILogic constructor(
         }
 
         // 2) Banda media (55-78): valor fino, prob. sube con fuerza y contexto.
-        if (effStrength in 55..78) {
-            var p = (effStrength - 55) / 23.0
+        if (effStrength in OPEN_MID_BAND_FLOOR..OPEN_STRONG_VALUE) {
+            var p = (effStrength - OPEN_MID_BAND_FLOOR) /
+                (OPEN_STRONG_VALUE - OPEN_MID_BAND_FLOOR).toDouble()
             if (isMano) p += 0.15
             if (isLate) p += 0.20
             if (opponentsPassed >= 1) p += 0.15
@@ -523,7 +537,7 @@ class AILogic constructor(
         }
 
         // 3) Farol barato: solo si alguien ya pasó (robo) y marcador no delicado.
-        if (effStrength < 55 && stealSpot && !scoreRisky) {
+        if (effStrength < OPEN_MID_BAND_FLOOR && stealSpot && !scoreRisky) {
             val bluffP = (0.10 + if (isLate) 0.10 else 0.0).coerceAtMost(0.20)
             if (rng.nextDouble() < bluffP) {
                 return Pair(GameAction.Envido(2),
