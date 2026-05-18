@@ -326,16 +326,13 @@ class GameViewModel constructor(
                 if (aiDecision.action is GameAction.ConfirmDiscard) {
                     var cardsToDiscard = aiDecision.cardsToDiscard
 
-                    // --- INICIO DE LA CORRECCIÓN ---
-                    // AÑADIMOS UNA RED DE SEGURIDAD:
-                    // Si la IA, por error, devuelve una lista de descarte vacía,
-                    // forzamos que descarte al menos una carta para evitar que el juego se cuelgue.
+                    // Red anti-cuelgue: decideDiscard ya garantiza un descarte
+                    // no vacío, pero si alguna vez devolviese vacío el juego se
+                    // colgaría. Defensa de profundidad barata; se mantiene.
                     if (cardsToDiscard.isEmpty() && currentPlayer.hand.isNotEmpty()) {
                         Log.e("GameViewModel", "AI LOGIC ERROR: AI decided to discard 0 cards. Forcing discard of 1 to prevent hang.")
-                        // Como fallback, descartamos la primera carta de su mano.
                         cardsToDiscard = setOf(currentPlayer.hand.first())
                     }
-                    // --- FIN DE LA CORRECCIÓN ---
 
                     _gameState.value =
                             // Usamos la lista de descarte (posiblemente corregida)
