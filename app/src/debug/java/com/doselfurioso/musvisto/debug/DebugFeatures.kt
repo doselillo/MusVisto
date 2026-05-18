@@ -108,8 +108,9 @@ object DebugFeatures {
             ScenarioPanel(
                 onPlay = { viewModel.startScenario(it) },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.BottomCenter)
                     .padding(8.dp)
+                    .navigationBarsPadding()
             )
         }
     }
