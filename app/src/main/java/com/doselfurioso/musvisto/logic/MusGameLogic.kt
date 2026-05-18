@@ -909,6 +909,13 @@ class MusGameLogic constructor(private val random: Random){
             }
         }
     }
+    /**
+     * Resuelve un *_CHECK (PARES/JUEGO) eligiendo entre tres desenlaces, ahora
+     * en funciones nombradas (misma lógica y mismo orden de prioridad):
+     * 1) nadie tiene Juego en JUEGO_CHECK -> ronda de Punto;
+     * 2) un solo equipo con jugada -> se salta el lance;
+     * 3) ambos equipos -> ronda de apuestas normal.
+     */
     fun resolveDeclaration(currentState: GameState): GameState {
         val currentCheckPhase = currentState.gamePhase // Será PARES_CHECK o JUEGO_CHECK
 
@@ -922,44 +929,60 @@ class MusGameLogic constructor(private val random: Random){
 
         val teamsWithPlay = playersWithPlay.map { it.team }.distinct()
 
-        // --- LÓGICA MEJORADA PARA JUEGO Y PUNTO ---
-
-        // CASO 1: Estamos en JUEGO_CHECK y NADIE tiene Juego -> Se juega al PUNTO
-        if (currentCheckPhase == GamePhase.JUEGO_CHECK && teamsWithPlay.isEmpty()) {
-            Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
-            // El turno es para la mano, y TODOS pueden hablar
-            return currentState.copy(
-                gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
-                isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
-                playersInLance = currentState.players.map { it.id }.toSet(), // Todos juegan
-                currentTurnPlayerId = currentState.manoPlayerId,
-                playersWhoPassed = emptySet(),
-                availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-            )
+        return when {
+            currentCheckPhase == GamePhase.JUEGO_CHECK && teamsWithPlay.isEmpty() ->
+                resolveAsPunto(currentState)
+            teamsWithPlay.size < 2 ->
+                skipDeclarationLance(currentState, currentCheckPhase, teamsWithPlay)
+            else ->
+                beginDeclarationBetting(currentState, currentCheckPhase, playersWithPlay)
         }
+    }
 
-        // CASO 2: Solo un equipo tiene jugada (sea Pares o Juego) -> Se salta la ronda de apuestas
-        if (teamsWithPlay.size < 2) {
-            val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
-            Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
+    /** CASO 1: JUEGO_CHECK sin nadie con Juego -> ronda de Punto (todos hablan). */
+    private fun resolveAsPunto(currentState: GameState): GameState {
+        Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
+        return currentState.copy(
+            gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
+            isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
+            playersInLance = currentState.players.map { it.id }.toSet(), // Todos juegan
+            currentTurnPlayerId = currentState.manoPlayerId,
+            playersWhoPassed = emptySet(),
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
+    }
 
-            val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
-            val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
+    /** CASO 2: solo un equipo con jugada -> registra "Skipped" y avanza de fase. */
+    private fun skipDeclarationLance(
+        currentState: GameState,
+        currentCheckPhase: GamePhase,
+        teamsWithPlay: List<String>
+    ): GameState {
+        val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
+        Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
-            val nextPhase = advanceToNextPhase(lancePhase)
-            return stateWithHistory.copy(
-                gamePhase = nextPhase,
-                currentTurnPlayerId = stateWithHistory.manoPlayerId,
-                isPuntoPhase = false, // Nos aseguramos de resetear la bandera de Punto
-                playersWhoPassed = emptySet(),
-                isNewLance = true,
-                currentLanceActions = emptyMap(),
-                availableActions = if (nextPhase == GamePhase.JUEGO_CHECK) emptyList()
-                else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-            )
-        }
+        val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
+        val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
 
-        // CASO 3: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas normal
+        val nextPhase = advanceToNextPhase(lancePhase)
+        return stateWithHistory.copy(
+            gamePhase = nextPhase,
+            currentTurnPlayerId = stateWithHistory.manoPlayerId,
+            isPuntoPhase = false, // Nos aseguramos de resetear la bandera de Punto
+            playersWhoPassed = emptySet(),
+            isNewLance = true,
+            currentLanceActions = emptyMap(),
+            availableActions = if (nextPhase == GamePhase.JUEGO_CHECK) emptyList()
+            else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
+    }
+
+    /** CASO 3: ambos equipos con jugada -> ronda de apuestas normal. */
+    private fun beginDeclarationBetting(
+        currentState: GameState,
+        currentCheckPhase: GamePhase,
+        playersWithPlay: List<Player>
+    ): GameState {
         val bettingPhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
 
         val firstPlayerToBet = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)
