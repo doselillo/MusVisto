@@ -631,13 +631,49 @@ class AILogic constructor(
 
 
     // ---------------- Evaluación de mano ----------------
+    /**
+     * Evalúa la mano en los 4 lances. Orquesta: calcula el contexto de turno
+     * una vez y delega cada lance a su función. Comportamiento idéntico al
+     * monolito previo (mismas fórmulas y mismas líneas de `explanation`, en
+     * el mismo orden Grande→Chica→Pares→Juego).
+     *
+     * NOTA: la fuerza de Pares NO se consolida con `getParesPlayStrength`
+     * a propósito: aquella suma +15 de mano a Duples/Medias (inferencia de
+     * seña del compañero), ésta NO (mano propia). Son divergentes por
+     * diseño; unificarlas cambiaría el comportamiento.
+     */
     private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): EvaluationResult {
         if (hand.isEmpty()) return EvaluationResult(HandStrength(0, 0, 0, 0), "   - Empty hand.")
 
         val explanation = StringBuilder()
         val sortedHand = hand.sortedByDescending { getCardGrandeValue(it) }
 
-        // --- CÁLCULO DE GRANDE (LÓGICA MEJORADA) ---
+        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
+        val isMano = playerPositionInTurn == 0
+        // Rivales (no el compañero) que actúan ANTES que yo en el orden de
+        // turno. Clave para el 31: solo se pierde el lance si un RIVAL anterior
+        // también tiene 31 (un 31 del compañero por delante gana igual).
+        val rivalsAhead = orderedPlayers.take(playerPositionInTurn)
+            .count { it.team != player.team }
+
+        val grandeStrength = evaluateGrande(hand, sortedHand, explanation)
+        val chicaStrength = evaluateChica(hand, explanation)
+        val paresStrength = evaluatePares(hand, isMano, explanation)
+        val juegoStrength = evaluateJuego(
+            hand, gameState, isMano, playerPositionInTurn, rivalsAhead, explanation
+        )
+
+        val finalStrength = HandStrength(
+            grande = grandeStrength.coerceIn(0, 100),
+            chica = chicaStrength.coerceIn(0, 100),
+            pares = paresStrength.coerceIn(0, 100),
+            juego = juegoStrength.coerceIn(0, 100)
+        )
+        return EvaluationResult(finalStrength, explanation.toString())
+    }
+
+    private fun evaluateGrande(hand: List<Card>, sortedHand: List<Card>, explanation: StringBuilder): Int {
         explanation.appendLine("   - Grande:")
         val reyes = hand.filter { it.rank == Rank.REY || it.rank == Rank.TRES }
         val nonReyes = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }
@@ -682,8 +718,10 @@ class AILogic constructor(
                 explanation.appendLine("     - Kicker Bonus por ${cardToShortString(kicker)} -> +$kickerBonus pts")
             }
         }
+        return grandeStrength
+    }
 
-        // --- CÁLCULO DE CHICA ---
+    private fun evaluateChica(hand: List<Card>, explanation: StringBuilder): Int {
         val lowCardsCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
         var chicaStrength = 0
         explanation.appendLine("   - Chica:")
@@ -718,21 +756,13 @@ class AILogic constructor(
             chicaStrength += bonus
             explanation.appendLine("     - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -> +$bonus pts")
         }
+        return chicaStrength
+    }
 
-        // --- CÁLCULO DE PARES ---
+    private fun evaluatePares(hand: List<Card>, isMano: Boolean, explanation: StringBuilder): Int {
         val paresPlay = gameLogic.getHandPares(hand)
         var paresStrength = 0
         explanation.appendLine("   - Pares:")
-        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
-        // 2. Encontramos la posición del jugador actual EN ESA LISTA (0=mano, 1=segundo, etc.)
-        val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
-        val isMano = playerPositionInTurn == 0
-        // Rivales (no el compañero) que actúan ANTES que yo en el orden de
-        // turno. Clave para el 31: solo se pierde el lance si un RIVAL anterior
-        // también tiene 31 (un 31 del compañero por delante gana igual).
-        val rivalsAhead = orderedPlayers.take(playerPositionInTurn)
-            .count { it.team != player.team }
-
         when (paresPlay) {
             is ParesPlay.Duples -> {
                 paresStrength = duplesStrength(paresPlay)
@@ -760,8 +790,17 @@ class AILogic constructor(
                 paresStrength = 0; explanation.appendLine("     - No Pares -> 0 pts")
             }
         }
+        return paresStrength
+    }
 
-        // --- CÁLCULO DE JUEGO ---
+    private fun evaluateJuego(
+        hand: List<Card>,
+        gameState: GameState,
+        isMano: Boolean,
+        playerPositionInTurn: Int,
+        rivalsAhead: Int,
+        explanation: StringBuilder
+    ): Int {
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         var juegoStrength = 0
         explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}, Es Mano: $isMano):")
@@ -820,15 +859,7 @@ class AILogic constructor(
                 explanation.appendLine("     - No tiene Juego (y no es lance de Punto) -> 0 pts")
             }
         }
-
-        val finalStrength = HandStrength(
-            grande = grandeStrength.coerceIn(0, 100),
-            chica = chicaStrength.coerceIn(0, 100),
-            pares = paresStrength.coerceIn(0, 100),
-            juego = juegoStrength.coerceIn(0, 100)
-        )
-
-        return EvaluationResult(finalStrength, explanation.toString())
+        return juegoStrength
     }
 
 
