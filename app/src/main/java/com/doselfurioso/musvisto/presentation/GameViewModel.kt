@@ -492,10 +492,11 @@ class GameViewModel constructor(
 
         // 1. Señas de Duples (dos pares)
         if (paresPlay is ParesPlay.Duples) {
-            // Para saber si son altos o bajos, miramos el par más bajo.
-            // Si el par bajo es Sota o superior, son Duples Altos.
-            if (paresPlay.lowPair.value >= Rank.SOTA.value) {
-                return R.drawable.duples_altos // Seña: Duples Altos
+            // #23: "duples altos" comunica EXACTAMENTE "tengo 2 reyes" (par
+            // alto de Reyes). El resto de duples → "duples bajos". Así el
+            // compañero puede leer la fuerza de Grande real de la seña.
+            if (reyesCount >= 2) {
+                return R.drawable.duples_altos // Seña: Duples Altos (2 reyes)
             } else {
                 return R.drawable.duples_bajos // Seña: Duples Bajos
             }

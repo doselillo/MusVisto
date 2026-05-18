@@ -525,8 +525,15 @@ class AILogicTest {
     }
 
     @Test
-    fun `partnerGrandeBoost - duples_altos gets low boost`() {
-        assertEquals(50, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.duples_altos))
+    fun `partnerGrandeBoost - duples_altos signals 2 kings (entre reyes_2 y reyes_3)`() {
+        // #23: duples_altos garantiza 2 reyes sin riesgo de descarte ->
+        // boost de Grande alto (78), entre reyes_2 (65) y reyes_3 (90).
+        val b = aiLogic.partnerGrandeBoost(R.drawable.duples_altos)
+        val reyes2 = aiLogic.partnerGrandeBoost(R.drawable.reyes_2)
+        val reyes3 = aiLogic.partnerGrandeBoost(R.drawable.reyes_3)
+        assertEquals(78, b)
+        assertTrue("debe superar a reyes_2", b > reyes2)
+        assertTrue("no debe igualar a reyes_3", b < reyes3)
     }
 
     @Test
