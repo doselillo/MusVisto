@@ -12,7 +12,6 @@
     <ID>CyclomaticComplexMethod:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
     <ID>LargeClass:AILogic.kt$AILogic</ID>
     <ID>LargeClass:MusGameLogic.kt$MusGameLogic</ID>
-    <ID>LongMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
     <ID>LongMethod:GameScreen.kt$@Composable fun ActionButtons( actions: List&lt;GameAction&gt;, gamePhase: GamePhase, // &lt;-- Necesitamos saber la fase actual onActionClick: (GameAction, String) -&gt; Unit, selectedCardCount: Int, isEnabled: Boolean, currentPlayerId: String, isRaise: Boolean, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
     <ID>LongMethod:GameScreen.kt$@Composable private fun PlayerAvatar( player: Player, isCurrentTurn: Boolean, // This will control the glow modifier: Modifier = Modifier, isMano: Boolean, hasCutMus: Boolean, activeGestureResId: Int?, discardCount: Int? = null, dimens: ResponsiveDimens )</ID>
     <ID>LongMethod:GameScreen.kt$@SuppressLint("UnusedBoxWithConstraintsScope") @Composable fun GameScreen( gameViewModel: GameViewModel, navController: NavController )</ID>
@@ -111,10 +110,9 @@
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$31</ID>
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$32</ID>
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$40</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance &lt; threshold $threshold)"</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"</ID>
-    <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"</ID>
-    <ID>MaxLineLength:AILogic.kt$AILogic$actionLog = "&gt;&gt;&gt; FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - 31 sin ser mano, $rivalsAhead rival(es) delante (P perder ${(pLose * 100).toInt()}%) -&gt; -$posPenalty pts")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Base por Pares de ${paresPlay.rank.name} (valor $rankValue) -&gt; $paresStrength pts")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -&gt; +$bonus pts")</ID>
