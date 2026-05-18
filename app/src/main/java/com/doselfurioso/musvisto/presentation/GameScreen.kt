@@ -778,11 +778,11 @@ private fun PlayerAvatar(
             )
         }
 
-        // Indicador PERSISTENTE de descarte: cuántas cartas cambió este
-        // jugador en el Mus. Vive toda la ronda (discardCounts no se vacía
-        // hasta el reparto siguiente), por eso es un badge del avatar y no
-        // una burbuja de anuncio (esas se limpian por lance). Esquina libre
-        // (mano = abajo-dcha, corta-mus = abajo-izda, seña = centro).
+        // Badge de descarte: cuántas cartas cambió este jugador en el ciclo
+        // de Mus/descarte ACTUAL. Acotado a la fase de Mus/descarte
+        // (discardCounts se vacía al entrar en GRANDE y al iniciar cada
+        // ciclo de descarte). Esquina libre (mano = abajo-dcha, corta-mus =
+        // abajo-izda, seña = centro).
         if (discardCount != null && discardCount > 0) {
             Row(
                 modifier = Modifier

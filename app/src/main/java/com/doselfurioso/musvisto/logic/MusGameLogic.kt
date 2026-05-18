@@ -463,7 +463,11 @@ class MusGameLogic constructor(private val random: Random){
                 currentTurnPlayerId = newState.manoPlayerId,
                 isNewLance = true,
                 currentLanceActions = emptyMap(),
-                knownGestures = emptyMap()
+                knownGestures = emptyMap(),
+                // Cada ciclo de descarte arranca limpio: el badge refleja
+                // SOLO este ciclo (fix multi-ronda: la 2ª ronda no arrastra
+                // los conteos de la 1ª).
+                discardCounts = emptyMap()
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
@@ -476,11 +480,11 @@ class MusGameLogic constructor(private val random: Random){
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet(),
-            // NO vaciamos discardCounts aquí: debe sobrevivir todo el resto de
-            // la ronda para que el indicador de descarte del avatar diga
-            // cuántas cartas tomó cada jugador. Se resetea solo en el reparto
-            // de la ronda siguiente (startNewRound construye un GameState nuevo
-            // con discardCounts por defecto vacío).
+            // Cerrado el Mus, los descartes ya no son relevantes: el badge
+            // del avatar desaparece al entrar en GRANDE (revisión de #27:
+            // antes vivía toda la ronda; el usuario lo quiere acotado a la
+            // fase de Mus/descarte).
+            discardCounts = emptyMap(),
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
