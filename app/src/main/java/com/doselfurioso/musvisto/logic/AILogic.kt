@@ -1065,6 +1065,9 @@ class AILogic constructor(
                     }
                     is GestureMeaning.Ciega -> {
                         logBuilder.appendLine("     -> Opponent is weak. Increasing Grande/Chica confidence.")
+                        // Intencional: usa el snapshot post-merge (`teamStrength`),
+                        // NO `finalAdjustedStrength` (acumulado). Igualaba el
+                        // monolito; no cambiar a finalAdjustedStrength.
                         finalAdjustedStrength = finalAdjustedStrength.copy(
                             grande = (teamStrength.grande + 15).coerceIn(0, 100),
                             chica = (teamStrength.chica + 15).coerceIn(0, 100)
