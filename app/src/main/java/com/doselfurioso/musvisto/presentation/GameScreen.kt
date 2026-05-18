@@ -428,7 +428,7 @@ private fun GameOverlays(
 
     if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
         GameOverOverlay(
-            winnerTeam = gameState.winningTeam!!,
+            winnerTeam = gameState.winningTeam,
             ordagoInfo = gameState.ordagoInfo,
             players = players,
             bottomPadding = screenHeight * 0.28f,
@@ -446,7 +446,7 @@ private fun GameOverlays(
             contentAlignment = Alignment.Center
         ) {
             RoundEndOverlay(
-                breakdown = gameState.scoreBreakdown!!,
+                breakdown = gameState.scoreBreakdown,
                 onContinueClick = {
                     gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
                 },
@@ -461,20 +461,6 @@ private fun GameOverlays(
 }
 
 
-@Composable
-fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
-    if (count > 0) {
-        Text(
-            text = "Descarta: $count",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            modifier = modifier
-                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
-}
 
 //A Composable to display a list of action buttons
 @Composable
