@@ -82,6 +82,11 @@ private const val ANNOUNCEMENT_ENTER_MS = 200
 private const val ANNOUNCEMENT_EXIT_MS = 250
 private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 
+// Tope visual del selector de envite. Los envites normales van 2-5; por
+// encima de esto es territorio de órdago (botón aparte, 40). Evita envidar
+// cantidades arbitrarias con el botón "+".
+private const val MAX_BET = 30
+
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
 fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
@@ -1424,7 +1429,7 @@ fun BetSelector(
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Button(onClick = { betAmount++ }) {
+                Button(onClick = { if (betAmount < MAX_BET) betAmount++ }) {
                     Text("+", fontSize = 24.sp)
                 }
             }
