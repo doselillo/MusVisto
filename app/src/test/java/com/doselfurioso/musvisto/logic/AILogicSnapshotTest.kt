@@ -36,10 +36,24 @@ class AILogicSnapshotTest {
     private val weak = listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.SOTA), c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.AS))
     private val lowChica = listOf(c(Suit.OROS, Rank.AS), c(Suit.COPAS, Rank.CUATRO), c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.SEIS))
     private val medium = listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.CABALLO), c(Suit.ESPADAS, Rank.SIETE), c(Suit.BASTOS, Rank.CUATRO))
+    // Pares únicos (cobertura de #13: bonus de mano escalado por rango).
+    private val par7 = listOf(
+        c(Suit.OROS, Rank.SIETE), c(Suit.COPAS, Rank.SIETE),
+        c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.CINCO)
+    )
+    private val parAs = listOf(
+        c(Suit.OROS, Rank.AS), c(Suit.COPAS, Rank.AS),
+        c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.CINCO)
+    )
+    private val parRey = listOf(
+        c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY),
+        c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.CINCO)
+    )
 
     private val archetypes = listOf(
         "4REY" to fourKings, "J31" to juego31, "DUP" to duplesRC,
-        "WEAK" to weak, "LOWC" to lowChica, "MED" to medium
+        "WEAK" to weak, "LOWC" to lowChica, "MED" to medium,
+        "P7" to par7, "PAS" to parAs, "PREY" to parRey
     )
 
     /** ai = p2 (teamB). Compañero p4 (teamB). Rivales p1/p3 (teamA). */
@@ -158,6 +172,15 @@ DISCARD/LOWC => ConfirmDiscard [BSE,CCU,ECI,OAS]
 MUS/MED/mano=p2 => NoMus
 MUS/MED/mano=p4 => NoMus
 DISCARD/MED => ConfirmDiscard [BCU]
+MUS/P7/mano=p2 => Mus
+MUS/P7/mano=p4 => Mus
+DISCARD/P7 => ConfirmDiscard [BCI,CSI,ECU,OSI]
+MUS/PAS/mano=p2 => Mus
+MUS/PAS/mano=p4 => Mus
+DISCARD/PAS => ConfirmDiscard [BCI,ECU]
+MUS/PREY/mano=p2 => Mus
+MUS/PREY/mano=p4 => Mus
+DISCARD/PREY => ConfirmDiscard [BCI,ECU]
 OPEN/GRANDE/4REY/par => Envido(5)
 OPEN/GRANDE/4REY/detras => Órdago
 OPEN/GRANDE/4REY/delante => Envido(4)
@@ -230,6 +253,42 @@ OPEN/PARES/MED/delante => Paso
 OPEN/JUEGO/MED/par => Envido(5)
 OPEN/JUEGO/MED/detras => Órdago
 OPEN/JUEGO/MED/delante => Envido(4)
+OPEN/GRANDE/P7/par => Paso
+OPEN/GRANDE/P7/detras => Paso
+OPEN/GRANDE/P7/delante => Paso
+OPEN/CHICA/P7/par => Paso
+OPEN/CHICA/P7/detras => Paso
+OPEN/CHICA/P7/delante => Paso
+OPEN/PARES/P7/par => Paso
+OPEN/PARES/P7/detras => Paso
+OPEN/PARES/P7/delante => Paso
+OPEN/JUEGO/P7/par => Paso
+OPEN/JUEGO/P7/detras => Paso
+OPEN/JUEGO/P7/delante => Paso
+OPEN/GRANDE/PAS/par => Paso
+OPEN/GRANDE/PAS/detras => Paso
+OPEN/GRANDE/PAS/delante => Paso
+OPEN/CHICA/PAS/par => Envido(3)
+OPEN/CHICA/PAS/detras => Órdago
+OPEN/CHICA/PAS/delante => Paso
+OPEN/PARES/PAS/par => Paso
+OPEN/PARES/PAS/detras => Paso
+OPEN/PARES/PAS/delante => Paso
+OPEN/JUEGO/PAS/par => Paso
+OPEN/JUEGO/PAS/detras => Paso
+OPEN/JUEGO/PAS/delante => Paso
+OPEN/GRANDE/PREY/par => Envido(3)
+OPEN/GRANDE/PREY/detras => Órdago
+OPEN/GRANDE/PREY/delante => Paso
+OPEN/CHICA/PREY/par => Paso
+OPEN/CHICA/PREY/detras => Paso
+OPEN/CHICA/PREY/delante => Paso
+OPEN/PARES/PREY/par => Envido(3)
+OPEN/PARES/PREY/detras => Órdago
+OPEN/PARES/PREY/delante => Paso
+OPEN/JUEGO/PREY/par => Paso
+OPEN/JUEGO/PREY/detras => Paso
+OPEN/JUEGO/PREY/delante => Paso
 RESP/GRANDE/4REY/bet/mano => Envido(5)
 RESP/GRANDE/4REY/bet/postre => Envido(5)
 RESP/GRANDE/4REY/ordago/even => Quiero
@@ -302,6 +361,42 @@ RESP/JUEGO/MED/bet/mano => Envido(5)
 RESP/JUEGO/MED/bet/postre => Quiero
 RESP/JUEGO/MED/ordago/even => Quiero
 RESP/JUEGO/MED/ordago/hailmary => Quiero
+RESP/GRANDE/P7/bet/mano => NoQuiero
+RESP/GRANDE/P7/bet/postre => NoQuiero
+RESP/GRANDE/P7/ordago/even => NoQuiero
+RESP/GRANDE/P7/ordago/hailmary => Quiero
+RESP/PARES/P7/bet/mano => NoQuiero
+RESP/PARES/P7/bet/postre => NoQuiero
+RESP/PARES/P7/ordago/even => NoQuiero
+RESP/PARES/P7/ordago/hailmary => Quiero
+RESP/JUEGO/P7/bet/mano => NoQuiero
+RESP/JUEGO/P7/bet/postre => NoQuiero
+RESP/JUEGO/P7/ordago/even => NoQuiero
+RESP/JUEGO/P7/ordago/hailmary => Quiero
+RESP/GRANDE/PAS/bet/mano => NoQuiero
+RESP/GRANDE/PAS/bet/postre => NoQuiero
+RESP/GRANDE/PAS/ordago/even => NoQuiero
+RESP/GRANDE/PAS/ordago/hailmary => Quiero
+RESP/PARES/PAS/bet/mano => NoQuiero
+RESP/PARES/PAS/bet/postre => NoQuiero
+RESP/PARES/PAS/ordago/even => NoQuiero
+RESP/PARES/PAS/ordago/hailmary => Quiero
+RESP/JUEGO/PAS/bet/mano => NoQuiero
+RESP/JUEGO/PAS/bet/postre => NoQuiero
+RESP/JUEGO/PAS/ordago/even => NoQuiero
+RESP/JUEGO/PAS/ordago/hailmary => Quiero
+RESP/GRANDE/PREY/bet/mano => NoQuiero
+RESP/GRANDE/PREY/bet/postre => NoQuiero
+RESP/GRANDE/PREY/ordago/even => NoQuiero
+RESP/GRANDE/PREY/ordago/hailmary => Quiero
+RESP/PARES/PREY/bet/mano => NoQuiero
+RESP/PARES/PREY/bet/postre => NoQuiero
+RESP/PARES/PREY/ordago/even => NoQuiero
+RESP/PARES/PREY/ordago/hailmary => Quiero
+RESP/JUEGO/PREY/bet/mano => NoQuiero
+RESP/JUEGO/PREY/bet/postre => NoQuiero
+RESP/JUEGO/PREY/ordago/even => NoQuiero
+RESP/JUEGO/PREY/ordago/hailmary => Quiero
 """.trimIndent()
     }
 }

@@ -734,8 +734,9 @@ class AILogic constructor(
                 paresStrength = 20 + rankValue.value * 3
                 explanation.appendLine("     - Base por Pares de ${paresPlay.rank.name} (valor $rankValue) -> $paresStrength pts")
                 if (isMano) {
-                    paresStrength += 15
-                    explanation.appendLine("     - Bonus por ser Mano -> +15 pts")
+                    val manoBonus = manoParesBonus(rankValue.value)
+                    paresStrength += manoBonus
+                    explanation.appendLine("     - Bonus por ser Mano (escalado #13) -> +$manoBonus pts")
                 }
             }
 
@@ -1048,6 +1049,25 @@ class AILogic constructor(
         else -> 0
     }
 
+    /**
+     * Bonus de fuerza por ser MANO en un PAR ÚNICO, escalado por rango (#13).
+     * Ser mano en Pares solo gana empates de mismo rango: en pares bajos
+     * (4-7) eso es raro y barato → prima ≈0; en Rey/Tres el empate al tope es
+     * frecuente y caro → +15 íntegro (techo intacto, sin regresión). Sustituye
+     * al antiguo +15 plano que inflaba pares bajos sobre el umbral de corte de
+     * Mus. Curva recomendada por mus-strategy-reviewer. NO aplica a
+     * Duples/Medias (fuera del alcance de #13).
+     */
+    @Suppress("MagicNumber") // Tabla heurística de IA: los valores SON la curva.
+    private fun manoParesBonus(pairingRankValue: Int): Int = when {
+        pairingRankValue <= 5  -> 0      // As/Dos..Cinco
+        pairingRankValue == 6  -> 1      // Seis
+        pairingRankValue == 7  -> 2      // Siete
+        pairingRankValue <= 10 -> 8      // Sota
+        pairingRankValue == 11 -> 11     // Caballo
+        else -> 15                       // Rey/Tres
+    }
+
     private fun getParesPlayStrength(paresPlay: ParesPlay, isMano: Boolean): Int {
         var strength = when (paresPlay) {
             is ParesPlay.Duples -> duplesStrength(paresPlay)
@@ -1055,8 +1075,13 @@ class AILogic constructor(
             is ParesPlay.Pares -> 20 + (getPairingRankValue(paresPlay.rank) * 3)
             is ParesPlay.NoPares -> 0
         }
-        if (isMano && paresPlay !is ParesPlay.NoPares) {
-            strength += 15
+        if (isMano) {
+            strength += when (paresPlay) {
+                // #13: par único escalado por rango; Duples/Medias siguen +15.
+                is ParesPlay.Pares -> manoParesBonus(getPairingRankValue(paresPlay.rank))
+                is ParesPlay.NoPares -> 0
+                else -> 15
+            }
         }
         return strength.coerceIn(0, 100)
     }
