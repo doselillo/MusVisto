@@ -481,8 +481,10 @@ class AILogic constructor(
 
         // 1) Valor fuerte: como siempre.
         if (effStrength > 78) {
-            return Pair(GameAction.Envido(betAmount(effStrength)),
-                "Reason: Valor fuerte ($effStrength)")
+            val why = if (duplesDeReyesMano)
+                "Valor fuerte ($effStrength) [#23: duples de reyes + mano; Grande base $strength → $effStrength]"
+            else "Valor fuerte ($effStrength)"
+            return Pair(GameAction.Envido(betAmount(effStrength)), "Reason: $why")
         }
 
         // 2) Banda media (55-78): valor fino, prob. sube con fuerza y contexto.
