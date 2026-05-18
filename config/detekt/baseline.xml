@@ -3,7 +3,7 @@
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
-    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: StringBuilder ): HandStrength</ID>
+    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideInitialBet( strength: Int, aiPlayer: Player, gameState: GameState ): Pair&lt;GameAction, String&gt;</ID>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideResponse( adjustedStrength: Int, gameState: GameState, aiPlayer: Player ): GameAction</ID>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun evaluateHand(hand: List&lt;Card&gt;, player: Player, gameState: GameState): EvaluationResult</ID>
@@ -16,7 +16,7 @@
     <ID>LargeClass:AILogic.kt$AILogic</ID>
     <ID>LargeClass:MusGameLogic.kt$MusGameLogic</ID>
     <ID>LongMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
-    <ID>LongMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: StringBuilder ): HandStrength</ID>
+    <ID>LongMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
     <ID>LongMethod:AILogic.kt$AILogic$private fun evaluateHand(hand: List&lt;Card&gt;, player: Player, gameState: GameState): EvaluationResult</ID>
     <ID>LongMethod:GameScreen.kt$@Composable fun ActionButtons( actions: List&lt;GameAction&gt;, gamePhase: GamePhase, // &lt;-- Necesitamos saber la fase actual onActionClick: (GameAction, String) -&gt; Unit, selectedCardCount: Int, isEnabled: Boolean, currentPlayerId: String, isRaise: Boolean, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
     <ID>LongMethod:GameScreen.kt$@Composable private fun PlayerAvatar( player: Player, isCurrentTurn: Boolean, // This will control the glow modifier: Modifier = Modifier, isMano: Boolean, hasCutMus: Boolean, activeGestureResId: Int?, discardCount: Int? = null, dimens: ResponsiveDimens )</ID>
@@ -199,7 +199,7 @@
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))</ID>
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith31 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))) // 31</ID>
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith32 = players[1].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))) // 32</ID>
-    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: StringBuilder ): HandStrength</ID>
+    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
     <ID>NestedBlockDepth:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
     <ID>NewLineAtEndOfFile:AILogicTest.kt$com.doselfurioso.musvisto.logic.AILogicTest.kt</ID>
     <ID>NewLineAtEndOfFile:CardMapper.kt$com.doselfurioso.musvisto.presentation.CardMapper.kt</ID>
