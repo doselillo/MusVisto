@@ -62,58 +62,50 @@ class MusGameLogic constructor(private val random: Random){
      * It considers the player order ("mano") to break ties.
      * The player who is "mano" (first in the list) wins any ties.
      */
-    fun getGrandeWinner(gameState: GameState): Player? {
-        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
-        return orderedPlayers.reduceOrNull { winner, challenger ->
-            // Ordenamos las manos de la carta más ALTA a la más baja
-            val winnerHand = winner.hand.sortedByDescending { it.rank.value }
-            val challengerHand = challenger.hand.sortedByDescending { it.rank.value }
-
-            // Comparamos las manos carta por carta
-            for (i in 0..3) {
-                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 0 // Usamos 0 como valor si no hay carta
-                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 0
-
-                // Si la carta del aspirante es más alta, él es el nuevo ganador
-                if (challengerCardValue > winnerCardValue) {
-                    return@reduceOrNull challenger
-                }
-                // Si la carta del ganador actual es más alta, él mantiene la victoria
-                if (winnerCardValue > challengerCardValue) {
-                    return@reduceOrNull winner
-                }
-            }
-            // Si son idénticas, gana el que esté antes en el turno
-            winner
-        }
-    }
+    fun getGrandeWinner(gameState: GameState): Player? =
+        // Grande: mejor = carta más ALTA; carta ausente cuenta como 0.
+        lanceWinnerByCards(gameState, descending = true, absentCardValue = 0)
 
     /**
      * Determines the winner of the "Chica" lance among all players.
      * It considers the player order ("mano") to break ties.
      */
-    fun getChicaWinner(gameState: GameState): Player? {
+    fun getChicaWinner(gameState: GameState): Player? =
+        // Chica: mejor = carta más BAJA; carta ausente cuenta como 13.
+        lanceWinnerByCards(gameState, descending = false, absentCardValue = 13)
+
+    /**
+     * Núcleo común de Grande/Chica: compara mano a mano carta por carta en el
+     * orden de turno (desde la mano), de modo que el empate exacto lo gana el
+     * jugador que está antes en el turno ("mano" rompe empates). `descending`
+     * = true para Grande (gana la más alta), false para Chica (la más baja);
+     * `absentCardValue` es el valor de una posición sin carta (0 / 13).
+     */
+    private fun lanceWinnerByCards(
+        gameState: GameState,
+        descending: Boolean,
+        absentCardValue: Int
+    ): Player? {
         val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
         return orderedPlayers.reduceOrNull { winner, challenger ->
-            // Ordenamos las manos de ambos jugadores de la carta más baja a la más alta
-            val winnerHand = winner.hand.sortedBy { it.rank.value }
-            val challengerHand = challenger.hand.sortedBy { it.rank.value }
+            val winnerHand = if (descending) winner.hand.sortedByDescending { it.rank.value }
+            else winner.hand.sortedBy { it.rank.value }
+            val challengerHand = if (descending) challenger.hand.sortedByDescending { it.rank.value }
+            else challenger.hand.sortedBy { it.rank.value }
 
-            // Comparamos las manos carta por carta
             for (i in 0..3) {
-                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 13 // Usamos 13 como valor si no hay carta
-                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 13
+                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: absentCardValue
+                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: absentCardValue
 
-                // Si la carta del aspirante es más baja, él es el nuevo ganador y terminamos la comparación
-                if (challengerCardValue < winnerCardValue) {
-                    return@reduceOrNull challenger
-                }
-                // Si la carta del ganador actual es más baja, él mantiene la victoria y terminamos la comparación
-                if (winnerCardValue < challengerCardValue) {
-                    return@reduceOrNull winner
-                }
+                val challengerBetter = if (descending) challengerCardValue > winnerCardValue
+                else challengerCardValue < winnerCardValue
+                val winnerBetter = if (descending) winnerCardValue > challengerCardValue
+                else winnerCardValue < challengerCardValue
+
+                if (challengerBetter) return@reduceOrNull challenger
+                if (winnerBetter) return@reduceOrNull winner
             }
-            // Si después de comparar las 4 cartas son idénticas, entonces gana el que esté antes en el turno (el "winner" actual)
+            // Empate exacto: gana el que está antes en el turno.
             winner
         }
     }
@@ -328,6 +320,30 @@ class MusGameLogic constructor(private val random: Random){
         }
     }
 
+    /**
+     * Oponentes aptos a partir del que apuesta, en el orden de turno correcto
+     * (sentido horario, fórmula -i). Lista usada por envido y órdago para fijar
+     * `respondingPlayerId`/`playersPendingResponse`. NO usar `findNextOpponent`
+     * (código muerto consciente, ver KNOWN_ISSUES): esta es la ruta viva.
+     */
+    private fun orderedEligibleOpponentIds(
+        currentState: GameState,
+        playerId: String,
+        allEligibleOpponents: List<Player>
+    ): List<String> {
+        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
+        val result = mutableListOf<String>()
+        if (bettingPlayerIndex != -1) {
+            for (i in 1..currentState.players.size) {
+                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
+                if (nextPlayer in allEligibleOpponents) {
+                    result.add(nextPlayer.id)
+                }
+            }
+        }
+        return result
+    }
+
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
@@ -345,21 +361,8 @@ class MusGameLogic constructor(private val random: Random){
             return currentState
         }
 
-        // 3. Buscamos la posición del jugador que acaba de apostar
-        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
-
-        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
-        //    a los oponentes en la secuencia correcta en la que deben responder.
-        val orderedEligibleOpponents = mutableListOf<String>()
-        if (bettingPlayerIndex != -1) {
-            for (i in 1..currentState.players.size) {
-                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
-                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
-                if (nextPlayer in allEligibleOpponents) {
-                    orderedEligibleOpponents.add(nextPlayer.id)
-                }
-            }
-        }
+        val orderedEligibleOpponents =
+            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
 
         // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
         if (orderedEligibleOpponents.isEmpty()) {
@@ -523,21 +526,8 @@ class MusGameLogic constructor(private val random: Random){
             return currentState
         }
 
-        // 3. Buscamos la posición del jugador que acaba de apostar
-        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
-
-        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
-        //    a los oponentes en la secuencia correcta en la que deben responder.
-        val orderedEligibleOpponents = mutableListOf<String>()
-        if (bettingPlayerIndex != -1) {
-            for (i in 1..currentState.players.size) {
-                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
-                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
-                if (nextPlayer in allEligibleOpponents) {
-                    orderedEligibleOpponents.add(nextPlayer.id)
-                }
-            }
-        }
+        val orderedEligibleOpponents =
+            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
 
         // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
         if (orderedEligibleOpponents.isEmpty()) {
