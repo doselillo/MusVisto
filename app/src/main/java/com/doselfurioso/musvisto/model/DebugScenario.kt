@@ -1,5 +1,7 @@
 package com.doselfurioso.musvisto.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Escenario de prueba para forzar una situación concreta de partida desde el
  * panel de debug (manos exactas, quién es mano, en qué lance arrancar).
@@ -16,6 +18,7 @@ package com.doselfurioso.musvisto.model
  *              un "No hay mus" del mano y la partida aterriza en GRANDE con las
  *              manos exactas intactas (sin descarte que las altere).
  */
+@Serializable
 data class DebugScenario(
     val name: String,
     val hands: Map<String, List<Card>>,

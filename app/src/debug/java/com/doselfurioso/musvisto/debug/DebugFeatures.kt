@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -105,7 +106,7 @@ object DebugFeatures {
                 .statusBarsPadding()
         ) {
             ScenarioPanel(
-                onPick = { viewModel.startScenario(it) },
+                onPlay = { viewModel.startScenario(it) },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(8.dp)
@@ -115,8 +116,36 @@ object DebugFeatures {
 }
 
 @Composable
-private fun ScenarioPanel(onPick: (DebugScenario) -> Unit, modifier: Modifier = Modifier) {
+private fun ScenarioPanel(onPlay: (DebugScenario) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(ScenarioStore.load(context)) }
+
+    // null = editor cerrado; un DebugScenario "vacío sentinela" no sirve, así
+    // que usamos dos flags: editing!=null edita ese, isNew abre uno en blanco.
+    var editing by remember { mutableStateOf<DebugScenario?>(null) }
+    var isNew by remember { mutableStateOf(false) }
+
+    if (isNew || editing != null) {
+        ScenarioEditor(
+            initial = editing,
+            onSave = {
+                saved = ScenarioStore.upsert(context, it)
+                editing = null
+                isNew = false
+            },
+            onPlay = {
+                editing = null
+                isNew = false
+                expanded = false
+                onPlay(it)
+            },
+            onCancel = {
+                editing = null
+                isNew = false
+            }
+        )
+    }
 
     Column(
         modifier = modifier.padding(4.dp),
@@ -139,33 +168,109 @@ private fun ScenarioPanel(onPick: (DebugScenario) -> Unit, modifier: Modifier = 
         if (expanded) {
             LazyColumn(
                 modifier = Modifier
-                    .width(260.dp)
-                    .heightIn(max = 360.dp)
+                    .width(280.dp)
+                    .heightIn(max = 380.dp)
                     .padding(vertical = 4.dp)
                     .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(DebugScenarios.all) { scenario ->
+                item {
                     Box(
                         modifier = Modifier
-                            .background(Color(0xFF5D4037).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
-                            .clickable {
-                                expanded = false
-                                onPick(scenario)
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .fillMaxWidth()
+                            .background(Color(0xFF1565C0), RoundedCornerShape(6.dp))
+                            .clickable { isNew = true }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = scenario.name,
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp
+                        Text("＋ Nuevo escenario", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (saved.isNotEmpty()) {
+                    item { SectionLabel("Guardados") }
+                    items(saved, key = { it.name }) { scenario ->
+                        ScenarioRow(
+                            name = scenario.name,
+                            editable = true,
+                            onPlay = { expanded = false; onPlay(scenario) },
+                            onEdit = { editing = scenario },
+                            onDelete = { saved = ScenarioStore.delete(context, scenario.name) }
+                        )
+                    }
+                }
+
+                if (DebugScenarios.all.isNotEmpty()) {
+                    item { SectionLabel("Predefinidos") }
+                    items(DebugScenarios.all, key = { "pre-" + it.name }) { scenario ->
+                        ScenarioRow(
+                            name = scenario.name,
+                            editable = false,
+                            onPlay = { expanded = false; onPlay(scenario) },
+                            onEdit = {},
+                            onDelete = {}
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = Color(0xFF7A8794),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 4.dp, start = 2.dp)
+    )
+}
+
+@Composable
+private fun ScenarioRow(
+    name: String,
+    editable: Boolean,
+    onPlay: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF2A3640).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = name,
+            color = Color.White,
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onPlay() }
+        )
+        RowAction("▶", Color(0xFF66BB6A), onPlay)
+        if (editable) {
+            RowAction("✎", Color(0xFFFFD24A), onEdit)
+            RowAction("🗑", Color(0xFFEF9A9A), onDelete)
+        }
+    }
+}
+
+@Composable
+private fun RowAction(glyph: String, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(Color(0xFF1B232C), RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 7.dp, vertical = 4.dp)
+    ) {
+        Text(glyph, color = color, fontSize = 12.sp)
     }
 }
 
