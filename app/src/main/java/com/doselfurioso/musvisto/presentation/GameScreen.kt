@@ -372,74 +372,99 @@ fun GameScreen(
 
 
             // ── CAPA 3: overlays de pantalla completa ──
-            if (gameState.isPaused) {
-                PauseMenuOverlay(
-                    navController = navController,
-                    onAction = gameViewModel::onAction,
-                    humanPlayerId = gameViewModel.humanPlayerId,
-                    dimensions = dimens,
-                    gameViewModel = gameViewModel
-                )
-            }
-
-            // Panel flotante de logs de IA — solo se renderiza en builds debug.
-            DebugFeatures.AiDebugPanelOverlay(gameViewModel)
-
-            // Selector de escenarios de prueba — solo se renderiza en builds debug.
-            DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
-
-            if (gameState.isSelectingBet) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = screenHeight * 0.30f),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    BetSelector(
-                        onBet = { amount ->
-                            gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
-                        },
-                        onCancel = {
-                            gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
-                        },
-                        isRaise = gameState.currentBet != null
-                    )
-                }
-            }
-
-            if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
-                GameOverOverlay(
-                    winnerTeam = gameState.winningTeam!!,
-                    ordagoInfo = gameState.ordagoInfo,
-                    players = players,
-                    bottomPadding = screenHeight * 0.28f,
-                    onNewGameClick = {
-                        gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
-                    }
-                )
-            }
-
-            if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = screenHeight * 0.55f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    RoundEndOverlay(
-                        breakdown = gameState.scoreBreakdown!!,
-                        onContinueClick = {
-                            gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
-                        },
-                        dimens = dimens
-                    )
-                }
-            }
-
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                GameEventNotification(event = gameState.event)
-            }
+            GameOverlays(
+                gameState = gameState,
+                players = players,
+                dimens = dimens,
+                screenHeight = screenHeight,
+                navController = navController,
+                gameViewModel = gameViewModel
+            )
         }
+    }
+}
+
+/**
+ * Capa de overlays de pantalla completa, emitida como último hijo del Box
+ * raíz (mismo z-order que antes): pausa, paneles de debug, selector de
+ * envite, fin de partida, fin de ronda y notificación de evento. Extraída de
+ * la raíz de GameScreen sin cambiar comportamiento ni layout.
+ */
+@Composable
+private fun GameOverlays(
+    gameState: GameState,
+    players: List<Player>,
+    dimens: ResponsiveDimens,
+    screenHeight: Dp,
+    navController: NavController,
+    gameViewModel: GameViewModel
+) {
+    if (gameState.isPaused) {
+        PauseMenuOverlay(
+            navController = navController,
+            onAction = gameViewModel::onAction,
+            humanPlayerId = gameViewModel.humanPlayerId,
+            dimensions = dimens,
+            gameViewModel = gameViewModel
+        )
+    }
+
+    // Panel flotante de logs de IA — solo se renderiza en builds debug.
+    DebugFeatures.AiDebugPanelOverlay(gameViewModel)
+
+    // Selector de escenarios de prueba — solo se renderiza en builds debug.
+    DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
+
+    if (gameState.isSelectingBet) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = screenHeight * 0.30f),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            BetSelector(
+                onBet = { amount ->
+                    gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
+                },
+                onCancel = {
+                    gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
+                },
+                isRaise = gameState.currentBet != null
+            )
+        }
+    }
+
+    if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
+        GameOverOverlay(
+            winnerTeam = gameState.winningTeam!!,
+            ordagoInfo = gameState.ordagoInfo,
+            players = players,
+            bottomPadding = screenHeight * 0.28f,
+            onNewGameClick = {
+                gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
+            }
+        )
+    }
+
+    if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = screenHeight * 0.55f),
+            contentAlignment = Alignment.Center
+        ) {
+            RoundEndOverlay(
+                breakdown = gameState.scoreBreakdown!!,
+                onContinueClick = {
+                    gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
+                },
+                dimens = dimens
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        GameEventNotification(event = gameState.event)
     }
 }
 
