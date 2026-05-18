@@ -23,6 +23,11 @@ private const val SUPPORT_OWN_FLOOR = 70
 // 100% (omnisciencia) -> usar señas era perjudicial. (Backlog #7)
 private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
 
+// #23: strength efectivo de Grande para duples-de-reyes propio siendo mano.
+// >78 ("valor fuerte") pero <90 (no es el value-bet 4-5 más leíble); el
+// mus-strategy-reviewer lo fijó en 82.
+private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -465,27 +470,36 @@ class AILogic constructor(
         val stealSpot = opponentsPassed >= 1
         val scoreRisky = opponentScore >= 33 || myTeamScore >= 33
 
+        // #23 Parte B: duples-de-reyes propio + ser mano en GRANDE → strength
+        // efectivo 82 (cae en "valor fuerte"). Sigue las bandas, NO es un flag
+        // determinista: manos de 2 reyes SIN duples siguen entrando por la
+        // banda media probabilística y a veces pasan → no telegrafía.
+        val ownPares = gameLogic.getHandPares(aiPlayer.hand)
+        val duplesDeReyesMano = gameState.gamePhase == GamePhase.GRANDE && isMano &&
+            ownPares is ParesPlay.Duples && ownPares.highPair == Rank.REY
+        val effStrength = if (duplesDeReyesMano) maxOf(strength, DUPLES_REY_MANO_GRANDE_STRENGTH) else strength
+
         // 1) Valor fuerte: como siempre.
-        if (strength > 78) {
-            return Pair(GameAction.Envido(betAmount(strength)),
-                "Reason: Valor fuerte ($strength)")
+        if (effStrength > 78) {
+            return Pair(GameAction.Envido(betAmount(effStrength)),
+                "Reason: Valor fuerte ($effStrength)")
         }
 
         // 2) Banda media (55-78): valor fino, prob. sube con fuerza y contexto.
-        if (strength in 55..78) {
-            var p = (strength - 55) / 23.0
+        if (effStrength in 55..78) {
+            var p = (effStrength - 55) / 23.0
             if (isMano) p += 0.15
             if (isLate) p += 0.20
             if (opponentsPassed >= 1) p += 0.15
             p = p.coerceIn(0.0, 0.85) // nunca 100%: no ser leíble
             if (rng.nextDouble() < p) {
-                return Pair(GameAction.Envido(betAmount(strength)),
-                    "Reason: Valor fino media-banda ($strength, p=${"%.2f".format(p)})")
+                return Pair(GameAction.Envido(betAmount(effStrength)),
+                    "Reason: Valor fino media-banda ($effStrength, p=${"%.2f".format(p)})")
             }
         }
 
         // 3) Farol barato: solo si alguien ya pasó (robo) y marcador no delicado.
-        if (strength < 55 && stealSpot && !scoreRisky) {
+        if (effStrength < 55 && stealSpot && !scoreRisky) {
             val bluffP = (0.10 + if (isLate) 0.10 else 0.0).coerceAtMost(0.20)
             if (rng.nextDouble() < bluffP) {
                 return Pair(GameAction.Envido(2),
@@ -1037,7 +1051,7 @@ class AILogic constructor(
         R.drawable.reyes_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
         R.drawable.sena_31 -> 70   // 31 implica figuras pero no necesariamente Reyes
         R.drawable.reyes_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
-        R.drawable.duples_altos -> 50  // info parcial: por sí sola no dispara, pero suma con la propia
+        R.drawable.duples_altos -> 78  // #23: 2 reyes garantizados sin riesgo de descarte; entre reyes_2 y reyes_3
         else -> 0
     }
 
