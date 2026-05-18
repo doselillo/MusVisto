@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -101,12 +102,12 @@ object DebugFeatures {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+                .statusBarsPadding()
         ) {
             ScenarioPanel(
                 onPick = { viewModel.startScenario(it) },
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.TopCenter)
                     .padding(8.dp)
             )
         }
@@ -119,7 +120,7 @@ private fun ScenarioPanel(onPick: (DebugScenario) -> Unit, modifier: Modifier = 
 
     Column(
         modifier = modifier.padding(4.dp),
-        horizontalAlignment = Alignment.Start
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
