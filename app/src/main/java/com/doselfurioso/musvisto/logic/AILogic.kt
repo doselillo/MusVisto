@@ -128,9 +128,6 @@ class AILogic constructor(
         logBuilder.appendLine("4. Final Strength -> $finalLine")
         logBuilder.appendLine("-------------------------------------------------")
 
-        val decision: AIDecision
-        val actionLog: String
-
         // Capitanía de lance (#1/#4): ¿debo jugar de apoyo y cederle la
         // iniciativa al compañero (mejor posición + seña fuerte conocida)?
         val ownBaseLance = when (gameState.gamePhase) {
@@ -143,61 +140,10 @@ class AILogic constructor(
         val playSupport = shouldPlaySupport(gameState, aiPlayer, gameState.gamePhase, ownBaseLance)
         if (playSupport) logBuilder.appendLine("4b. Rol de APOYO: compañero capitán de lance (mejor posición + seña fuerte), mano propia floja ($ownBaseLance).")
 
-        if (gameState.currentBet != null) {
-            val strengthForLance = when (gameState.gamePhase) {
-                GamePhase.GRANDE -> finalStrength.grande
-                GamePhase.CHICA -> finalStrength.chica
-                GamePhase.PARES -> finalStrength.pares
-                GamePhase.JUEGO -> finalStrength.juego
-                else -> 0
-            }
-            val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
-            // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
-            // para mantener el bote del equipo sin pisar al capitán.
-            val responseAction = if (playSupport &&
-                (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
-            ) GameAction.Quiero else rawResponse
-            decision = AIDecision(responseAction)
-            val threshold = 70 // Umbral para "Quiero"
-            actionLog = when {
-                playSupport && responseAction !== rawResponse ->
-                    ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
-                responseAction is GameAction.Quiero ->
-                    ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
-                else ->
-                    ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
-            }
+        val (decision, actionLog) = if (gameState.currentBet != null) {
+            decideBettingResponse(gameState, aiPlayer, finalStrength, playSupport)
         } else {
-            when (gameState.gamePhase) {
-                GamePhase.MUS -> {
-                    val musResult = decideMus(finalStrength, aiPlayer, riskFactor, gameState)
-                    decision = AIDecision(musResult.first)
-                    actionLog = ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
-                }
-                GamePhase.DISCARD -> {
-                    decision = decideDiscard(aiPlayer)
-                    actionLog = ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
-                }
-                else -> {
-                    val strengthForLance = when(gameState.gamePhase) {
-                        GamePhase.GRANDE -> finalStrength.grande
-                        GamePhase.CHICA -> finalStrength.chica
-                        GamePhase.PARES -> finalStrength.pares
-                        else -> finalStrength.juego
-                    }
-                    val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
-                    // En apoyo no abro: dejo hablar a rivales y al capitán.
-                    val betAction = if (playSupport &&
-                        (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
-                    ) GameAction.Paso else betResult.first
-                    decision = AIDecision(betAction)
-                    actionLog = if (playSupport && betAction !== betResult.first) {
-                        ">>> FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"
-                    } else {
-                        ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
-                    }
-                }
-            }
+            decideByPhase(gameState, aiPlayer, finalStrength, riskFactor, playSupport)
         }
 
         logBuilder.appendLine(actionLog)
@@ -221,6 +167,79 @@ class AILogic constructor(
         val log = "$tldr\n${logBuilder}"
         if (DebugFeatures.IS_ENABLED) Log.d(TAG, log)
         return decision.copy(debugLog = if (DebugFeatures.IS_ENABLED) log else "")
+    }
+
+    /** Responder a una apuesta activa. Devuelve (decisión, línea de log). */
+    private fun decideBettingResponse(
+        gameState: GameState,
+        aiPlayer: Player,
+        finalStrength: HandStrength,
+        playSupport: Boolean
+    ): Pair<AIDecision, String> {
+        val strengthForLance = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> finalStrength.grande
+            GamePhase.CHICA -> finalStrength.chica
+            GamePhase.PARES -> finalStrength.pares
+            GamePhase.JUEGO -> finalStrength.juego
+            else -> 0
+        }
+        val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
+        // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
+        // para mantener el bote del equipo sin pisar al capitán.
+        val responseAction = if (playSupport &&
+            (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
+        ) GameAction.Quiero else rawResponse
+        val threshold = 70 // Umbral para "Quiero"
+        val actionLog = when {
+            playSupport && responseAction !== rawResponse ->
+                ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
+            responseAction is GameAction.Quiero ->
+                ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
+            else ->
+                ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
+        }
+        return AIDecision(responseAction) to actionLog
+    }
+
+    /** Decisión sin apuesta activa: MUS / DISCARD / apertura de lance. */
+    private fun decideByPhase(
+        gameState: GameState,
+        aiPlayer: Player,
+        finalStrength: HandStrength,
+        riskFactor: Int,
+        playSupport: Boolean
+    ): Pair<AIDecision, String> {
+        when (gameState.gamePhase) {
+            GamePhase.MUS -> {
+                val musResult = decideMus(finalStrength, aiPlayer, riskFactor, gameState)
+                return AIDecision(musResult.first) to
+                    ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
+            }
+            GamePhase.DISCARD -> {
+                val decision = decideDiscard(aiPlayer)
+                return decision to
+                    ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
+            }
+            else -> {
+                val strengthForLance = when(gameState.gamePhase) {
+                    GamePhase.GRANDE -> finalStrength.grande
+                    GamePhase.CHICA -> finalStrength.chica
+                    GamePhase.PARES -> finalStrength.pares
+                    else -> finalStrength.juego
+                }
+                val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
+                // En apoyo no abro: dejo hablar a rivales y al capitán.
+                val betAction = if (playSupport &&
+                    (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
+                ) GameAction.Paso else betResult.first
+                val actionLog = if (playSupport && betAction !== betResult.first) {
+                    ">>> FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"
+                } else {
+                    ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
+                }
+                return AIDecision(betAction) to actionLog
+            }
+        }
     }
 
     private fun getPairingRank(rank: Rank): Rank {
