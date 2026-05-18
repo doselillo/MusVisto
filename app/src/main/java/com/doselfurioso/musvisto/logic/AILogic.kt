@@ -2,6 +2,7 @@ package com.doselfurioso.musvisto.logic
 
 import android.util.Log
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.debug.DebugFeatures
 import java.util.UUID
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
@@ -28,6 +29,18 @@ data class AIDecision(
     /** Log detallado de la decisión, consumido por el panel de debug en builds debug. */
     val debugLog: String = ""
 )
+
+/**
+ * Acumulador del log de decisión de la IA. En builds debug se comporta como
+ * un StringBuilder; en release es un no-op (no se asigna el StringBuilder ni
+ * crecen los appends), evitando el trabajo perdido que señala KNOWN_ISSUES.
+ * No afecta a ninguna decisión: el log es puramente informativo.
+ */
+private class DecisionLog {
+    private val sb: StringBuilder? = if (DebugFeatures.IS_ENABLED) StringBuilder() else null
+    fun appendLine(line: String) { sb?.appendLine(line) }
+    override fun toString(): String = sb?.toString() ?: ""
+}
 
 /**
  * Clase AILogic
@@ -59,7 +72,7 @@ class AILogic constructor(
     // ---------------- Public entry point ----------------
     fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision {
         val decisionId = UUID.randomUUID().toString().substring(0, 5)
-        val logBuilder = StringBuilder()
+        val logBuilder = DecisionLog()
 
         val rivalTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val myScore = gameState.score[aiPlayer.team] ?: 0
@@ -201,8 +214,8 @@ class AILogic constructor(
             append(" -> ${decision.action.displayText}")
         }
         val log = "$tldr\n${logBuilder}"
-        Log.d(TAG, log)
-        return decision.copy(debugLog = log)
+        if (DebugFeatures.IS_ENABLED) Log.d(TAG, log)
+        return decision.copy(debugLog = if (DebugFeatures.IS_ENABLED) log else "")
     }
 
     private fun getPairingRank(rank: Rank): Rank {
@@ -891,7 +904,7 @@ class AILogic constructor(
         baseStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player,
-        logBuilder: StringBuilder
+        logBuilder: DecisionLog
     ): HandStrength {
         if (gameState.knownGestures.isEmpty()) {
             logBuilder.appendLine("2. No gestures remembered this round.")
