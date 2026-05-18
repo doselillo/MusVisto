@@ -3,6 +3,16 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.detekt)
+}
+
+detekt {
+    // Construye sobre las reglas por defecto + nuestros overrides mínimos.
+    buildUponDefaultConfig = true
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+    // El baseline silencia la deuda EXISTENTE (no bloquea el refactor en
+    // curso) pero detekt falla ante deuda NUEVA introducida después.
+    baseline = file("$rootDir/config/detekt/baseline.xml")
 }
 
 android {

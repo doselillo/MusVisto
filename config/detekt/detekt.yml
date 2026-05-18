@@ -1,0 +1,52 @@
+# Config detekt — overrides mínimos sobre buildUponDefaultConfig=true.
+# El objetivo es frenar deuda NUEVA durante el refactor, no inundar de
+# falsos positivos. La deuda existente queda en baseline.xml.
+
+build:
+  maxIssues: 0 # falla ante cualquier issue NO baselined (deuda nueva)
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 80
+  LongParameterList:
+    active: true
+    # Los @Composable suelen llevar muchos parámetros por diseño.
+    functionThreshold: 8
+    constructorThreshold: 8
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    active: true
+    thresholdInClasses: 30
+    thresholdInFiles: 30
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+
+style:
+  MagicNumber:
+    active: true
+    # Tablas de fuerza/heurística de IA y dimensiones de UI usan literales
+    # a propósito; lo relevante es no añadir números mágicos nuevos sueltos.
+    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '5', '10', '100']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+  ReturnCount:
+    active: true
+    max: 6
+  ForbiddenComment:
+    active: false # TODOs son deuda conocida documentada en KNOWN_ISSUES
+
+naming:
+  FunctionNaming:
+    active: true
+    # @Composable usan PascalCase; tests usan backticks (`debe hacer X`).
+    ignoreAnnotated: ['Composable', 'Test']
+  TopLevelPropertyNaming:
+    active: true
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false # GameRepository/ScenarioStore capturan Exception a propósito
