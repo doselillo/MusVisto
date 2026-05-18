@@ -595,27 +595,35 @@ class MusGameLogic constructor(private val random: Random){
         )
     }
 
-    // En MusGameLogic.kt
-// Reemplaza la función endLanceAndAdvance
+    /**
+     * Cierra el lance actual y prepara el siguiente. Orquesta tres
+     * responsabilidades, ahora separadas en funciones nombradas:
+     * 1) registrar el resultado del lance, 2) calcular la fase siguiente,
+     * 3) resetear turno/apuesta/acciones para el lance nuevo.
+     */
     private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
-        var updatedState = currentState.updates()
+        val withResult = recordLanceResult(currentState.updates())
+        val nextPhase = advanceToNextPhase(withResult.gamePhase)
+        return resetForNextLance(withResult, nextPhase)
+    }
 
-        // Guardamos el resultado del lance que acaba de terminar
+    /** Añade a `roundHistory` el resultado del lance que acaba de cerrarse. */
+    private fun recordLanceResult(state: GameState): GameState {
         val lanceResult = when {
-            updatedState.currentBet != null && updatedState.agreedBets.containsKey(updatedState.gamePhase) ->
-                LanceResult(updatedState.gamePhase, "Querido", updatedState.currentBet.amount)
-            updatedState.currentBet != null ->
-                LanceResult(updatedState.gamePhase, "No Querido") // Ya no necesitamos guardar los puntos aquí
-            else -> LanceResult(updatedState.gamePhase, "Paso")
+            state.currentBet != null && state.agreedBets.containsKey(state.gamePhase) ->
+                LanceResult(state.gamePhase, "Querido", state.currentBet.amount)
+            state.currentBet != null ->
+                LanceResult(state.gamePhase, "No Querido")
+            else -> LanceResult(state.gamePhase, "Paso")
         }
-        updatedState = updatedState.copy(roundHistory = updatedState.roundHistory + lanceResult)
+        return state.copy(roundHistory = state.roundHistory + lanceResult)
+    }
 
-        val nextPhase = advanceToNextPhase(updatedState.gamePhase)
-
-        // Preparamos el estado para el siguiente lance
-        return updatedState.copy(
+    /** Resetea turno (a la mano), apuesta y acciones disponibles para `nextPhase`. */
+    private fun resetForNextLance(state: GameState, nextPhase: GamePhase): GameState =
+        state.copy(
             gamePhase = nextPhase,
-            currentTurnPlayerId = updatedState.manoPlayerId,
+            currentTurnPlayerId = state.manoPlayerId,
             playersWhoPassed = emptySet(),
             currentBet = null,
             isNewLance = true,
@@ -624,7 +632,6 @@ class MusGameLogic constructor(private val random: Random){
             availableActions = if (nextPhase == GamePhase.PARES_CHECK || nextPhase == GamePhase.JUEGO_CHECK) emptyList()
             else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
-    }
 
 
     private fun advanceToNextPhase(currentPhase: GamePhase): GamePhase {
