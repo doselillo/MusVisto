@@ -521,7 +521,8 @@ class AILogic constructor(
         // Regla dura: 31 obliga a descartar — tira la de menor baseRank para
         // preservar Grande (Rey/Tres) y Chica (As/Dos).
         if (juegoValue == 31) {
-            val cardToDiscard = hand.minByOrNull { baseRank(it.rank) }!!
+            // hand no vacía (guard arriba); ?: por robustez ante refactor.
+            val cardToDiscard = hand.minByOrNull { baseRank(it.rank) } ?: hand.first()
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
@@ -542,7 +543,7 @@ class AILogic constructor(
 
         // Mus obligatorio: si nada baja del umbral (mano excelente), descarta la peor.
         if (cardsToDiscard.isEmpty()) {
-            val worstCard = hand.minByOrNull { cardScores[it] ?: 0 }!!
+            val worstCard = hand.minByOrNull { cardScores[it] ?: 0 } ?: hand.first()
             Log.d(TAG, "Mus obligatorio: descartando la peor carta: ${cardToShortString(worstCard)}")
             cardsToDiscard = setOf(worstCard)
         }
@@ -693,8 +694,10 @@ class AILogic constructor(
                 explanation.appendLine("     - No Ases/Doses, base = (12 - $minOrderValue) * 4 -> $chicaStrength pts")
             }
         }
-        if (lowCardsCount < 2) {
-            val bestChicaCard = hand.minByOrNull { cardChicaOrderValue(it) }!!
+        // ?: skip del bonus si la mano fuese vacía (no ocurre con el flujo
+        // actual); evita el !! frágil sin alterar el cálculo cuando hay carta.
+        val bestChicaCard = if (lowCardsCount < 2) hand.minByOrNull { cardChicaOrderValue(it) } else null
+        if (bestChicaCard != null) {
             val bonus = ((12 - cardChicaOrderValue(bestChicaCard)) * 1.5).toInt()
             chicaStrength += bonus
             explanation.appendLine("     - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -> +$bonus pts")
