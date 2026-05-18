@@ -23,8 +23,6 @@ class GameViewModel constructor(
     private val gameRepository: GameRepository
 ) : ViewModel() {
 
-    private val manualDealingEnabled = true
-
     private val TAG = "GameViewModelDebug"
 
     private val _gameState = MutableStateFlow(GameState())
@@ -62,42 +60,50 @@ class GameViewModel constructor(
         }
     }
 
-    private fun dealManualHands(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
-        // Define aquí las manos que quieres probar
-        val manualHands = mapOf(
-            "p1" to listOf( // Mano del Jugador Humano
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.AS)
-            ),
-            "p2" to listOf( // Mano del Rival Izquierdo
-                Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.CINCO),
-                Card(Suit.COPAS, Rank.CINCO)
-            ),
-            "p3" to listOf( // Mano del Compañero
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.SOTA),
-                Card(Suit.OROS, Rank.CUATRO)
-            ),
-            "p4" to listOf( // Mano del Rival Derecho
-                Card(Suit.BASTOS, Rank.REY),
-                Card(Suit.BASTOS, Rank.CABALLO),
-                Card(Suit.BASTOS, Rank.CUATRO),
-                Card(Suit.BASTOS, Rank.AS)
-            )
+    private fun defaultPlayers(): List<Player> = listOf(
+        Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
+        Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+        Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
+        Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
+    )
+
+    /**
+     * Arranca una partida de prueba con manos forzadas (panel de debug).
+     *
+     * Reparte las manos exactas del escenario y, salvo que pida arrancar en
+     * MUS, emite un "No hay mus" del mano para aterrizar en GRANDE con las 16
+     * cartas intactas (un solo NoMus cierra el Mus por reglas; no hay descarte
+     * que altere las manos). A partir de ahí el motor es el normal.
+     */
+    fun startScenario(scenario: DebugScenario) {
+        val score = mapOf("teamA" to 0, "teamB" to 0)
+        val players = defaultPlayers().map {
+            it.copy(hand = scenario.hands[it.id] ?: emptyList())
+        }
+        val dealtCards = scenario.hands.values.flatten().toSet()
+        val remainingDeck = gameLogic.createDeck().filter { it !in dealtCards }
+
+        val musState = GameState(
+            players = players,
+            deck = remainingDeck,
+            score = score,
+            manoPlayerId = scenario.manoId,
+            currentTurnPlayerId = scenario.manoId,
+            gamePhase = GamePhase.MUS,
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
 
-        val updatedPlayers = players.map { it.copy(hand = manualHands[it.id] ?: emptyList()) }
-
-        // Eliminamos las cartas repartidas del mazo para que no haya duplicados
-        val dealtCards = manualHands.values.flatten().toSet()
-        val remainingDeck = deck.filter { it !in dealtCards }
-
-        return Pair(updatedPlayers, remainingDeck)
+        if (scenario.startAtMus) {
+            _gameState.value = musState
+        } else {
+            // Un único "No hay mus" del mano cierra el Mus → GRANDE, sin tocar
+            // las manos (handleNoMus no reparte).
+            _gameState.value = gameLogic.processAction(
+                musState, GameAction.NoMus, scenario.manoId
+            )
+        }
+        handleAiTurn()
+        triggerAiGestures()
     }
 
 
@@ -433,14 +439,7 @@ class GameViewModel constructor(
     private fun startNewGame(initialScore: Map<String, Int>?, lastManoPlayerId: String?) {
         val score = initialScore ?: mapOf("teamA" to 0, "teamB" to 0)
 
-        val players = _gameState.value.players.ifEmpty {
-            listOf(
-                Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-                Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-                Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-                Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
-            )
-        }
+        val players = _gameState.value.players.ifEmpty { defaultPlayers() }
 
         val newManoId = if (lastManoPlayerId != null) {
             val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }

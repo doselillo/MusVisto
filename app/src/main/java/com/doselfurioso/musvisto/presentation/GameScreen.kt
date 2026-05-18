@@ -388,6 +388,9 @@ fun GameScreen(
             // Panel flotante de logs de IA — solo se renderiza en builds debug.
             DebugFeatures.AiDebugPanelOverlay(gameViewModel)
 
+            // Selector de escenarios de prueba — solo se renderiza en builds debug.
+            DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
+
             if (gameState.isSelectingBet) {
                 Box(
                     modifier = Modifier
