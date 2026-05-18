@@ -82,10 +82,10 @@ private const val ANNOUNCEMENT_ENTER_MS = 200
 private const val ANNOUNCEMENT_EXIT_MS = 250
 private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 
-// Tope visual del selector de envite. Los envites normales van 2-5; por
-// encima de esto es territorio de órdago (botón aparte, 40). Evita envidar
-// cantidades arbitrarias con el botón "+".
-private const val MAX_BET = 30
+// Tope visual del selector de envite. En el Mus no hay límite real de
+// cuánto se puede envidar; lo acotamos al valor máximo de un juego (40 =
+// órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
+private const val MAX_BET = 40
 
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
