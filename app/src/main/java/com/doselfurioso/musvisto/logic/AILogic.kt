@@ -963,12 +963,32 @@ class AILogic constructor(
         }
 
         logBuilder.appendLine("2. Analyzing Remembered Gestures (Team Strength):")
+        logBuilder.appendLine("   - Own Base -> G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")
 
-        // Empezamos con la fuerza base de la propia IA
+        val teamStrength = mergePartnerGestures(baseStrength, gameState, aiPlayer, logBuilder)
+        if (teamStrength != baseStrength) {
+            logBuilder.appendLine("   -> Consolidated Team Strength -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
+        }
+
+        val finalAdjustedStrength =
+            applyOpponentGestures(teamStrength, baseStrength, gameState, aiPlayer, logBuilder)
+
+        if (finalAdjustedStrength != baseStrength) {
+            logBuilder.appendLine("   -> Final Adjusted Strength -> G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")
+        } else {
+            logBuilder.appendLine("   -> Strength not adjusted by gestures.")
+        }
+        return finalAdjustedStrength
+    }
+
+    /** Consolida la fuerza del equipo con las señas conocidas del COMPAÑERO. */
+    private fun mergePartnerGestures(
+        baseStrength: HandStrength,
+        gameState: GameState,
+        aiPlayer: Player,
+        logBuilder: DecisionLog
+    ): HandStrength {
         var teamStrength = baseStrength
-        logBuilder.appendLine("   - Own Base -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
-
-        // Primero, consolidamos la fuerza con las señas del compañero
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team == aiPlayer.team && gesturer.id != aiPlayer.id) {
@@ -1008,13 +1028,17 @@ class AILogic constructor(
                 }
             }
         }
+        return teamStrength
+    }
 
-        if(teamStrength != baseStrength){
-            logBuilder.appendLine("   -> Consolidated Team Strength -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
-        }
-
-
-        // Ahora, ajustamos la fuerza del equipo con las señas de los oponentes
+    /** Ajusta la fuerza con las señas RIVALES interceptadas (defensivo, #7/#9). */
+    private fun applyOpponentGestures(
+        teamStrength: HandStrength,
+        baseStrength: HandStrength,
+        gameState: GameState,
+        aiPlayer: Player,
+        logBuilder: DecisionLog
+    ): HandStrength {
         var finalAdjustedStrength = teamStrength
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
@@ -1041,6 +1065,9 @@ class AILogic constructor(
                     }
                     is GestureMeaning.Ciega -> {
                         logBuilder.appendLine("     -> Opponent is weak. Increasing Grande/Chica confidence.")
+                        // Intencional: usa el snapshot post-merge (`teamStrength`),
+                        // NO `finalAdjustedStrength` (acumulado). Igualaba el
+                        // monolito; no cambiar a finalAdjustedStrength.
                         finalAdjustedStrength = finalAdjustedStrength.copy(
                             grande = (teamStrength.grande + 15).coerceIn(0, 100),
                             chica = (teamStrength.chica + 15).coerceIn(0, 100)
@@ -1067,12 +1094,6 @@ class AILogic constructor(
                     logBuilder.appendLine("     -> Rival más fuerte en Chica (seña $oppC > mi ${baseStrength.chica}): mi Chica -> $c")
                 }
             }
-        }
-
-        if (finalAdjustedStrength != baseStrength) {
-            logBuilder.appendLine("   -> Final Adjusted Strength -> G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")
-        } else {
-            logBuilder.appendLine("   -> Strength not adjusted by gestures.")
         }
         return finalAdjustedStrength
     }

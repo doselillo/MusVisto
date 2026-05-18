@@ -3,21 +3,16 @@
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
-    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideInitialBet( strength: Int, aiPlayer: Player, gameState: GameState ): Pair&lt;GameAction, String&gt;</ID>
     <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideResponse( adjustedStrength: Int, gameState: GameState, aiPlayer: Player ): GameAction</ID>
-    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun evaluateHand(hand: List&lt;Card&gt;, player: Player, gameState: GameState): EvaluationResult</ID>
     <ID>CyclomaticComplexMethod:CardMapper.kt$@Composable fun cardToPainter(card: Card): Painter</ID>
     <ID>CyclomaticComplexMethod:GameScreen.kt$@Composable fun LanceTracker( currentPhase: GamePhase, history: List&lt;LanceResult&gt;, isPuntoPhase: Boolean, currentBet: BetInfo?, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
-    <ID>CyclomaticComplexMethod:GameScreen.kt$@SuppressLint("UnusedBoxWithConstraintsScope") @Composable fun GameScreen( gameViewModel: GameViewModel, navController: NavController )</ID>
     <ID>CyclomaticComplexMethod:GameViewModel.kt$GameViewModel$fun onAction(action: GameAction, playerId: String)</ID>
     <ID>CyclomaticComplexMethod:MusGameLogic.kt$MusGameLogic$fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState</ID>
     <ID>CyclomaticComplexMethod:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
     <ID>LargeClass:AILogic.kt$AILogic</ID>
     <ID>LargeClass:MusGameLogic.kt$MusGameLogic</ID>
     <ID>LongMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
-    <ID>LongMethod:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
-    <ID>LongMethod:AILogic.kt$AILogic$private fun evaluateHand(hand: List&lt;Card&gt;, player: Player, gameState: GameState): EvaluationResult</ID>
     <ID>LongMethod:GameScreen.kt$@Composable fun ActionButtons( actions: List&lt;GameAction&gt;, gamePhase: GamePhase, // &lt;-- Necesitamos saber la fase actual onActionClick: (GameAction, String) -&gt; Unit, selectedCardCount: Int, isEnabled: Boolean, currentPlayerId: String, isRaise: Boolean, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
     <ID>LongMethod:GameScreen.kt$@Composable private fun PlayerAvatar( player: Player, isCurrentTurn: Boolean, // This will control the glow modifier: Modifier = Modifier, isMano: Boolean, hasCutMus: Boolean, activeGestureResId: Int?, discardCount: Int? = null, dimens: ResponsiveDimens )</ID>
     <ID>LongMethod:GameScreen.kt$@SuppressLint("UnusedBoxWithConstraintsScope") @Composable fun GameScreen( gameViewModel: GameViewModel, navController: NavController )</ID>
@@ -113,7 +108,6 @@
     <ID>MagicNumber:MainMenuScreen.kt$0.7f</ID>
     <ID>MagicNumber:MainMenuScreen.kt$0xFF006A4E</ID>
     <ID>MagicNumber:MainMenuScreen.kt$0xFF6A994E</ID>
-    <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$13</ID>
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$31</ID>
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$32</ID>
     <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$40</ID>
@@ -133,7 +127,7 @@
     <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.juego &gt;= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} &gt;= threshold $juegoCutThreshold (manoBias $manoBias)")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.pares &gt;= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} &gt;= threshold $paresCutThreshold (manoBias $manoBias)")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" - (Defensive) Seña de ${gesturer.name} NO interceptada por ${aiPlayer.name}.")</ID>
-    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" - Own Base -&gt; G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" - Own Base -&gt; G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Consolidated Team Strength -&gt; G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Final Adjusted Strength -&gt; G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")</ID>
     <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Opponent's Pares are stronger. Reducing team Pares confidence to 0.")</ID>
@@ -182,7 +176,6 @@
     <ID>MaxLineLength:GameViewModel.kt$GameViewModel$Log.e("GameViewModel", "AI LOGIC ERROR: AI decided to discard 0 cards. Forcing discard of 1 to prevent hang.")</ID>
     <ID>MaxLineLength:GameViewModel.kt$GameViewModel$if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return</ID>
     <ID>MaxLineLength:GameViewModel.kt$GameViewModel$val winner = if (newScore["teamA"]!! &gt;= scoreToWin) "teamA" else if (newScore["teamB"]!! &gt;= scoreToWin) "teamB" else null</ID>
-    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$// Si después de comparar las 4 cartas son idénticas, entonces gana el que esté antes en el turno (el "winner" actual)</ID>
     <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$GamePhase.JUEGO -&gt; if (!currentState.isPuntoPhase &amp;&amp; getHandJuegoValue(player.hand) &lt; 31) return handlePaso(currentState, playerId)</ID>
     <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")</ID>
     <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")</ID>
@@ -199,7 +192,8 @@
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))</ID>
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith31 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))) // 31</ID>
     <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith32 = players[1].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))) // 32</ID>
-    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun adjustStrengthsBasedOnKnownGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
+    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun applyOpponentGestures( teamStrength: HandStrength, baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
+    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun mergePartnerGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
     <ID>NestedBlockDepth:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
     <ID>NewLineAtEndOfFile:AILogicTest.kt$com.doselfurioso.musvisto.logic.AILogicTest.kt</ID>
     <ID>NewLineAtEndOfFile:CardMapper.kt$com.doselfurioso.musvisto.presentation.CardMapper.kt</ID>
