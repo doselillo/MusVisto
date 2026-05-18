@@ -221,6 +221,9 @@ class AILogic constructor(
                     ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
             }
             else -> {
+                // Intencional: en APERTURA el `else` cae a juego (la rama
+                // else de fase aquí es JUEGO). En decideBettingResponse el
+                // `else` es 0 (allí puede haber fases sin lance). NO unificar.
                 val strengthForLance = when(gameState.gamePhase) {
                     GamePhase.GRANDE -> finalStrength.grande
                     GamePhase.CHICA -> finalStrength.chica
