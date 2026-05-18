@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.doselfurioso.musvisto.R
-import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
 import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.BetInfo
@@ -118,7 +117,6 @@ fun GameScreen(
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
-    val gameLogic: MusGameLogic = gameViewModel.gameLogic
 
     BoxWithConstraints(
         modifier = Modifier
@@ -171,19 +169,8 @@ fun GameScreen(
             val rivalRight = players[3]
 
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
-            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
-            val actionsForUi = if (currentPlayer?.id == gameViewModel.humanPlayerId) {
-                val playerHand = currentPlayer.hand
-                when (gameState.gamePhase) {
-                    GamePhase.PARES ->
-                        if (gameLogic.getHandPares(playerHand).strength > 0) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    GamePhase.JUEGO ->
-                        if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) >= 31) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    else -> gameState.availableActions
-                }
-            } else gameState.availableActions
+            // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
+            // ActionButtons usa `gameState.availableActions` directamente.)
 
             // ── CAPA 1: el layout real (Column con pesos) ──
             Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
