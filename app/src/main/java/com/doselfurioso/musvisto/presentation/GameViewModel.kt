@@ -16,10 +16,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-// #20 (pieza C): tiempo que la seña permanece visible en pantalla. 1.5 s para
-// que un HUMANO pueda leerla (antes 300 ms, ilegible). No afecta a la IA ni a
-// la interceptación rival (opponentSignPerceived no usa la duración visual).
-private const val GESTURE_VISIBLE_MS = 1500L
+// #20 (pieza C): visibilidad de la seña en pantalla, ASIMÉTRICA. Solo la del
+// COMPAÑERO del humano dura 1.5 s (para que él la lea y decida el corte que se
+// le delega). La del RIVAL (y la propia) vuelve al flash corto de antes: si
+// durara 1.5 s el humano interceptaría señas rivales gratis, rompiendo el
+// balance (la IA solo intercepta al 20%, opponentSignPerceived). No afecta a
+// la IA ni a esa interceptación (no usan la duración visual).
+private const val GESTURE_VISIBLE_PARTNER_MS = 1500L
+private const val GESTURE_VISIBLE_OTHER_MS = 300L
 
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
@@ -162,10 +166,11 @@ class GameViewModel constructor(
                 )
 
                 // --- TEMPORIZADOR PARA LA PARTE VISUAL ---
-                // #20 (pieza C): visible GESTURE_VISIBLE_MS para que un HUMANO
-                // pueda leerla; la IA la recuerda en 'knownGestures' aparte.
+                // #20 (pieza C): el compañero del humano dura 1.5 s (legible);
+                // rival/propia, flash corto. La IA la recuerda en
+                // 'knownGestures' aparte (no depende de esta duración).
                 viewModelScope.launch {
-                    delay(GESTURE_VISIBLE_MS)
+                    delay(gestureVisibleMs(playerId))
                     // Solo borra la seña si sigue siendo la misma que se activó
                     if (_gameState.value.activeGesture == newGesture) {
                         _gameState.value = _gameState.value.copy(activeGesture = null)
@@ -537,6 +542,21 @@ class GameViewModel constructor(
         return null
     }
 
+    /**
+     * #20 (pieza C): cuánto dura visible en pantalla la seña de [signalerId].
+     * Solo la del COMPAÑERO del humano es legible (1.5 s, para que decida el
+     * corte que se le delega); la del rival y la propia, flash corto, para que
+     * el humano no intercepte señas rivales gratis (la IA solo al 20%).
+     */
+    private fun gestureVisibleMs(signalerId: String): Long {
+        val players = _gameState.value.players
+        val humanTeam = players.find { it.id == humanPlayerId }?.team
+        val signaler = players.find { it.id == signalerId }
+        val isHumanPartner = humanTeam != null && signaler != null &&
+            signaler.id != humanPlayerId && signaler.team == humanTeam
+        return if (isHumanPartner) GESTURE_VISIBLE_PARTNER_MS else GESTURE_VISIBLE_OTHER_MS
+    }
+
     private fun triggerAiGestures() {
         viewModelScope.launch {
             // Esperamos un poco para que no sea instantáneo
@@ -566,11 +586,12 @@ class GameViewModel constructor(
                     determineGesture(player) != null
                 if (willSignal) {
                     onAction(GameAction.ShowGesture, signalerId)
-                    // Esperar a que la seña agote su ventana visible: si la
-                    // siguiente llegara antes (delay < GESTURE_VISIBLE_MS)
-                    // pisaría a la anterior y se vería solo un flash (el bug
-                    // que la pieza C arregla quedaría sin efecto en cadenas).
-                    delay(GESTURE_VISIBLE_MS)
+                    // Esperar a que ESTA seña agote su ventana visible para
+                    // que la siguiente no la pise. Es la duración propia del
+                    // emisor (compañero del humano = 1.5 s; rival = flash), así
+                    // una cadena de señas rivales no retrasa 1.5 s la del
+                    // compañero (era el "tarda un poco" del playtest).
+                    delay(gestureVisibleMs(signalerId))
                     awaitNotPaused()
                 }
             }
