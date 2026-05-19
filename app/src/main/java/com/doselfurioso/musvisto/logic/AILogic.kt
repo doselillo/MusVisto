@@ -1200,7 +1200,7 @@ class AILogic constructor(
     // que podrían rebajar la jugada real para Grande.
     internal fun partnerGrandeBoost(gestureResId: Int): Int = when (gestureResId) {
         R.drawable.reyes_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
-        R.drawable.sena_31 -> 70   // 31 implica figuras pero no necesariamente Reyes
+        R.drawable.sena_31 -> 35   // #14: 31 da figuras pero 0-1 Reyes modal; señal Grande débil
         R.drawable.reyes_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
         R.drawable.duples_altos -> 78  // #23: 2 reyes garantizados sin riesgo de descarte; entre reyes_2 y reyes_3
         else -> 0

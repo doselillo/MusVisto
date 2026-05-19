@@ -515,8 +515,10 @@ class AILogicTest {
     }
 
     @Test
-    fun `partnerGrandeBoost - sena_31 implies figures, gets moderate boost`() {
-        assertEquals(70, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
+    fun `partnerGrandeBoost - sena_31 weak Grande signal (0-1 reyes modal), low boost`() {
+        // #14: bajado 70 -> 35; un 31 no implica Reyes, queda por debajo de
+        // reyes_2=65 (par confirmado) y del umbral de apoyo de Grande.
+        assertEquals(35, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
     }
 
     @Test
