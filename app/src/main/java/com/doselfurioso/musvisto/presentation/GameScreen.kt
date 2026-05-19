@@ -81,6 +81,10 @@ private const val ANNOUNCEMENT_ENTER_MS = 200
 private const val ANNOUNCEMENT_EXIT_MS = 250
 private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 
+// #15: alfa del avatar de quien NO juega el lance actual (PARES/JUEGO sin
+// pares/juego). Atenuado, no oculto: sigue ahí pero claramente fuera.
+private const val DIMMED_AVATAR_ALPHA = 0.4f
+
 // Tope visual del selector de envite. En el Mus no hay límite real de
 // cuánto se puede envidar; lo acotamos al valor máximo de un juego (40 =
 // órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
@@ -706,6 +710,39 @@ private fun GameCard(
     )
 }
 
+/**
+ * #15: ¿el jugador participa en el lance que se está jugando ahora? Solo
+ * PARES/JUEGO tienen subconjunto (no todos tienen pares/juego); el resto de
+ * fases `playersInLance` = todos o vacío -> nadie se atenúa. En *_CHECK el
+ * subconjunto aún no está fijado, así que no atenuamos hasta tenerlo.
+ */
+private fun isPlayerInActiveLance(gameState: GameState, playerId: String): Boolean =
+    when (gameState.gamePhase) {
+        GamePhase.PARES, GamePhase.JUEGO ->
+            gameState.playersInLance.isEmpty() || playerId in gameState.playersInLance
+        else -> true
+    }
+
+/** Icono pequeño superpuesto en una esquina del avatar (mano / corta-mus). */
+@Composable
+private fun BoxScope.AvatarCornerIcon(
+    iconResId: Int,
+    description: String,
+    alignment: Alignment,
+    dimens: ResponsiveDimens
+) {
+    Icon(
+        painter = painterResource(id = iconResId),
+        contentDescription = description,
+        tint = Color.White,
+        modifier = Modifier
+            .align(alignment)
+            .size(dimens.avatarSize / 3)
+            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+            .padding(4.dp)
+    )
+}
+
 @Composable
 private fun PlayerAvatar(
     player: Player,
@@ -715,10 +752,10 @@ private fun PlayerAvatar(
     hasCutMus: Boolean,
     activeGestureResId: Int?,
     discardCount: Int? = null,
+    isInLance: Boolean = true,
     dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
-
 
     Box(
         modifier = modifier.size(dimens.avatarSize),
@@ -729,6 +766,7 @@ private fun PlayerAvatar(
             contentDescription = "Avatar of ${player.name}",
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = if (isInLance) 1f else DIMMED_AVATAR_ALPHA }
                 .clip(CircleShape)
                 .border(4.dp, borderColor, CircleShape)
         )
@@ -750,32 +788,12 @@ private fun PlayerAvatar(
             }
         }
 
-
-        // Si el jugador es "mano", mostramos el icono superpuesto.
+        // Iconos de esquina: mano (abajo-dcha) y corta-mus (abajo-izda).
         if (isMano) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_mano),
-                contentDescription = "Indicador de Mano",
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(dimens.avatarSize / 3)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .padding(4.dp)
-            )
+            AvatarCornerIcon(R.drawable.ic_mano, "Indicador de Mano", Alignment.BottomEnd, dimens)
         }
-
         if (hasCutMus) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_cut),
-                contentDescription = "Indicador de Corta Mus",
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .size(dimens.avatarSize / 3)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .padding(4.dp)
-            )
+            AvatarCornerIcon(R.drawable.ic_cut, "Indicador de Corta Mus", Alignment.BottomStart, dimens)
         }
 
         // Badge de descarte: cuántas cartas cambió este jugador en el ciclo
@@ -1059,7 +1077,8 @@ fun VerticalPlayerArea(
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
             activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
-            discardCount = gameState.discardCounts[player.id])
+            discardCount = gameState.discardCounts[player.id],
+            isInLance = isPlayerInActiveLance(gameState, player.id))
         handContent()
     }
 }
@@ -1100,7 +1119,17 @@ fun HorizontalPlayerArea(
                     ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
                 }
             }
-            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null, discardCount = gameState.discardCounts[player.id])
+            PlayerAvatar(
+                player = player,
+                isCurrentTurn = isCurrentTurn,
+                isMano = isMano,
+                hasCutMus = hasCutMus,
+                dimens = dimens,
+                activeGestureResId =
+                    if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+                discardCount = gameState.discardCounts[player.id],
+                isInLance = isPlayerInActiveLance(gameState, player.id)
+            )
             if (!announcementAbove) {
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
