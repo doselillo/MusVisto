@@ -307,6 +307,25 @@ object DebugScenarios {
                 "p4" to listOf(c(Suit.BASTOS, Rank.REY), c(Suit.BASTOS, Rank.CABALLO), c(Suit.BASTOS, Rank.SOTA), c(Suit.BASTOS, Rank.CUATRO))
             ),
             manoId = "p1"
+        ),
+        DebugScenario(
+            // #20 humano-capitán: mano = p3 (tu pareja IA) -> orden de turno
+            // [p3, p4, p1, p2], así p1 (tú) actúas DESPUÉS que p3 = eres el
+            // CAPITÁN de tu pareja. p3 lleva 3 Reyes (premium, cortaría el Mus
+            // normalmente y seña reyes_3): con #20 NO corta, te delega el
+            // corte y te pasa la seña (visible 1.5s). Tu mano es floja a
+            // propósito: la decisión de cortar depende de leer la seña de p3.
+            // ~12% de las veces p3 cortará igual (estrategia mixta anti-patrón)
+            // -> también es comportamiento esperado a observar.
+            name = "#20 Humano capitán: IA-primero (p3) delega el corte",
+            hands = mapOf(
+                "p3" to listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY), c(Suit.ESPADAS, Rank.REY), c(Suit.BASTOS, Rank.SOTA)),
+                "p1" to listOf(c(Suit.OROS, Rank.SOTA), c(Suit.COPAS, Rank.SIETE), c(Suit.ESPADAS, Rank.SEIS), c(Suit.BASTOS, Rank.CUATRO)),
+                "p4" to listOf(c(Suit.OROS, Rank.CABALLO), c(Suit.COPAS, Rank.CINCO), c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.DOS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.CABALLO), c(Suit.ESPADAS, Rank.SOTA), c(Suit.OROS, Rank.TRES), c(Suit.BASTOS, Rank.AS))
+            ),
+            manoId = "p3",
+            startAtMus = true
         )
     )
 }
