@@ -36,6 +36,19 @@ private const val MUS_CUT_PARES_JUEGO = 75
 private const val MUS_CUT_GRANDE_CHICA = 85
 // Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
 private const val PARTNER_MANO_MUS_BIAS = 10
+// #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero, le delego
+// el corte (es el capitán). Sesgo a pedir Mus subiendo el umbral de corte.
+private const val MUS_DELEGATION_BIAS = 8
+// Capitán = IA: las manos premium (nuts) las corto yo igualmente, no se
+// delegan (válvula EV: delegar la nuts y que el capitán dé Mus tira un
+// ganador). No aplica si el capitán es humano (su experiencia prima).
+private const val MUS_NUTS_FLOOR = 90
+// Capitán = humano: delegación dura (no corto), PERO estrategia mixta
+// anti-lectura: de vez en cuando, con jugada buena, corto igual para que el
+// rival no cante el patrón "el primero nunca corta". % y suelo provisionales,
+// a afinar con simulador/playtest (no fijar a ojo).
+private const val MUS_DELEGATION_BREAK_PCT = 12
+private const val MUS_DELEGATION_BREAK_FLOOR = 70
 // Apertura de envite por bandas: > fuerte = valor seguro; [piso..fuerte] =
 // banda media probabilística; < piso = solo farol de robo.
 private const val OPEN_STRONG_VALUE = 78
@@ -434,10 +447,23 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
-        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
-        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
-        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
+        // Capitanía delegada (#20): el corte del Mus lo lidera el CAPITÁN (el
+        // que actúa DESPUÉS). Si actúo ANTES, le delego el corte. El override
+        // resuelve los casos de delegación; null = seguir con los umbrales.
+        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
+        val partnerIsAi = partner?.isAi == true
+        val bestStrength = maxOf(strength.pares, strength.juego, strength.grande, strength.chica)
+        decideMusDelegation(iActBeforePartner, partnerIsAi, bestStrength)?.let { return it }
+
+        // Capitán-IA con mano no-premium: delego la banda media subiendo el
+        // umbral. Si soy el capitán (actúo después) bias = 0 -> lógica de
+        // siempre (comportamiento-cero para el capitán).
+        val delegationBias = if (iActBeforePartner) MUS_DELEGATION_BIAS else 0
+
+        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias + delegationBias
+        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias + delegationBias
+        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias + delegationBias
+        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias + delegationBias
 
         if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
         if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
@@ -450,6 +476,53 @@ class AILogic constructor(
             "Reason: No strength exceeds thresholds to cut mus"
         }
         return Pair(GameAction.Mus, musReason)
+    }
+
+    /** ¿Actúo ANTES que mi compañero en el turno? (capitán = el de después). */
+    private fun actsBeforePartner(
+        gameState: GameState,
+        aiPlayer: Player,
+        partner: Player?
+    ): Boolean {
+        partner ?: return false
+        val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val myPos = order.indexOfFirst { it.id == aiPlayer.id }
+        val partnerPos = order.indexOfFirst { it.id == partner.id }
+        return myPos >= 0 && partnerPos >= 0 && myPos < partnerPos
+    }
+
+    /**
+     * Override de corte por capitanía delegada (#20). Si actúo antes que mi
+     * compañero le delego el corte; devuelve la decisión o null si no aplica
+     * (entonces decideMus sigue con los umbrales, con delegationBias si toca).
+     * - Capitán humano: delegación dura (no corto, ve mi seña y decide él);
+     *   estrategia mixta: a veces con jugada buena corto, para no cantar el
+     *   patrón "el primero nunca corta".
+     * - Capitán IA: la nuts la corto yo igual (válvula EV).
+     *
+     * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
+     * esta delegación DEBE quedar deshabilitada — el mus corrido prohíbe señas
+     * y exige decisión de corte individual (determina la mano).
+     */
+    private fun decideMusDelegation(
+        iActBeforePartner: Boolean,
+        partnerIsAi: Boolean,
+        bestStrength: Int
+    ): Pair<GameAction, String>? {
+        if (!iActBeforePartner) return null
+        return if (!partnerIsAi) {
+            val breakIt = bestStrength >= MUS_DELEGATION_BREAK_FLOOR &&
+                rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT
+            if (breakIt) {
+                GameAction.NoMus to "Reason: #20 delegación rota (jugada $bestStrength); capitán humano"
+            } else {
+                GameAction.Mus to "Reason: #20 delego el corte al capitán humano"
+            }
+        } else if (bestStrength >= MUS_NUTS_FLOOR) {
+            GameAction.NoMus to "Reason: #20 nuts $bestStrength >= $MUS_NUTS_FLOOR; corto pese a delegar"
+        } else {
+            null
+        }
     }
 
 
