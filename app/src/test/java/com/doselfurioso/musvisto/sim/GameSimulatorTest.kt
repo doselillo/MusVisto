@@ -97,7 +97,9 @@ class GameSimulatorTest {
         val gameLogic = MusGameLogic(rng)
         val aiLogic = AILogic(gameLogic, rng)
         val roster = players()
-        var manoId = roster.first().id
+        // Alternar mano inicial por partida (seed par → p1/teamA, impar → p4/teamB)
+        // para eliminar el bias estructural de "siempre arranca teamA como mano".
+        var manoId = if (seed % 2L == 0L) roster[0].id else roster[1].id
 
         stats.games++
         var state = startRound(gameLogic, roster, manoId, mapOf("teamA" to 0, "teamB" to 0), rng, stats)
