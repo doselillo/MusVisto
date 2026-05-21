@@ -571,14 +571,18 @@ class AILogic constructor(
     }
 
 
-    // Importe de envite sesgado por la fuerza de la jugada: con mano floja
-    // (justo sobre el umbral) envida poco; con mano muy fuerte sube más.
-    // Mantiene aleatoriedad dentro de cada tramo para no ser predecible.
-    private fun betAmount(strength: Int): Int = when {
-        strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
-        strength >= 80 -> rng.nextInt(3, 6)  // 3-5
-        strength >= 70 -> rng.nextInt(2, 5)  // 2-4
-        else -> rng.nextInt(2, 4)            // 2-3: manos justas
+    // Importe de envite. 90% "envido" seco (2): es el default real del Mus,
+    // las subidas son recurso ocasional, no la norma. El 10% restante sí
+    // sube y sigue sesgado por fuerza — una subida a 4-5 sigue siendo
+    // indicador de mano fuerte, pero rara. Calibración por playtest (#11).
+    private fun betAmount(strength: Int): Int {
+        if (rng.nextInt(100) < 90) return 2
+        return when {
+            strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
+            strength >= 80 -> rng.nextInt(3, 6)  // 3-5
+            strength >= 70 -> rng.nextInt(3, 5)  // 3-4
+            else -> 3
+        }
     }
 
     private fun decideInitialBet(
