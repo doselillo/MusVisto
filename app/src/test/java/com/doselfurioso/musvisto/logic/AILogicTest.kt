@@ -88,6 +88,10 @@ class AILogicTest {
     }
 
     // --- TESTS CAPITANÍA DE LANCE (#1/#4: rol de apoyo) ---
+    // Driver de capitanía = POSICIÓN tardía (no quién señaliza). El primero del
+    // equipo cede por norma general; las excepciones son mano propia premium
+    // y capitán fuera de lance restringido. La seña del compañero NO es
+    // requisito (en el modelo el primero es quien señaliza al segundo).
 
     // ai (teamB) primero en turno, mano floja a Juego; compañero (teamB) actúa
     // después y ha señalizado 31. ai debe apoyar: no abre (Paso) aunque la
@@ -144,6 +148,133 @@ class AILogicTest {
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertFalse("Mano propia fuerte no cede la iniciativa", decision.action is GameAction.Paso)
+    }
+
+    // Norma general: el primero del equipo cede al capitán incluso SIN seña
+    // visible del compañero. La capitanía la determina la POSICIÓN, no la
+    // recepción de seña. Mano floja en Grande (mucho 5/4/6), posición temprana
+    // y compañero pos tardía → Paso.
+    @Test
+    fun `support - early weak AI defers by position alone (no partner gesture)`() {
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CINCO),
+            Card(Suit.COPAS, Rank.CUATRO),
+            Card(Suit.ESPADAS, Rank.SEIS),
+            Card(Suit.BASTOS, Rank.CINCO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val gameState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.GRANDE,
+            manoPlayerId = ai.id // ai pos 0, partner pos 2 -> partner es capitán
+            // knownGestures vacío a propósito: el primero apoya por posición
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue("Sin seña, el primero sigue cediendo por posición", decision.action is GameAction.Paso)
+    }
+
+    // Excepción: en lance restringido (Pares/Juego sin Punto), si el capitán
+    // NO está en el lance y yo SÍ, juego normal (sin freno). Modelo: "capitán
+    // fuera del lance + primero sí → primero sin freno". Como decideInitialBet
+    // es probabilístico en banda media, comparamos los dos escenarios: con
+    // capitán en lance siempre Paso (apoyo determinista); con capitán fuera,
+    // al menos a veces abre (apoyo desactivado, decide solo por strength).
+    @Test
+    fun `support - in Pares does NOT defer when captain is out of lance`() {
+        // Pares de caballos siendo mano: strength ≈ 64 (banda media, p≈0.54).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CABALLO),
+            Card(Suit.COPAS, Rank.CABALLO),
+            Card(Suit.ESPADAS, Rank.SEIS),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val baseState = GameState(
+            players = listOf(ai, opp1, partner, opp2),
+            gamePhase = GamePhase.PARES,
+            manoPlayerId = ai.id // ai pos 0, partner pos 2
+        )
+
+        // Capitán DENTRO del lance: apoyo activo → Paso siempre.
+        val withCaptainIn = baseState.copy(playersInLance = setOf(ai.id, partner.id, opp1.id))
+        repeat(30) {
+            assertTrue(
+                "Con capitán en el lance, el primero apoya (Paso)",
+                aiLogic.makeDecision(withCaptainIn, ai).action is GameAction.Paso
+            )
+        }
+
+        // Capitán FUERA del lance: apoyo desactivado → al menos a veces abre.
+        val withCaptainOut = baseState.copy(playersInLance = setOf(ai.id, opp1.id))
+        val anyOpens = (1..100).any {
+            aiLogic.makeDecision(withCaptainOut, ai).action !is GameAction.Paso
+        }
+        assertTrue(
+            "Sin apoyo (capitán fuera del lance restringido), al menos a veces abre",
+            anyOpens
+        )
+    }
+
+    // Gating por pendingGestures (compañero HUMANO): si NO voy a señalizar,
+    // el partner humano juega a ciegas → no apoyo, juego mi mano normal.
+    @Test
+    fun `support - with HUMAN partner, no signal pending = no support`() {
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CABALLO),
+            Card(Suit.COPAS, Rank.CABALLO),
+            Card(Suit.ESPADAS, Rank.SEIS),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB, AI
+        val humanPartner = Player(id = "human", name = "Yo", team = "teamB", avatarResId = 0, isAi = false)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val stateNoSignal = GameState(
+            players = listOf(ai, opp1, humanPartner, opp2),
+            gamePhase = GamePhase.PARES,
+            manoPlayerId = ai.id,
+            playersInLance = setOf(ai.id, humanPartner.id, opp1.id),
+            pendingGestures = emptyMap() // No voy a señalizar
+        )
+        // Sin seña pendiente → no apoyo → al menos a veces abre.
+        val anyOpens = (1..100).any {
+            aiLogic.makeDecision(stateNoSignal, ai).action !is GameAction.Paso
+        }
+        assertTrue("Sin seña pendiente y partner humano, no apoyo → abre a veces", anyOpens)
+    }
+
+    @Test
+    fun `support - with HUMAN partner, signal pending = supports`() {
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CABALLO),
+            Card(Suit.COPAS, Rank.CABALLO),
+            Card(Suit.ESPADAS, Rank.SEIS),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val humanPartner = Player(id = "human", name = "Yo", team = "teamB", avatarResId = 0, isAi = false)
+        val opp1 = Player(id = "p1", name = "Op1", team = "teamA", avatarResId = 0)
+        val opp2 = Player(id = "p2", name = "Op2", team = "teamA", avatarResId = 0)
+        val stateWithSignal = GameState(
+            players = listOf(ai, opp1, humanPartner, opp2),
+            gamePhase = GamePhase.PARES,
+            manoPlayerId = ai.id,
+            playersInLance = setOf(ai.id, humanPartner.id, opp1.id),
+            pendingGestures = mapOf(ai.id to R.drawable.reyes_2) // Voy a señalizar
+        )
+        // Con seña pendiente → apoyo → Paso siempre.
+        repeat(30) {
+            assertTrue(
+                "Con seña pendiente y partner humano, apoyo (Paso)",
+                aiLogic.makeDecision(stateWithSignal, ai).action is GameAction.Paso
+            )
+        }
     }
 
     // --- TESTS 31 EN POSTRE ANTE ENVITE A JUEGO ---

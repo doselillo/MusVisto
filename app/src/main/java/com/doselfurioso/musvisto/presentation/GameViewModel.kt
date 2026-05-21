@@ -25,6 +25,17 @@ import kotlinx.coroutines.launch
 private const val GESTURE_VISIBLE_PARTNER_MS = 1500L
 private const val GESTURE_VISIBLE_OTHER_MS = 300L
 
+// #20 (delegación): probabilidad de que la IA marque pasar seña al entrar al
+// Mus. La seña es la puerta tanto del apoyo en envites como de la delegación
+// del corte de Mus (AILogic.decideMusDelegation). Con partner humano ~máxima
+// — sin seña el humano juega a ciegas y la delegación pierde sentido. Con
+// partner IA antes era 0.70 (cuando la delegación de corte estaba acotada a
+// humano-only); ahora 0.90: la delegación IA↔IA está activa y un 70% dejaba
+// demasiados casos donde el primero IA cortaba con buena mano por no haber
+// señalizado.
+private const val PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
+private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
+
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
     private val aiLogic: AILogic,
@@ -102,7 +113,7 @@ class GameViewModel constructor(
         )
 
         if (scenario.startAtMus) {
-            _gameState.value = musState
+            _gameState.value = onEnterMusPhase(musState)
         } else {
             // Un único "No hay mus" del mano cierra el Mus → GRANDE, sin tocar
             // las manos (handleNoMus no reparte).
@@ -394,6 +405,15 @@ class GameViewModel constructor(
                 _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
             }
 
+            // Re-entrada a MUS (tras descartar): popular pendingGestures y
+            // disparar señas. Antes este 2º Mus no señalizaba — la corrutina
+            // de gestures solo arrancaba en debugScenario/startNewRound — y
+            // el humano jugaba sin info en los Mus subsiguientes.
+            if (phaseChanged && _gameState.value.gamePhase == GamePhase.MUS) {
+                _gameState.value = onEnterMusPhase(_gameState.value)
+                triggerAiGestures()
+            }
+
             // Continuamos con el lance actual.
             val currentState = _gameState.value
             if (currentState.gamePhase == GamePhase.PARES_CHECK || currentState.gamePhase == GamePhase.JUEGO_CHECK) {
@@ -460,14 +480,16 @@ class GameViewModel constructor(
 
         val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
 
-        _gameState.value = GameState(
-            players = updatedPlayers,
-            deck = remainingDeck,
-            score = score,
-            manoPlayerId = newManoId,
-            currentTurnPlayerId = newManoId,
-            gamePhase = GamePhase.MUS,
-            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        _gameState.value = onEnterMusPhase(
+            GameState(
+                players = updatedPlayers,
+                deck = remainingDeck,
+                score = score,
+                manoPlayerId = newManoId,
+                currentTurnPlayerId = newManoId,
+                gamePhase = GamePhase.MUS,
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            )
         )
 
         handleAiTurn()
@@ -557,6 +579,30 @@ class GameViewModel constructor(
         return if (isHumanPartner) GESTURE_VISIBLE_PARTNER_MS else GESTURE_VISIBLE_OTHER_MS
     }
 
+    /**
+     * Asigna `pendingGestures` al entrar a la fase MUS. Para cada IA con
+     * compañero: si `determineGesture` devuelve algo, tirada según
+     * `isHumanPartner` (95%) o IA-IA (70%) para decidir si la pasa.
+     * AILogic lee este map para gatear delegación/apoyo: si NO voy a
+     * señalizar, juego mi mano normal (el partner —especialmente humano—
+     * no tendrá info que use). Coherencia entre AILogic y
+     * triggerAiGestures (corrutinas separadas) garantizada al leer ambas
+     * del mismo state.
+     */
+    private fun onEnterMusPhase(state: GameState): GameState {
+        val humanTeam = state.players.find { it.id == humanPlayerId }?.team
+        val pending = state.players.filter { ai ->
+            ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }
+        }.mapNotNull { ai ->
+            val gesture = determineGesture(ai) ?: return@mapNotNull null
+            val isHumanPartner = humanTeam != null && ai.team == humanTeam
+            val prob = if (isHumanPartner) PENDING_GESTURE_PROB_HUMAN_PARTNER
+                       else PENDING_GESTURE_PROB_AI_PARTNER
+            if (kotlin.random.Random.nextFloat() < prob) ai.id to gesture else null
+        }.toMap()
+        return state.copy(pendingGestures = pending)
+    }
+
     private fun triggerAiGestures() {
         viewModelScope.launch {
             // Esperamos un poco para que no sea instantáneo
@@ -568,11 +614,10 @@ class GameViewModel constructor(
             // primero le delega; antes solo se emitía IA->IA y el humano
             // jugaba a ciegas. La interceptación rival (opponentSignPerceived,
             // prob 0.20 fija) NO depende de esto, así que no añade exposición.
-            val signalerIds = _gameState.value.players.filter { aiPlayer ->
-                aiPlayer.isAi && _gameState.value.players.any { partner ->
-                    partner.id != aiPlayer.id && partner.team == aiPlayer.team
-                }
-            }.map { it.id }
+            // Lectura de `pendingGestures` (no tirada local): asegura que
+            // AILogic.decideMusDelegation y esta corrutina ven la MISMA
+            // decisión "voy a señalizar".
+            val signalerIds = _gameState.value.pendingGestures.keys.toList()
 
             for (signalerId in signalerIds) {
                 // La seña solo tiene sentido en MUS; tras los delay la fase o
@@ -580,20 +625,16 @@ class GameViewModel constructor(
                 // fresco (no una copia stale): el humano decidirá su corte con
                 // lo que vea, debe reflejar fase y mano reales.
                 if (_gameState.value.gamePhase != GamePhase.MUS) return@launch
-                val player = _gameState.value.players.find { it.id == signalerId }
-                val willSignal = player != null &&
-                    kotlin.random.Random.nextFloat() < 0.70f &&
-                    determineGesture(player) != null
-                if (willSignal) {
-                    onAction(GameAction.ShowGesture, signalerId)
-                    // Esperar a que ESTA seña agote su ventana visible para
-                    // que la siguiente no la pise. Es la duración propia del
-                    // emisor (compañero del humano = 1.5 s; rival = flash), así
-                    // una cadena de señas rivales no retrasa 1.5 s la del
-                    // compañero (era el "tarda un poco" del playtest).
-                    delay(gestureVisibleMs(signalerId))
-                    awaitNotPaused()
-                }
+                // Solo si SIGUE en pendingGestures (no se canceló por refresh).
+                if (signalerId !in _gameState.value.pendingGestures) continue
+                onAction(GameAction.ShowGesture, signalerId)
+                // Esperar a que ESTA seña agote su ventana visible para
+                // que la siguiente no la pise. Es la duración propia del
+                // emisor (compañero del humano = 1.5 s; rival = flash), así
+                // una cadena de señas rivales no retrasa 1.5 s la del
+                // compañero (era el "tarda un poco" del playtest).
+                delay(gestureVisibleMs(signalerId))
+                awaitNotPaused()
             }
         }
     }
