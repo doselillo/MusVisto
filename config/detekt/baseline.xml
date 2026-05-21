@@ -1,0 +1,247 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision</ID>
+    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideInitialBet( strength: Int, aiPlayer: Player, gameState: GameState ): Pair&lt;GameAction, String&gt;</ID>
+    <ID>CyclomaticComplexMethod:AILogic.kt$AILogic$private fun decideResponse( adjustedStrength: Int, gameState: GameState, aiPlayer: Player ): GameAction</ID>
+    <ID>CyclomaticComplexMethod:CardMapper.kt$@Composable fun cardToPainter(card: Card): Painter</ID>
+    <ID>CyclomaticComplexMethod:GameScreen.kt$@Composable fun LanceTracker( currentPhase: GamePhase, history: List&lt;LanceResult&gt;, isPuntoPhase: Boolean, currentBet: BetInfo?, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
+    <ID>CyclomaticComplexMethod:GameViewModel.kt$GameViewModel$fun onAction(action: GameAction, playerId: String)</ID>
+    <ID>CyclomaticComplexMethod:MusGameLogic.kt$MusGameLogic$fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState</ID>
+    <ID>CyclomaticComplexMethod:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
+    <ID>LargeClass:AILogic.kt$AILogic</ID>
+    <ID>LargeClass:MusGameLogic.kt$MusGameLogic</ID>
+    <ID>LongMethod:GameScreen.kt$@Composable fun ActionButtons( actions: List&lt;GameAction&gt;, gamePhase: GamePhase, // &lt;-- Necesitamos saber la fase actual onActionClick: (GameAction, String) -&gt; Unit, selectedCardCount: Int, isEnabled: Boolean, currentPlayerId: String, isRaise: Boolean, modifier: Modifier = Modifier, dimens: ResponsiveDimens )</ID>
+    <ID>LongMethod:GameScreen.kt$@Composable private fun PlayerAvatar( player: Player, isCurrentTurn: Boolean, // This will control the glow modifier: Modifier = Modifier, isMano: Boolean, hasCutMus: Boolean, activeGestureResId: Int?, discardCount: Int? = null, dimens: ResponsiveDimens )</ID>
+    <ID>LongMethod:GameScreen.kt$@SuppressLint("UnusedBoxWithConstraintsScope") @Composable fun GameScreen( gameViewModel: GameViewModel, navController: NavController )</ID>
+    <ID>LongMethod:GameViewModel.kt$GameViewModel$fun onAction(action: GameAction, playerId: String)</ID>
+    <ID>LoopWithTooManyJumpStatements:AILogic.kt$AILogic$for</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$0.10</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$0.15</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$0.20</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$0.85</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$1.5</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$10</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$1000</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$1000.0</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$12</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$15</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$165</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$20</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$23.0</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$25</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$27</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$30</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$31</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$32</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$33</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$34</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$35</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$36</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$37</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$38</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$40</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$41</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$44</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$48</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$50</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$52</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$55</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$6</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$60</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$65</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$7</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$70</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$75</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$78</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$8</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$80</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$84</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$85</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$88</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$9</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$90</ID>
+    <ID>MagicNumber:AILogic.kt$AILogic$95</ID>
+    <ID>MagicNumber:GameScreen.kt$0.30f</ID>
+    <ID>MagicNumber:GameScreen.kt$0.70f</ID>
+    <ID>MagicNumber:GameScreen.kt$0.8f</ID>
+    <ID>MagicNumber:GameScreen.kt$0.9f</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFF006A4E</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFF2196F3</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFF2E2E2E</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFF4CAF50</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFF9C27B0</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFFF44336</ID>
+    <ID>MagicNumber:GameScreen.kt$0xFFFFEB3B</ID>
+    <ID>MagicNumber:GameScreen.kt$1.25f</ID>
+    <ID>MagicNumber:GameScreen.kt$1.5f</ID>
+    <ID>MagicNumber:GameScreen.kt$12f</ID>
+    <ID>MagicNumber:GameScreen.kt$13f</ID>
+    <ID>MagicNumber:GameScreen.kt$17f</ID>
+    <ID>MagicNumber:GameScreen.kt$180f</ID>
+    <ID>MagicNumber:GameScreen.kt$22f</ID>
+    <ID>MagicNumber:GameScreen.kt$230f</ID>
+    <ID>MagicNumber:GameScreen.kt$270f</ID>
+    <ID>MagicNumber:GameScreen.kt$3.5f</ID>
+    <ID>MagicNumber:GameScreen.kt$3000</ID>
+    <ID>MagicNumber:GameScreen.kt$31</ID>
+    <ID>MagicNumber:GameScreen.kt$4.5f</ID>
+    <ID>MagicNumber:GameScreen.kt$80f</ID>
+    <ID>MagicNumber:GameScreen.kt$8f</ID>
+    <ID>MagicNumber:GameScreen.kt$90f</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$0.70f</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$1000</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$20</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$2000</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$300</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$31</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$40</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$500</ID>
+    <ID>MagicNumber:GameViewModel.kt$GameViewModel$750</ID>
+    <ID>MagicNumber:GestureScreen.kt$0xFF006A4E</ID>
+    <ID>MagicNumber:GestureScreen.kt$0xFF333333</ID>
+    <ID>MagicNumber:GestureScreen.kt$0xFF666666</ID>
+    <ID>MagicNumber:GestureScreen.kt$0xFFC0A06C</ID>
+    <ID>MagicNumber:GestureScreen.kt$0xFFF0E6D6</ID>
+    <ID>MagicNumber:MainMenuScreen.kt$0.7f</ID>
+    <ID>MagicNumber:MainMenuScreen.kt$0xFF006A4E</ID>
+    <ID>MagicNumber:MainMenuScreen.kt$0xFF6A994E</ID>
+    <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$31</ID>
+    <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$32</ID>
+    <ID>MagicNumber:MusGameLogic.kt$MusGameLogic$40</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance &lt; threshold $threshold)"</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$"&gt;&gt;&gt; FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - 31 sin ser mano, $rivalsAhead rival(es) delante (P perder ${(pLose * 100).toInt()}%) -&gt; -$posPenalty pts")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Base por Pares de ${paresPlay.rank.name} (valor $rankValue) -&gt; $paresStrength pts")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -&gt; +$bonus pts")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Duples ${paresPlay.highPair.name}/${paresPlay.lowPair.name} -&gt; $paresStrength pts")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}, Es Mano: $isMano):")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$explanation.appendLine(" - Penalización por posición ${playerPositionInTurn + 1} con juego no-31 -&gt; -$posPenalty pts")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$if (playSupport) logBuilder.appendLine("4b. Rol de APOYO: compañero capitán de lance (mejor posición + seña fuerte), mano propia floja ($ownBaseLance).")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.chica &gt;= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} &gt;= threshold $chicaCutThreshold (manoBias $manoBias)")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.grande &gt;= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} &gt;= threshold $grandeCutThreshold (manoBias $manoBias)")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.juego &gt;= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} &gt;= threshold $juegoCutThreshold (manoBias $manoBias)")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$if (strength.pares &gt;= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} &gt;= threshold $paresCutThreshold (manoBias $manoBias)")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" - (Defensive) Seña de ${gesturer.name} NO interceptada por ${aiPlayer.name}.")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" - Own Base -&gt; G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Consolidated Team Strength -&gt; G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Final Adjusted Strength -&gt; G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Opponent's Pares are stronger. Reducing team Pares confidence to 0.")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Partner Juego Strength is $juegoStrength (mano=$gesturerIsMano). Team Juego Strength is now ${teamStrength.juego}.")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Partner Pares Strength is ~$gestureStrength (mano=$gesturerIsMano). Team Pares Strength is now ${teamStrength.pares}.")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Rival más fuerte en Chica (seña $oppC &gt; mi ${baseStrength.chica}): mi Chica -&gt; $c")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine(" -&gt; Rival más fuerte en Grande (seña $oppG &gt; mi ${baseStrength.grande}): mi Grande -&gt; $g")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$logBuilder.appendLine("1. Base Hand Strength -&gt; G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$return Pair(GameAction.Órdago, "Reason: Block opponent win (opp $opponentScore, diff $scoreDifference, strength $strength)")</ID>
+    <ID>MaxLineLength:AILogic.kt$AILogic$return Pair(GameAction.Órdago, "Reason: Desperation (diff $scoreDifference, opp $opponentScore, strength $strength)")</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val duplesRC = listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY), c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.CINCO))</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val juego31 = listOf(c(Suit.OROS, Rank.SOTA), c(Suit.COPAS, Rank.SOTA), c(Suit.ESPADAS, Rank.SOTA), c(Suit.BASTOS, Rank.AS))</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val lowChica = listOf(c(Suit.OROS, Rank.AS), c(Suit.COPAS, Rank.CUATRO), c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.SEIS))</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val medium = listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.CABALLO), c(Suit.ESPADAS, Rank.SIETE), c(Suit.BASTOS, Rank.CUATRO))</ID>
+    <ID>MaxLineLength:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val weak = listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.SOTA), c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.AS))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$@Ignore("Preexistente: con la mano mediocre [REY, 7, 6, 5] el riskFactor +15 no eleva la strength por encima del umbral de envite, así que la IA pasa. Test asume agresividad que el código actual no implementa. Pendiente de revisión.")</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$@Ignore("Preexistente: la mano [REY, CAB, AS, DOS] no produce strength suficiente en Grande para garantizar Envido en el threshold actual. Pendiente de revisión.")</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$assertFalse("La IA no debería cantar órdago en la primera ronda solo por tener 31", decision.action is GameAction.Órdago)</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$assertFalse("No debe tirar el As (preserva Chica)", decision.cardsToDiscard.contains(Card(Suit.BASTOS, Rank.AS)))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$assertTrue(decision.action is GameAction.Quiero || decision.action is GameAction.Envido || decision.action is GameAction.Órdago)</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE, currentBet = bet)</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val gameState = GameState(players = listOf(testPlayer.copy(hand = hand), opponentPlayer), gamePhase = GamePhase.GRANDE, score = score)</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.CUATRO), Card(Suit.COPAS, Rank.CINCO), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS)) // Mala a Grande</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.CUATRO), Card(Suit.COPAS, Rank.CINCO), Card(Suit.ESPADAS, Rank.SEIS), Card(Suit.BASTOS, Rank.SIETE))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS)) // 31</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.CABALLO), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.CINCO))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO)) // sin juego (29)</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.CABALLO))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY)) // Mano invencible a Grande</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.SIETE), Card(Suit.ESPADAS, Rank.SEIS), Card(Suit.BASTOS, Rank.CINCO))</ID>
+    <ID>MaxLineLength:AILogicTest.kt$AILogicTest$val hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))</ID>
+    <ID>MaxLineLength:GameScreen.kt$.</ID>
+    <ID>MaxLineLength:GameScreen.kt$PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null, discardCount = gameState.discardCounts[player.id])</ID>
+    <ID>MaxLineLength:GameScreen.kt$colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E).copy(alpha = 0.9f))</ID>
+    <ID>MaxLineLength:GameScreen.kt$fontSizeLarge = (20.sp * scaleFactor).let { if (it.value &lt; 12f) 12.sp else if (it.value &gt; 22f) 22.sp else it }</ID>
+    <ID>MaxLineLength:GameScreen.kt$fontSizeMedium = (16.sp * scaleFactor).let { if (it.value &lt; 10f) 10.sp else if (it.value &gt; 17f) 17.sp else it }</ID>
+    <ID>MaxLineLength:GameScreen.kt$fontSizeSmall = (10.sp * scaleFactor).let { if (it.value &lt; 8f) 8.sp else if (it.value &gt; 13f) 13.sp else it }</ID>
+    <ID>MaxLineLength:GameScreen.kt$fun</ID>
+    <ID>MaxLineLength:GameScreen.kt$if</ID>
+    <ID>MaxLineLength:GameViewModel.kt$GameViewModel$GamePhase.JUEGO_CHECK -&gt; if (gameLogic.getHandJuegoValue(currentState.players.find { it.id == humanPlayerId }!!.hand) &gt;= 31) GameAction.Tengo else GameAction.NoTengo</ID>
+    <ID>MaxLineLength:GameViewModel.kt$GameViewModel$GamePhase.PARES_CHECK -&gt; if (gameLogic.getHandPares(currentState.players.find { it.id == humanPlayerId }!!.hand).strength &gt; 0) GameAction.Tengo else GameAction.NoTengo</ID>
+    <ID>MaxLineLength:GameViewModel.kt$GameViewModel$Log.e("GameViewModel", "AI LOGIC ERROR: AI decided to discard 0 cards. Forcing discard of 1 to prevent hang.")</ID>
+    <ID>MaxLineLength:GameViewModel.kt$GameViewModel$if (currentState.gamePhase == GamePhase.ROUND_OVER || currentState.gamePhase == GamePhase.GAME_OVER) return</ID>
+    <ID>MaxLineLength:GameViewModel.kt$GameViewModel$val winner = if (newScore["teamA"]!! &gt;= scoreToWin) "teamA" else if (newScore["teamB"]!! &gt;= scoreToWin) "teamB" else null</ID>
+    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$GamePhase.JUEGO -&gt; if (!currentState.isPuntoPhase &amp;&amp; getHandJuegoValue(player.hand) &lt; 31) return handlePaso(currentState, playerId)</ID>
+    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")</ID>
+    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")</ID>
+    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$if (player.team == "teamA") teamADetails.add(ScoreDetail(reason, playPoints)) else teamBDetails.add(ScoreDetail(reason, playPoints))</ID>
+    <ID>MaxLineLength:MusGameLogic.kt$MusGameLogic$val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]</ID>
+    <ID>MaxLineLength:MusGameLogicFlowTest.kt$MusGameLogicFlowTest$listOf(c(Suit.COPAS, Rank.SOTA), c(Suit.ESPADAS, Rank.SOTA), c(Suit.COPAS, Rank.CUATRO), c(Suit.COPAS, Rank.SEIS))</ID>
+    <ID>MaxLineLength:MusGameLogicFlowTest.kt$MusGameLogicFlowTest$listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY), c(Suit.OROS, Rank.CINCO), c(Suit.OROS, Rank.CUATRO))</ID>
+    <ID>MaxLineLength:MusGameLogicFlowTest.kt$MusGameLogicFlowTest$listOf(c(Suit.OROS, Rank.REY), c(Suit.OROS, Rank.CUATRO), c(Suit.OROS, Rank.CINCO), c(Suit.OROS, Rank.SEIS))</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$@Ignore("Preexistente: la lógica de scoring de envites rechazados parece no coincidir con la expectativa del test (`pointsIfRejected` calculado distinto). Pendiente de revisión separada.")</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$assertTrue("Debería detectar Duples con las equivalencias de Reyes/Treses y Ases/Doses", play is ParesPlay.Duples)</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.REY))</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.TRES), Card(Suit.BASTOS, Rank.CINCO))</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.AS), Card(Suit.BASTOS, Rank.DOS))</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.TRES), Card(Suit.ESPADAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith31 = players[0].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SOTA), Card(Suit.BASTOS, Rank.AS))) // 31</ID>
+    <ID>MaxLineLength:MusGameLogicTest.kt$MusGameLogicTest$val playerWith32 = players[1].copy(hand = listOf(Card(Suit.OROS, Rank.SOTA), Card(Suit.ESPADAS, Rank.SOTA), Card(Suit.COPAS, Rank.SIETE), Card(Suit.BASTOS, Rank.CINCO))) // 32</ID>
+    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun applyOpponentGestures( teamStrength: HandStrength, baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
+    <ID>NestedBlockDepth:AILogic.kt$AILogic$private fun mergePartnerGestures( baseStrength: HandStrength, gameState: GameState, aiPlayer: Player, logBuilder: DecisionLog ): HandStrength</ID>
+    <ID>NestedBlockDepth:MusGameLogic.kt$MusGameLogic$fun scoreRound(currentState: GameState): GameState</ID>
+    <ID>NewLineAtEndOfFile:AILogicTest.kt$com.doselfurioso.musvisto.logic.AILogicTest.kt</ID>
+    <ID>NewLineAtEndOfFile:CardMapper.kt$com.doselfurioso.musvisto.presentation.CardMapper.kt</ID>
+    <ID>NewLineAtEndOfFile:Color.kt$com.doselfurioso.musvisto.ui.theme.Color.kt</ID>
+    <ID>NewLineAtEndOfFile:ExampleUnitTest.kt$com.doselfurioso.musvisto.ExampleUnitTest.kt</ID>
+    <ID>NewLineAtEndOfFile:GameAction.kt$com.doselfurioso.musvisto.model.GameAction.kt</ID>
+    <ID>NewLineAtEndOfFile:GameRepository.kt$com.doselfurioso.musvisto.logic.GameRepository.kt</ID>
+    <ID>NewLineAtEndOfFile:GameViewModel.kt$com.doselfurioso.musvisto.presentation.GameViewModel.kt</ID>
+    <ID>NewLineAtEndOfFile:GestureScreen.kt$com.doselfurioso.musvisto.presentation.GestureScreen.kt</ID>
+    <ID>NewLineAtEndOfFile:LastActionInfo.kt$com.doselfurioso.musvisto.model.LastActionInfo.kt</ID>
+    <ID>NewLineAtEndOfFile:MainMenuScreen.kt$com.doselfurioso.musvisto.presentation.MainMenuScreen.kt</ID>
+    <ID>NewLineAtEndOfFile:MainMenuViewModel.kt$com.doselfurioso.musvisto.presentation.MainMenuViewModel.kt</ID>
+    <ID>NewLineAtEndOfFile:MusGameLogic.kt$com.doselfurioso.musvisto.logic.MusGameLogic.kt</ID>
+    <ID>NewLineAtEndOfFile:MusGameLogicTest.kt$com.doselfurioso.musvisto.logic.MusGameLogicTest.kt</ID>
+    <ID>NewLineAtEndOfFile:MusVistoApp.kt$com.doselfurioso.musvisto.MusVistoApp.kt</ID>
+    <ID>NewLineAtEndOfFile:ParesPlay.kt$com.doselfurioso.musvisto.model.ParesPlay.kt</ID>
+    <ID>NewLineAtEndOfFile:SaveState.kt$com.doselfurioso.musvisto.model.SaveState.kt</ID>
+    <ID>NewLineAtEndOfFile:Theme.kt$com.doselfurioso.musvisto.ui.theme.Theme.kt</ID>
+    <ID>NewLineAtEndOfFile:Type.kt$com.doselfurioso.musvisto.ui.theme.Type.kt</ID>
+    <ID>ReturnCount:GameViewModel.kt$GameViewModel$fun onAction(action: GameAction, playerId: String)</ID>
+    <ID>ReturnCount:GameViewModel.kt$GameViewModel$private fun determineGesture(player: Player): Int?</ID>
+    <ID>ReturnCount:MusGameLogic.kt$MusGameLogic$fun processAction(currentState: GameState, action: GameAction, playerId: String): GameState</ID>
+    <ID>TooManyFunctions:AILogic.kt$AILogic</ID>
+    <ID>TooManyFunctions:MusGameLogic.kt$MusGameLogic</ID>
+    <ID>UnusedParameter:GameScreen.kt$modifier: Modifier</ID>
+    <ID>UnusedPrivateMember:AILogic.kt$AILogic$private fun allowDiscardTopRank(hand: List&lt;Card&gt;, isMano: Boolean): Boolean</ID>
+    <ID>UnusedPrivateMember:AILogic.kt$AILogic$private fun cardKeepPriority(card: Card, hand: List&lt;Card&gt;, isMano: Boolean): Int</ID>
+    <ID>UnusedPrivateMember:MusGameLogic.kt$MusGameLogic$private fun findNextOpponent(currentState: GameState, fromPlayer: Player): Player?</ID>
+    <ID>UnusedPrivateMember:MusGameLogic.kt$MusGameLogic$private fun scoreAndCheckForGameOver(roundEndState: GameState): GameState</ID>
+    <ID>UnusedPrivateMember:MusGameLogic.kt$MusGameLogic$private fun scoreJuegoPlays(currentState: GameState): GameState</ID>
+    <ID>UnusedPrivateMember:MusGameLogic.kt$MusGameLogic$private fun scoreParesPlays(currentState: GameState): GameState</ID>
+    <ID>UnusedPrivateProperty:GameScreen.kt$val actionsForUi = if (currentPlayer?.id == gameViewModel.humanPlayerId) { val playerHand = currentPlayer.hand when (gameState.gamePhase) { GamePhase.PARES -&gt; if (gameLogic.getHandPares(playerHand).strength &gt; 0) gameState.availableActions else listOf(GameAction.Paso) GamePhase.JUEGO -&gt; if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) &gt;= 31) gameState.availableActions else listOf(GameAction.Paso) else -&gt; gameState.availableActions } } else gameState.availableActions</ID>
+    <ID>UnusedPrivateProperty:MainMenuScreen.kt$val buttonGreenColor = Color(0xFF6A994E)</ID>
+    <ID>UnusedPrivateProperty:MainMenuScreen.kt$val titleColor = Color.White</ID>
+    <ID>VariableNaming:AILogic.kt$AILogic$private val TAG = "AILogicDebug"</ID>
+    <ID>VariableNaming:AILogicSnapshotTest.kt$AILogicSnapshotTest$private val SEED = 777L</ID>
+    <ID>VariableNaming:GameViewModel.kt$GameViewModel$private val TAG = "GameViewModelDebug"</ID>
+    <ID>WildcardImport:AILogicSnapshotTest.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:AILogicTest.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:AILogicTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:ExampleUnitTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:GameScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:GameViewModel.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:GestureScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:GestureScreen.kt$import androidx.compose.material3.* // Usar Material3 components</ID>
+    <ID>WildcardImport:MainMenuScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:MusGameLogic.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:MusGameLogicFlowTest.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:MusGameLogicFlowTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:MusGameLogicTest.kt$import com.doselfurioso.musvisto.model.*</ID>
+    <ID>WildcardImport:MusGameLogicTest.kt$import org.junit.Assert.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

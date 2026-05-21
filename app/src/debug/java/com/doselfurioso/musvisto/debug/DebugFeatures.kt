@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +35,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.doselfurioso.musvisto.model.Card
+import com.doselfurioso.musvisto.model.DebugScenario
+import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -83,6 +89,245 @@ object DebugFeatures {
             Text(text = if (isDebugMode) "🐛 Debug: ON" else "🐛 Debug: OFF")
         }
     }
+
+    /**
+     * Overlay con la lista de escenarios de prueba. Tocando uno se reparten
+     * sus manos forzadas y la partida arranca en ese punto. Solo visible con
+     * el modo debug activado.
+     */
+    @Composable
+    fun ScenarioSelectorOverlay(viewModel: GameViewModel) {
+        val isDebugMode by viewModel.isDebugMode.collectAsState()
+        if (!isDebugMode) return
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
+            ScenarioPanel(
+                onPlay = { viewModel.startScenario(it) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(8.dp)
+                    .navigationBarsPadding()
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScenarioPanel(onPlay: (DebugScenario) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(ScenarioStore.load(context)) }
+
+    // null = editor cerrado; un DebugScenario "vacío sentinela" no sirve, así
+    // que usamos dos flags: editing!=null edita ese, isNew abre uno en blanco.
+    var editing by remember { mutableStateOf<DebugScenario?>(null) }
+    var isNew by remember { mutableStateOf(false) }
+
+    if (isNew || editing != null) {
+        ScenarioEditor(
+            initial = editing,
+            onSave = {
+                saved = ScenarioStore.upsert(context, it)
+                editing = null
+                isNew = false
+            },
+            onPlay = {
+                editing = null
+                isNew = false
+                expanded = false
+                onPlay(it)
+            },
+            onCancel = {
+                editing = null
+                isNew = false
+            }
+        )
+    }
+
+    Column(
+        modifier = modifier.padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = if (expanded) "▼ Escenarios" else "▲ Escenarios",
+                color = Color(0xFFFFD24A),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (expanded) {
+            LazyColumn(
+                modifier = Modifier
+                    .width(280.dp)
+                    .heightIn(max = 380.dp)
+                    .padding(vertical = 4.dp)
+                    .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1565C0), RoundedCornerShape(6.dp))
+                            .clickable { isNew = true }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("＋ Nuevo escenario", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (saved.isNotEmpty()) {
+                    item { SectionLabel("Guardados") }
+                    items(saved, key = { it.name }) { scenario ->
+                        ScenarioRow(
+                            name = scenario.name,
+                            editable = true,
+                            onPlay = { expanded = false; onPlay(scenario) },
+                            onEdit = { editing = scenario },
+                            onDelete = { saved = ScenarioStore.delete(context, scenario.name) }
+                        )
+                    }
+                }
+
+                if (DebugScenarios.all.isNotEmpty()) {
+                    item { SectionLabel("Predefinidos") }
+                    items(DebugScenarios.all, key = { "pre-" + it.name }) { scenario ->
+                        ScenarioRow(
+                            name = scenario.name,
+                            editable = false,
+                            onPlay = { expanded = false; onPlay(scenario) },
+                            onEdit = {},
+                            onDelete = {}
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = Color(0xFF7A8794),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 4.dp, start = 2.dp)
+    )
+}
+
+@Composable
+private fun ScenarioRow(
+    name: String,
+    editable: Boolean,
+    onPlay: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF2A3640).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = name,
+            color = Color.White,
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onPlay() }
+        )
+        RowAction("▶", Color(0xFF66BB6A), onPlay)
+        if (editable) {
+            RowAction("✎", Color(0xFFFFD24A), onEdit)
+            RowAction("🗑", Color(0xFFEF9A9A), onDelete)
+        }
+    }
+}
+
+@Composable
+private fun RowAction(glyph: String, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(Color(0xFF1B232C), RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 7.dp, vertical = 4.dp)
+    ) {
+        Text(glyph, color = color, fontSize = 12.sp)
+    }
+}
+
+/**
+ * Catálogo de escenarios de prueba. Añade aquí los casos que quieras forzar:
+ * 4 cartas por jugador, sin repetir cartas entre manos. `manoId` decide quién
+ * es mano; con `startAtMus = true` la partida arranca en MUS (probar
+ * corte/descarte), si no aterriza en GRANDE con las manos intactas.
+ *
+ * Recuerda: Rey≡Tres y As≡Dos para pares y puntuación. "p1" = humano,
+ * "p3" = tu pareja, "p2"/"p4" = rivales.
+ */
+object DebugScenarios {
+    private fun c(suit: Suit, rank: Rank) = Card(suit, rank)
+
+    val all: List<DebugScenario> = listOf(
+        DebugScenario(
+            name = "Duples reyes (p1) vs duples cincos (p2)",
+            hands = mapOf(
+                "p1" to listOf(c(Suit.OROS, Rank.REY), c(Suit.OROS, Rank.CABALLO), c(Suit.COPAS, Rank.CABALLO), c(Suit.OROS, Rank.AS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.REY), c(Suit.BASTOS, Rank.REY), c(Suit.COPAS, Rank.CINCO), c(Suit.ESPADAS, Rank.CINCO)),
+                "p3" to listOf(c(Suit.OROS, Rank.REY), c(Suit.ESPADAS, Rank.CABALLO), c(Suit.OROS, Rank.SOTA), c(Suit.OROS, Rank.CUATRO)),
+                "p4" to listOf(c(Suit.BASTOS, Rank.CABALLO), c(Suit.BASTOS, Rank.CUATRO), c(Suit.BASTOS, Rank.AS), c(Suit.ESPADAS, Rank.AS))
+            ),
+            manoId = "p1"
+        ),
+        DebugScenario(
+            name = "p1 mano con 31 de Juego",
+            hands = mapOf(
+                "p1" to listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.SOTA), c(Suit.BASTOS, Rank.AS), c(Suit.ESPADAS, Rank.AS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.REY), c(Suit.COPAS, Rank.CABALLO), c(Suit.COPAS, Rank.CINCO), c(Suit.COPAS, Rank.CUATRO)),
+                "p3" to listOf(c(Suit.OROS, Rank.SOTA), c(Suit.OROS, Rank.CABALLO), c(Suit.OROS, Rank.CUATRO), c(Suit.OROS, Rank.DOS)),
+                "p4" to listOf(c(Suit.BASTOS, Rank.REY), c(Suit.BASTOS, Rank.CABALLO), c(Suit.BASTOS, Rank.SOTA), c(Suit.BASTOS, Rank.CUATRO))
+            ),
+            manoId = "p1"
+        ),
+        DebugScenario(
+            // #20 humano-capitán: mano = p3 (tu pareja IA) -> orden de turno
+            // [p3, p4, p1, p2], así p1 (tú) actúas DESPUÉS que p3 = eres el
+            // CAPITÁN de tu pareja. p3 lleva 3 Reyes (premium, cortaría el Mus
+            // normalmente y seña reyes_3): con #20 NO corta, te delega el
+            // corte y te pasa la seña (visible 1.5s). Tu mano es floja a
+            // propósito: la decisión de cortar depende de leer la seña de p3.
+            // ~12% de las veces p3 cortará igual (estrategia mixta anti-patrón)
+            // -> también es comportamiento esperado a observar.
+            name = "#20 Humano capitán: IA-primero (p3) delega el corte",
+            hands = mapOf(
+                "p3" to listOf(c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY), c(Suit.ESPADAS, Rank.REY), c(Suit.BASTOS, Rank.SOTA)),
+                "p1" to listOf(c(Suit.OROS, Rank.SOTA), c(Suit.COPAS, Rank.SIETE), c(Suit.ESPADAS, Rank.SEIS), c(Suit.BASTOS, Rank.CUATRO)),
+                "p4" to listOf(c(Suit.OROS, Rank.CABALLO), c(Suit.COPAS, Rank.CINCO), c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.DOS)),
+                "p2" to listOf(c(Suit.COPAS, Rank.CABALLO), c(Suit.ESPADAS, Rank.SOTA), c(Suit.OROS, Rank.TRES), c(Suit.BASTOS, Rank.AS))
+            ),
+            manoId = "p3",
+            startAtMus = true
+        )
+    )
 }
 
 @Composable

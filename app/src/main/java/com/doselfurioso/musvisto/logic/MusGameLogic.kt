@@ -62,58 +62,50 @@ class MusGameLogic constructor(private val random: Random){
      * It considers the player order ("mano") to break ties.
      * The player who is "mano" (first in the list) wins any ties.
      */
-    fun getGrandeWinner(gameState: GameState): Player? {
-        val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
-        return orderedPlayers.reduceOrNull { winner, challenger ->
-            // Ordenamos las manos de la carta más ALTA a la más baja
-            val winnerHand = winner.hand.sortedByDescending { it.rank.value }
-            val challengerHand = challenger.hand.sortedByDescending { it.rank.value }
-
-            // Comparamos las manos carta por carta
-            for (i in 0..3) {
-                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 0 // Usamos 0 como valor si no hay carta
-                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 0
-
-                // Si la carta del aspirante es más alta, él es el nuevo ganador
-                if (challengerCardValue > winnerCardValue) {
-                    return@reduceOrNull challenger
-                }
-                // Si la carta del ganador actual es más alta, él mantiene la victoria
-                if (winnerCardValue > challengerCardValue) {
-                    return@reduceOrNull winner
-                }
-            }
-            // Si son idénticas, gana el que esté antes en el turno
-            winner
-        }
-    }
+    fun getGrandeWinner(gameState: GameState): Player? =
+        // Grande: mejor = carta más ALTA; carta ausente cuenta como 0.
+        lanceWinnerByCards(gameState, descending = true, absentCardValue = 0)
 
     /**
      * Determines the winner of the "Chica" lance among all players.
      * It considers the player order ("mano") to break ties.
      */
-    fun getChicaWinner(gameState: GameState): Player? {
+    fun getChicaWinner(gameState: GameState): Player? =
+        // Chica: mejor = carta más BAJA; carta ausente cuenta como 13.
+        lanceWinnerByCards(gameState, descending = false, absentCardValue = 13)
+
+    /**
+     * Núcleo común de Grande/Chica: compara mano a mano carta por carta en el
+     * orden de turno (desde la mano), de modo que el empate exacto lo gana el
+     * jugador que está antes en el turno ("mano" rompe empates). `descending`
+     * = true para Grande (gana la más alta), false para Chica (la más baja);
+     * `absentCardValue` es el valor de una posición sin carta (0 / 13).
+     */
+    private fun lanceWinnerByCards(
+        gameState: GameState,
+        descending: Boolean,
+        absentCardValue: Int
+    ): Player? {
         val orderedPlayers = getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
         return orderedPlayers.reduceOrNull { winner, challenger ->
-            // Ordenamos las manos de ambos jugadores de la carta más baja a la más alta
-            val winnerHand = winner.hand.sortedBy { it.rank.value }
-            val challengerHand = challenger.hand.sortedBy { it.rank.value }
+            val winnerHand = if (descending) winner.hand.sortedByDescending { it.rank.value }
+            else winner.hand.sortedBy { it.rank.value }
+            val challengerHand = if (descending) challenger.hand.sortedByDescending { it.rank.value }
+            else challenger.hand.sortedBy { it.rank.value }
 
-            // Comparamos las manos carta por carta
             for (i in 0..3) {
-                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: 13 // Usamos 13 como valor si no hay carta
-                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: 13
+                val winnerCardValue = winnerHand.getOrNull(i)?.rank?.value ?: absentCardValue
+                val challengerCardValue = challengerHand.getOrNull(i)?.rank?.value ?: absentCardValue
 
-                // Si la carta del aspirante es más baja, él es el nuevo ganador y terminamos la comparación
-                if (challengerCardValue < winnerCardValue) {
-                    return@reduceOrNull challenger
-                }
-                // Si la carta del ganador actual es más baja, él mantiene la victoria y terminamos la comparación
-                if (winnerCardValue < challengerCardValue) {
-                    return@reduceOrNull winner
-                }
+                val challengerBetter = if (descending) challengerCardValue > winnerCardValue
+                else challengerCardValue < winnerCardValue
+                val winnerBetter = if (descending) winnerCardValue > challengerCardValue
+                else winnerCardValue < challengerCardValue
+
+                if (challengerBetter) return@reduceOrNull challenger
+                if (winnerBetter) return@reduceOrNull winner
             }
-            // Si después de comparar las 4 cartas son idénticas, entonces gana el que esté antes en el turno (el "winner" actual)
+            // Empate exacto: gana el que está antes en el turno.
             winner
         }
     }
@@ -328,6 +320,30 @@ class MusGameLogic constructor(private val random: Random){
         }
     }
 
+    /**
+     * Oponentes aptos a partir del que apuesta, en el orden de turno correcto
+     * (sentido horario, fórmula -i). Lista usada por envido y órdago para fijar
+     * `respondingPlayerId`/`playersPendingResponse`. NO usar `findNextOpponent`
+     * (código muerto consciente, ver KNOWN_ISSUES): esta es la ruta viva.
+     */
+    private fun orderedEligibleOpponentIds(
+        currentState: GameState,
+        playerId: String,
+        allEligibleOpponents: List<Player>
+    ): List<String> {
+        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
+        val result = mutableListOf<String>()
+        if (bettingPlayerIndex != -1) {
+            for (i in 1..currentState.players.size) {
+                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
+                if (nextPlayer in allEligibleOpponents) {
+                    result.add(nextPlayer.id)
+                }
+            }
+        }
+        return result
+    }
+
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
@@ -345,21 +361,8 @@ class MusGameLogic constructor(private val random: Random){
             return currentState
         }
 
-        // 3. Buscamos la posición del jugador que acaba de apostar
-        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
-
-        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
-        //    a los oponentes en la secuencia correcta en la que deben responder.
-        val orderedEligibleOpponents = mutableListOf<String>()
-        if (bettingPlayerIndex != -1) {
-            for (i in 1..currentState.players.size) {
-                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
-                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
-                if (nextPlayer in allEligibleOpponents) {
-                    orderedEligibleOpponents.add(nextPlayer.id)
-                }
-            }
-        }
+        val orderedEligibleOpponents =
+            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
 
         // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
         if (orderedEligibleOpponents.isEmpty()) {
@@ -460,7 +463,11 @@ class MusGameLogic constructor(private val random: Random){
                 currentTurnPlayerId = newState.manoPlayerId,
                 isNewLance = true,
                 currentLanceActions = emptyMap(),
-                knownGestures = emptyMap()
+                knownGestures = emptyMap(),
+                // Cada ciclo de descarte arranca limpio: el badge refleja
+                // SOLO este ciclo (fix multi-ronda: la 2ª ronda no arrastra
+                // los conteos de la 1ª).
+                discardCounts = emptyMap()
             )
         } else {
             // If not, it's the next player's turn to decide on Mus
@@ -473,16 +480,19 @@ class MusGameLogic constructor(private val random: Random){
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
             playersWhoPassed = emptySet(),
-            // NO vaciamos discardCounts aquí: debe sobrevivir todo el resto de
-            // la ronda para que el indicador de descarte del avatar diga
-            // cuántas cartas tomó cada jugador. Se resetea solo en el reparto
-            // de la ronda siguiente (startNewRound construye un GameState nuevo
-            // con discardCounts por defecto vacío).
+            // Cerrado el Mus, los descartes ya no son relevantes: el badge
+            // del avatar desaparece al entrar en GRANDE (revisión de #27:
+            // antes vivía toda la ronda; el usuario lo quiere acotado a la
+            // fase de Mus/descarte).
+            discardCounts = emptyMap(),
             currentBet = null,
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
             currentLanceActions = emptyMap(),
-            noMusPlayer = playerId
+            noMusPlayer = playerId,
+            // El plan de señas era solo para el Mus que acaba de cerrarse;
+            // los lances de envite ya no lo usan.
+            pendingGestures = emptyMap()
         )
     }
 
@@ -523,21 +533,8 @@ class MusGameLogic constructor(private val random: Random){
             return currentState
         }
 
-        // 3. Buscamos la posición del jugador que acaba de apostar
-        val bettingPlayerIndex = currentState.players.indexOfFirst { it.id == playerId }
-
-        // 4. Iteramos en el orden de turno correcto (hacia la derecha) para encontrar
-        //    a los oponentes en la secuencia correcta en la que deben responder.
-        val orderedEligibleOpponents = mutableListOf<String>()
-        if (bettingPlayerIndex != -1) {
-            for (i in 1..currentState.players.size) {
-                // Esta fórmula (-i) es la que asegura que vayamos en el sentido de las agujas del reloj
-                val nextPlayer = currentState.players[(bettingPlayerIndex - i + currentState.players.size) % currentState.players.size]
-                if (nextPlayer in allEligibleOpponents) {
-                    orderedEligibleOpponents.add(nextPlayer.id)
-                }
-            }
-        }
+        val orderedEligibleOpponents =
+            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
 
         // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
         if (orderedEligibleOpponents.isEmpty()) {
@@ -595,27 +592,35 @@ class MusGameLogic constructor(private val random: Random){
         )
     }
 
-    // En MusGameLogic.kt
-// Reemplaza la función endLanceAndAdvance
+    /**
+     * Cierra el lance actual y prepara el siguiente. Orquesta tres
+     * responsabilidades, ahora separadas en funciones nombradas:
+     * 1) registrar el resultado del lance, 2) calcular la fase siguiente,
+     * 3) resetear turno/apuesta/acciones para el lance nuevo.
+     */
     private fun endLanceAndAdvance(currentState: GameState, updates: GameState.() -> GameState): GameState {
-        var updatedState = currentState.updates()
+        val withResult = recordLanceResult(currentState.updates())
+        val nextPhase = advanceToNextPhase(withResult.gamePhase)
+        return resetForNextLance(withResult, nextPhase)
+    }
 
-        // Guardamos el resultado del lance que acaba de terminar
+    /** Añade a `roundHistory` el resultado del lance que acaba de cerrarse. */
+    private fun recordLanceResult(state: GameState): GameState {
         val lanceResult = when {
-            updatedState.currentBet != null && updatedState.agreedBets.containsKey(updatedState.gamePhase) ->
-                LanceResult(updatedState.gamePhase, "Querido", updatedState.currentBet.amount)
-            updatedState.currentBet != null ->
-                LanceResult(updatedState.gamePhase, "No Querido") // Ya no necesitamos guardar los puntos aquí
-            else -> LanceResult(updatedState.gamePhase, "Paso")
+            state.currentBet != null && state.agreedBets.containsKey(state.gamePhase) ->
+                LanceResult(state.gamePhase, "Querido", state.currentBet.amount)
+            state.currentBet != null ->
+                LanceResult(state.gamePhase, "No Querido")
+            else -> LanceResult(state.gamePhase, "Paso")
         }
-        updatedState = updatedState.copy(roundHistory = updatedState.roundHistory + lanceResult)
+        return state.copy(roundHistory = state.roundHistory + lanceResult)
+    }
 
-        val nextPhase = advanceToNextPhase(updatedState.gamePhase)
-
-        // Preparamos el estado para el siguiente lance
-        return updatedState.copy(
+    /** Resetea turno (a la mano), apuesta y acciones disponibles para `nextPhase`. */
+    private fun resetForNextLance(state: GameState, nextPhase: GamePhase): GameState =
+        state.copy(
             gamePhase = nextPhase,
-            currentTurnPlayerId = updatedState.manoPlayerId,
+            currentTurnPlayerId = state.manoPlayerId,
             playersWhoPassed = emptySet(),
             currentBet = null,
             isNewLance = true,
@@ -624,7 +629,6 @@ class MusGameLogic constructor(private val random: Random){
             availableActions = if (nextPhase == GamePhase.PARES_CHECK || nextPhase == GamePhase.JUEGO_CHECK) emptyList()
             else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
-    }
 
 
     private fun advanceToNextPhase(currentPhase: GamePhase): GamePhase {
@@ -902,6 +906,13 @@ class MusGameLogic constructor(private val random: Random){
             }
         }
     }
+    /**
+     * Resuelve un *_CHECK (PARES/JUEGO) eligiendo entre tres desenlaces, ahora
+     * en funciones nombradas (misma lógica y mismo orden de prioridad):
+     * 1) nadie tiene Juego en JUEGO_CHECK -> ronda de Punto;
+     * 2) un solo equipo con jugada -> se salta el lance;
+     * 3) ambos equipos -> ronda de apuestas normal.
+     */
     fun resolveDeclaration(currentState: GameState): GameState {
         val currentCheckPhase = currentState.gamePhase // Será PARES_CHECK o JUEGO_CHECK
 
@@ -915,44 +926,60 @@ class MusGameLogic constructor(private val random: Random){
 
         val teamsWithPlay = playersWithPlay.map { it.team }.distinct()
 
-        // --- LÓGICA MEJORADA PARA JUEGO Y PUNTO ---
-
-        // CASO 1: Estamos en JUEGO_CHECK y NADIE tiene Juego -> Se juega al PUNTO
-        if (currentCheckPhase == GamePhase.JUEGO_CHECK && teamsWithPlay.isEmpty()) {
-            Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
-            // El turno es para la mano, y TODOS pueden hablar
-            return currentState.copy(
-                gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
-                isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
-                playersInLance = currentState.players.map { it.id }.toSet(), // Todos juegan
-                currentTurnPlayerId = currentState.manoPlayerId,
-                playersWhoPassed = emptySet(),
-                availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-            )
+        return when {
+            currentCheckPhase == GamePhase.JUEGO_CHECK && teamsWithPlay.isEmpty() ->
+                resolveAsPunto(currentState)
+            teamsWithPlay.size < 2 ->
+                skipDeclarationLance(currentState, currentCheckPhase, teamsWithPlay)
+            else ->
+                beginDeclarationBetting(currentState, currentCheckPhase, playersWithPlay)
         }
+    }
 
-        // CASO 2: Solo un equipo tiene jugada (sea Pares o Juego) -> Se salta la ronda de apuestas
-        if (teamsWithPlay.size < 2) {
-            val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
-            Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
+    /** CASO 1: JUEGO_CHECK sin nadie con Juego -> ronda de Punto (todos hablan). */
+    private fun resolveAsPunto(currentState: GameState): GameState {
+        Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
+        return currentState.copy(
+            gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
+            isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
+            playersInLance = currentState.players.map { it.id }.toSet(), // Todos juegan
+            currentTurnPlayerId = currentState.manoPlayerId,
+            playersWhoPassed = emptySet(),
+            availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
+    }
 
-            val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
-            val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
+    /** CASO 2: solo un equipo con jugada -> registra "Skipped" y avanza de fase. */
+    private fun skipDeclarationLance(
+        currentState: GameState,
+        currentCheckPhase: GamePhase,
+        teamsWithPlay: List<String>
+    ): GameState {
+        val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
+        Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
-            val nextPhase = advanceToNextPhase(lancePhase)
-            return stateWithHistory.copy(
-                gamePhase = nextPhase,
-                currentTurnPlayerId = stateWithHistory.manoPlayerId,
-                isPuntoPhase = false, // Nos aseguramos de resetear la bandera de Punto
-                playersWhoPassed = emptySet(),
-                isNewLance = true,
-                currentLanceActions = emptyMap(),
-                availableActions = if (nextPhase == GamePhase.JUEGO_CHECK) emptyList()
-                else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
-            )
-        }
+        val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
+        val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
 
-        // CASO 3: Ambos equipos tienen jugada -> Procedemos a la ronda de apuestas normal
+        val nextPhase = advanceToNextPhase(lancePhase)
+        return stateWithHistory.copy(
+            gamePhase = nextPhase,
+            currentTurnPlayerId = stateWithHistory.manoPlayerId,
+            isPuntoPhase = false, // Nos aseguramos de resetear la bandera de Punto
+            playersWhoPassed = emptySet(),
+            isNewLance = true,
+            currentLanceActions = emptyMap(),
+            availableActions = if (nextPhase == GamePhase.JUEGO_CHECK) emptyList()
+            else listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+        )
+    }
+
+    /** CASO 3: ambos equipos con jugada -> ronda de apuestas normal. */
+    private fun beginDeclarationBetting(
+        currentState: GameState,
+        currentCheckPhase: GamePhase,
+        playersWithPlay: List<Player>
+    ): GameState {
         val bettingPhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
 
         val firstPlayerToBet = getTurnOrderedPlayers(currentState.players, currentState.manoPlayerId)

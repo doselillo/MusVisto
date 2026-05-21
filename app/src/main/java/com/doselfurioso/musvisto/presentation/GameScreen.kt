@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.doselfurioso.musvisto.R
-import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.ActionType
 import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.BetInfo
@@ -81,6 +80,15 @@ private const val ANNOUNCEMENT_MIN_BEFORE_REPLACE_MS = 450L
 private const val ANNOUNCEMENT_ENTER_MS = 200
 private const val ANNOUNCEMENT_EXIT_MS = 250
 private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
+
+// #15: alfa del avatar de quien NO juega el lance actual (PARES/JUEGO sin
+// pares/juego). Atenuado, no oculto: sigue ahí pero claramente fuera.
+private const val DIMMED_AVATAR_ALPHA = 0.4f
+
+// Tope visual del selector de envite. En el Mus no hay límite real de
+// cuánto se puede envidar; lo acotamos al valor máximo de un juego (40 =
+// órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
+private const val MAX_BET = 40
 
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
@@ -113,7 +121,6 @@ fun GameScreen(
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
     val players = gameState.players
-    val gameLogic: MusGameLogic = gameViewModel.gameLogic
 
     BoxWithConstraints(
         modifier = Modifier
@@ -153,9 +160,6 @@ fun GameScreen(
                 fontSizeLarge       = (20.sp * scaleFactor).let { if (it.value < 12f) 12.sp else if (it.value > 22f) 22.sp else it },
                 fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
                 fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
-                sidePlayerVerticalOffset    = 0.dp,
-                actionButtonsVerticalOffset = 0.dp,
-                actionbuttonsSize   = 0.dp,
                 buttonVPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
                 buttonHPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
                 scaleFactor         = scaleFactor
@@ -169,19 +173,8 @@ fun GameScreen(
             val rivalRight = players[3]
 
             val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
-            val currentPlayer = players.find { it.id == gameState.currentTurnPlayerId }
-            val actionsForUi = if (currentPlayer?.id == gameViewModel.humanPlayerId) {
-                val playerHand = currentPlayer.hand
-                when (gameState.gamePhase) {
-                    GamePhase.PARES ->
-                        if (gameLogic.getHandPares(playerHand).strength > 0) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    GamePhase.JUEGO ->
-                        if (gameState.isPuntoPhase || gameLogic.getHandJuegoValue(playerHand) >= 31) gameState.availableActions
-                        else listOf(GameAction.Paso)
-                    else -> gameState.availableActions
-                }
-            } else gameState.availableActions
+            // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
+            // ActionButtons usa `gameState.availableActions` directamente.)
 
             // ── CAPA 1: el layout real (Column con pesos) ──
             Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -375,89 +368,103 @@ fun GameScreen(
 
 
             // ── CAPA 3: overlays de pantalla completa ──
-            if (gameState.isPaused) {
-                PauseMenuOverlay(
-                    navController = navController,
-                    onAction = gameViewModel::onAction,
-                    humanPlayerId = gameViewModel.humanPlayerId,
-                    dimensions = dimens,
-                    gameViewModel = gameViewModel
-                )
-            }
-
-            // Panel flotante de logs de IA — solo se renderiza en builds debug.
-            DebugFeatures.AiDebugPanelOverlay(gameViewModel)
-
-            if (gameState.isSelectingBet) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = screenHeight * 0.30f),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    BetSelector(
-                        onBet = { amount ->
-                            gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
-                        },
-                        onCancel = {
-                            gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
-                        },
-                        isRaise = gameState.currentBet != null
-                    )
-                }
-            }
-
-            if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
-                GameOverOverlay(
-                    winnerTeam = gameState.winningTeam!!,
-                    ordagoInfo = gameState.ordagoInfo,
-                    players = players,
-                    bottomPadding = screenHeight * 0.28f,
-                    onNewGameClick = {
-                        gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
-                    }
-                )
-            }
-
-            if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = screenHeight * 0.55f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    RoundEndOverlay(
-                        breakdown = gameState.scoreBreakdown!!,
-                        onContinueClick = {
-                            gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
-                        },
-                        dimens = dimens
-                    )
-                }
-            }
-
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                GameEventNotification(event = gameState.event)
-            }
+            GameOverlays(
+                gameState = gameState,
+                players = players,
+                dimens = dimens,
+                screenHeight = screenHeight,
+                navController = navController,
+                gameViewModel = gameViewModel
+            )
         }
     }
 }
 
-
+/**
+ * Capa de overlays de pantalla completa, emitida como último hijo del Box
+ * raíz (mismo z-order que antes): pausa, paneles de debug, selector de
+ * envite, fin de partida, fin de ronda y notificación de evento. Extraída de
+ * la raíz de GameScreen sin cambiar comportamiento ni layout.
+ */
 @Composable
-fun DiscardCountIndicator(count: Int, modifier: Modifier = Modifier) {
-    if (count > 0) {
-        Text(
-            text = "Descarta: $count",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            modifier = modifier
-                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+private fun GameOverlays(
+    gameState: GameState,
+    players: List<Player>,
+    dimens: ResponsiveDimens,
+    screenHeight: Dp,
+    navController: NavController,
+    gameViewModel: GameViewModel
+) {
+    if (gameState.isPaused) {
+        PauseMenuOverlay(
+            navController = navController,
+            onAction = gameViewModel::onAction,
+            humanPlayerId = gameViewModel.humanPlayerId,
+            dimensions = dimens,
+            gameViewModel = gameViewModel
         )
     }
+
+    // Panel flotante de logs de IA — solo se renderiza en builds debug.
+    DebugFeatures.AiDebugPanelOverlay(gameViewModel)
+
+    // Selector de escenarios de prueba — solo se renderiza en builds debug.
+    DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
+
+    if (gameState.isSelectingBet) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = screenHeight * 0.30f),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            BetSelector(
+                onBet = { amount ->
+                    gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
+                },
+                onCancel = {
+                    gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
+                },
+                isRaise = gameState.currentBet != null
+            )
+        }
+    }
+
+    if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
+        GameOverOverlay(
+            winnerTeam = gameState.winningTeam,
+            ordagoInfo = gameState.ordagoInfo,
+            players = players,
+            bottomPadding = screenHeight * 0.28f,
+            onNewGameClick = {
+                gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
+            }
+        )
+    }
+
+    if (gameState.gamePhase == GamePhase.ROUND_OVER && gameState.scoreBreakdown != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = screenHeight * 0.55f),
+            contentAlignment = Alignment.Center
+        ) {
+            RoundEndOverlay(
+                breakdown = gameState.scoreBreakdown,
+                onContinueClick = {
+                    gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
+                },
+                dimens = dimens
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        GameEventNotification(event = gameState.event)
+    }
 }
+
+
 
 //A Composable to display a list of action buttons
 @Composable
@@ -703,6 +710,39 @@ private fun GameCard(
     )
 }
 
+/**
+ * #15: ¿el jugador participa en el lance que se está jugando ahora? Solo
+ * PARES/JUEGO tienen subconjunto (no todos tienen pares/juego); el resto de
+ * fases `playersInLance` = todos o vacío -> nadie se atenúa. En *_CHECK el
+ * subconjunto aún no está fijado, así que no atenuamos hasta tenerlo.
+ */
+private fun isPlayerInActiveLance(gameState: GameState, playerId: String): Boolean =
+    when (gameState.gamePhase) {
+        GamePhase.PARES, GamePhase.JUEGO ->
+            gameState.playersInLance.isEmpty() || playerId in gameState.playersInLance
+        else -> true
+    }
+
+/** Icono pequeño superpuesto en una esquina del avatar (mano / corta-mus). */
+@Composable
+private fun BoxScope.AvatarCornerIcon(
+    iconResId: Int,
+    description: String,
+    alignment: Alignment,
+    dimens: ResponsiveDimens
+) {
+    Icon(
+        painter = painterResource(id = iconResId),
+        contentDescription = description,
+        tint = Color.White,
+        modifier = Modifier
+            .align(alignment)
+            .size(dimens.avatarSize / 3)
+            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+            .padding(4.dp)
+    )
+}
+
 @Composable
 private fun PlayerAvatar(
     player: Player,
@@ -712,10 +752,10 @@ private fun PlayerAvatar(
     hasCutMus: Boolean,
     activeGestureResId: Int?,
     discardCount: Int? = null,
+    isInLance: Boolean = true,
     dimens: ResponsiveDimens
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
-
 
     Box(
         modifier = modifier.size(dimens.avatarSize),
@@ -726,6 +766,7 @@ private fun PlayerAvatar(
             contentDescription = "Avatar of ${player.name}",
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = if (isInLance) 1f else DIMMED_AVATAR_ALPHA }
                 .clip(CircleShape)
                 .border(4.dp, borderColor, CircleShape)
         )
@@ -747,39 +788,19 @@ private fun PlayerAvatar(
             }
         }
 
-
-        // Si el jugador es "mano", mostramos el icono superpuesto.
+        // Iconos de esquina: mano (abajo-dcha) y corta-mus (abajo-izda).
         if (isMano) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_mano),
-                contentDescription = "Indicador de Mano",
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(dimens.avatarSize / 3)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .padding(4.dp)
-            )
+            AvatarCornerIcon(R.drawable.ic_mano, "Indicador de Mano", Alignment.BottomEnd, dimens)
         }
-
         if (hasCutMus) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_cut),
-                contentDescription = "Indicador de Corta Mus",
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .size(dimens.avatarSize / 3)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .padding(4.dp)
-            )
+            AvatarCornerIcon(R.drawable.ic_cut, "Indicador de Corta Mus", Alignment.BottomStart, dimens)
         }
 
-        // Indicador PERSISTENTE de descarte: cuántas cartas cambió este
-        // jugador en el Mus. Vive toda la ronda (discardCounts no se vacía
-        // hasta el reparto siguiente), por eso es un badge del avatar y no
-        // una burbuja de anuncio (esas se limpian por lance). Esquina libre
-        // (mano = abajo-dcha, corta-mus = abajo-izda, seña = centro).
+        // Badge de descarte: cuántas cartas cambió este jugador en el ciclo
+        // de Mus/descarte ACTUAL. Acotado a la fase de Mus/descarte
+        // (discardCounts se vacía al entrar en GRANDE y al iniciar cada
+        // ciclo de descarte). Esquina libre (mano = abajo-dcha, corta-mus =
+        // abajo-izda, seña = centro).
         if (discardCount != null && discardCount > 0) {
             Row(
                 modifier = Modifier
@@ -1056,7 +1077,8 @@ fun VerticalPlayerArea(
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
             activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
-            discardCount = gameState.discardCounts[player.id])
+            discardCount = gameState.discardCounts[player.id],
+            isInLance = isPlayerInActiveLance(gameState, player.id))
         handContent()
     }
 }
@@ -1097,7 +1119,17 @@ fun HorizontalPlayerArea(
                     ActionAnnouncement(player = player, gameState = gameState, dimens = dimens)
                 }
             }
-            PlayerAvatar(player = player, isCurrentTurn = isCurrentTurn, isMano = isMano, hasCutMus = hasCutMus, dimens = dimens, activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null, discardCount = gameState.discardCounts[player.id])
+            PlayerAvatar(
+                player = player,
+                isCurrentTurn = isCurrentTurn,
+                isMano = isMano,
+                hasCutMus = hasCutMus,
+                dimens = dimens,
+                activeGestureResId =
+                    if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+                discardCount = gameState.discardCounts[player.id],
+                isInLance = isPlayerInActiveLance(gameState, player.id)
+            )
             if (!announcementAbove) {
                 Box(
                     modifier = Modifier.layout { measurable, constraints ->
@@ -1424,7 +1456,7 @@ fun BetSelector(
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Button(onClick = { betAmount++ }) {
+                Button(onClick = { if (betAmount < MAX_BET) betAmount++ }) {
                     Text("+", fontSize = 24.sp)
                 }
             }
@@ -1513,9 +1545,6 @@ data class ResponsiveDimens(
     val fontSizeLarge: TextUnit,
     val fontSizeMedium: TextUnit,
     val fontSizeSmall: TextUnit,
-    val sidePlayerVerticalOffset: Dp,
-    val actionButtonsVerticalOffset: Dp,
-    val actionbuttonsSize: Dp,
     val buttonVPadding: Dp,
     val buttonHPadding: Dp,
     val scaleFactor: Float,

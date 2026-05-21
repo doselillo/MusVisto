@@ -16,14 +16,31 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+// #20 (pieza C): visibilidad de la seña en pantalla, ASIMÉTRICA. Solo la del
+// COMPAÑERO del humano dura 1.5 s (para que él la lea y decida el corte que se
+// le delega). La del RIVAL (y la propia) vuelve al flash corto de antes: si
+// durara 1.5 s el humano interceptaría señas rivales gratis, rompiendo el
+// balance (la IA solo intercepta al 20%, opponentSignPerceived). No afecta a
+// la IA ni a esa interceptación (no usan la duración visual).
+private const val GESTURE_VISIBLE_PARTNER_MS = 1500L
+private const val GESTURE_VISIBLE_OTHER_MS = 300L
+
+// #20 (delegación): probabilidad de que la IA marque pasar seña al entrar al
+// Mus. La seña es la puerta tanto del apoyo en envites como de la delegación
+// del corte de Mus (AILogic.decideMusDelegation). Con partner humano ~máxima
+// — sin seña el humano juega a ciegas y la delegación pierde sentido. Con
+// partner IA antes era 0.70 (cuando la delegación de corte estaba acotada a
+// humano-only); ahora 0.90: la delegación IA↔IA está activa y un 70% dejaba
+// demasiados casos donde el primero IA cortaba con buena mano por no haber
+// señalizado.
+private const val PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
+private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
 
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
     private val aiLogic: AILogic,
     private val gameRepository: GameRepository
 ) : ViewModel() {
-
-    private val manualDealingEnabled = true
 
     private val TAG = "GameViewModelDebug"
 
@@ -62,42 +79,50 @@ class GameViewModel constructor(
         }
     }
 
-    private fun dealManualHands(players: List<Player>, deck: List<Card>): Pair<List<Player>, List<Card>> {
-        // Define aquí las manos que quieres probar
-        val manualHands = mapOf(
-            "p1" to listOf( // Mano del Jugador Humano
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.AS)
-            ),
-            "p2" to listOf( // Mano del Rival Izquierdo
-                Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.REY),
-                Card(Suit.COPAS, Rank.CINCO),
-                Card(Suit.COPAS, Rank.CINCO)
-            ),
-            "p3" to listOf( // Mano del Compañero
-                Card(Suit.OROS, Rank.REY),
-                Card(Suit.OROS, Rank.CABALLO),
-                Card(Suit.OROS, Rank.SOTA),
-                Card(Suit.OROS, Rank.CUATRO)
-            ),
-            "p4" to listOf( // Mano del Rival Derecho
-                Card(Suit.BASTOS, Rank.REY),
-                Card(Suit.BASTOS, Rank.CABALLO),
-                Card(Suit.BASTOS, Rank.CUATRO),
-                Card(Suit.BASTOS, Rank.AS)
-            )
+    private fun defaultPlayers(): List<Player> = listOf(
+        Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
+        Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
+        Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
+        Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
+    )
+
+    /**
+     * Arranca una partida de prueba con manos forzadas (panel de debug).
+     *
+     * Reparte las manos exactas del escenario y, salvo que pida arrancar en
+     * MUS, emite un "No hay mus" del mano para aterrizar en GRANDE con las 16
+     * cartas intactas (un solo NoMus cierra el Mus por reglas; no hay descarte
+     * que altere las manos). A partir de ahí el motor es el normal.
+     */
+    fun startScenario(scenario: DebugScenario) {
+        val score = mapOf("teamA" to 0, "teamB" to 0)
+        val players = defaultPlayers().map {
+            it.copy(hand = scenario.hands[it.id] ?: emptyList())
+        }
+        val dealtCards = scenario.hands.values.flatten().toSet()
+        val remainingDeck = gameLogic.createDeck().filter { it !in dealtCards }
+
+        val musState = GameState(
+            players = players,
+            deck = remainingDeck,
+            score = score,
+            manoPlayerId = scenario.manoId,
+            currentTurnPlayerId = scenario.manoId,
+            gamePhase = GamePhase.MUS,
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
 
-        val updatedPlayers = players.map { it.copy(hand = manualHands[it.id] ?: emptyList()) }
-
-        // Eliminamos las cartas repartidas del mazo para que no haya duplicados
-        val dealtCards = manualHands.values.flatten().toSet()
-        val remainingDeck = deck.filter { it !in dealtCards }
-
-        return Pair(updatedPlayers, remainingDeck)
+        if (scenario.startAtMus) {
+            _gameState.value = onEnterMusPhase(musState)
+        } else {
+            // Un único "No hay mus" del mano cierra el Mus → GRANDE, sin tocar
+            // las manos (handleNoMus no reparte).
+            _gameState.value = gameLogic.processAction(
+                musState, GameAction.NoMus, scenario.manoId
+            )
+        }
+        handleAiTurn()
+        triggerAiGestures()
     }
 
 
@@ -152,10 +177,11 @@ class GameViewModel constructor(
                 )
 
                 // --- TEMPORIZADOR PARA LA PARTE VISUAL ---
-                // La seña visual desaparecerá después de 1.5 segundos,
-                // pero la IA la seguirá recordando en 'knownGestures'.
+                // #20 (pieza C): el compañero del humano dura 1.5 s (legible);
+                // rival/propia, flash corto. La IA la recuerda en
+                // 'knownGestures' aparte (no depende de esta duración).
                 viewModelScope.launch {
-                    delay(300)
+                    delay(gestureVisibleMs(playerId))
                     // Solo borra la seña si sigue siendo la misma que se activó
                     if (_gameState.value.activeGesture == newGesture) {
                         _gameState.value = _gameState.value.copy(activeGesture = null)
@@ -320,16 +346,13 @@ class GameViewModel constructor(
                 if (aiDecision.action is GameAction.ConfirmDiscard) {
                     var cardsToDiscard = aiDecision.cardsToDiscard
 
-                    // --- INICIO DE LA CORRECCIÓN ---
-                    // AÑADIMOS UNA RED DE SEGURIDAD:
-                    // Si la IA, por error, devuelve una lista de descarte vacía,
-                    // forzamos que descarte al menos una carta para evitar que el juego se cuelgue.
+                    // Red anti-cuelgue: decideDiscard ya garantiza un descarte
+                    // no vacío, pero si alguna vez devolviese vacío el juego se
+                    // colgaría. Defensa de profundidad barata; se mantiene.
                     if (cardsToDiscard.isEmpty() && currentPlayer.hand.isNotEmpty()) {
                         Log.e("GameViewModel", "AI LOGIC ERROR: AI decided to discard 0 cards. Forcing discard of 1 to prevent hang.")
-                        // Como fallback, descartamos la primera carta de su mano.
                         cardsToDiscard = setOf(currentPlayer.hand.first())
                     }
-                    // --- FIN DE LA CORRECCIÓN ---
 
                     _gameState.value =
                             // Usamos la lista de descarte (posiblemente corregida)
@@ -380,6 +403,15 @@ class GameViewModel constructor(
                 delay(ANNOUNCEMENT_MIN_VISIBLE_MS)
                 awaitNotPaused()
                 _gameState.value = _gameState.value.copy(currentLanceActions = emptyMap())
+            }
+
+            // Re-entrada a MUS (tras descartar): popular pendingGestures y
+            // disparar señas. Antes este 2º Mus no señalizaba — la corrutina
+            // de gestures solo arrancaba en debugScenario/startNewRound — y
+            // el humano jugaba sin info en los Mus subsiguientes.
+            if (phaseChanged && _gameState.value.gamePhase == GamePhase.MUS) {
+                _gameState.value = onEnterMusPhase(_gameState.value)
+                triggerAiGestures()
             }
 
             // Continuamos con el lance actual.
@@ -433,14 +465,7 @@ class GameViewModel constructor(
     private fun startNewGame(initialScore: Map<String, Int>?, lastManoPlayerId: String?) {
         val score = initialScore ?: mapOf("teamA" to 0, "teamB" to 0)
 
-        val players = _gameState.value.players.ifEmpty {
-            listOf(
-                Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-                Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-                Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-                Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
-            )
-        }
+        val players = _gameState.value.players.ifEmpty { defaultPlayers() }
 
         val newManoId = if (lastManoPlayerId != null) {
             val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }
@@ -455,14 +480,16 @@ class GameViewModel constructor(
 
         val (updatedPlayers, remainingDeck) = gameLogic.dealCards(players, shuffledDeck, newManoId)
 
-        _gameState.value = GameState(
-            players = updatedPlayers,
-            deck = remainingDeck,
-            score = score,
-            manoPlayerId = newManoId,
-            currentTurnPlayerId = newManoId,
-            gamePhase = GamePhase.MUS,
-            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        _gameState.value = onEnterMusPhase(
+            GameState(
+                players = updatedPlayers,
+                deck = remainingDeck,
+                score = score,
+                manoPlayerId = newManoId,
+                currentTurnPlayerId = newManoId,
+                gamePhase = GamePhase.MUS,
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            )
         )
 
         handleAiTurn()
@@ -496,10 +523,11 @@ class GameViewModel constructor(
 
         // 1. Señas de Duples (dos pares)
         if (paresPlay is ParesPlay.Duples) {
-            // Para saber si son altos o bajos, miramos el par más bajo.
-            // Si el par bajo es Sota o superior, son Duples Altos.
-            if (paresPlay.lowPair.value >= Rank.SOTA.value) {
-                return R.drawable.duples_altos // Seña: Duples Altos
+            // #23: "duples altos" comunica EXACTAMENTE "tengo 2 reyes" (par
+            // alto de Reyes). El resto de duples → "duples bajos". Así el
+            // compañero puede leer la fuerza de Grande real de la seña.
+            if (reyesCount >= 2) {
+                return R.drawable.duples_altos // Seña: Duples Altos (2 reyes)
             } else {
                 return R.drawable.duples_bajos // Seña: Duples Bajos
             }
@@ -536,35 +564,77 @@ class GameViewModel constructor(
         return null
     }
 
+    /**
+     * #20 (pieza C): cuánto dura visible en pantalla la seña de [signalerId].
+     * Solo la del COMPAÑERO del humano es legible (1.5 s, para que decida el
+     * corte que se le delega); la del rival y la propia, flash corto, para que
+     * el humano no intercepte señas rivales gratis (la IA solo al 20%).
+     */
+    private fun gestureVisibleMs(signalerId: String): Long {
+        val players = _gameState.value.players
+        val humanTeam = players.find { it.id == humanPlayerId }?.team
+        val signaler = players.find { it.id == signalerId }
+        val isHumanPartner = humanTeam != null && signaler != null &&
+            signaler.id != humanPlayerId && signaler.team == humanTeam
+        return if (isHumanPartner) GESTURE_VISIBLE_PARTNER_MS else GESTURE_VISIBLE_OTHER_MS
+    }
+
+    /**
+     * Asigna `pendingGestures` al entrar a la fase MUS. Para cada IA con
+     * compañero: si `determineGesture` devuelve algo, tirada según
+     * `isHumanPartner` (95%) o IA-IA (70%) para decidir si la pasa.
+     * AILogic lee este map para gatear delegación/apoyo: si NO voy a
+     * señalizar, juego mi mano normal (el partner —especialmente humano—
+     * no tendrá info que use). Coherencia entre AILogic y
+     * triggerAiGestures (corrutinas separadas) garantizada al leer ambas
+     * del mismo state.
+     */
+    private fun onEnterMusPhase(state: GameState): GameState {
+        val humanTeam = state.players.find { it.id == humanPlayerId }?.team
+        val pending = state.players.filter { ai ->
+            ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }
+        }.mapNotNull { ai ->
+            val gesture = determineGesture(ai) ?: return@mapNotNull null
+            val isHumanPartner = humanTeam != null && ai.team == humanTeam
+            val prob = if (isHumanPartner) PENDING_GESTURE_PROB_HUMAN_PARTNER
+                       else PENDING_GESTURE_PROB_AI_PARTNER
+            if (kotlin.random.Random.nextFloat() < prob) ai.id to gesture else null
+        }.toMap()
+        return state.copy(pendingGestures = pending)
+    }
+
     private fun triggerAiGestures() {
         viewModelScope.launch {
-            val currentState = _gameState.value
-
-            // --- INICIO DE LA CORRECCIÓN ---
-            // Ahora seleccionamos a las IAs cuyo compañero TAMBIÉN es una IA.
-            val aiPlayersWithAiPartners = currentState.players.filter { aiPlayer ->
-                aiPlayer.isAi && currentState.players.any { partner ->
-                    partner.id != aiPlayer.id && partner.team == aiPlayer.team && partner.isAi
-                }
-            }
-            // --- FIN DE LA CORRECCIÓN ---
-
             // Esperamos un poco para que no sea instantáneo
             delay(2000)
             awaitNotPaused()
 
-            // El resto de la función itera sobre la nueva lista
-            for (aiPlayer in aiPlayersWithAiPartners) {
-                // 70% de probabilidad de que la IA decida pasar una seña
-                if (kotlin.random.Random.nextFloat() < 0.70f) {
-                    val gestureResId = determineGesture(aiPlayer)
-                    if (gestureResId != null) {
-                        onAction(GameAction.ShowGesture, aiPlayer.id)
-                        // Pequeña pausa por si varias IAs quisieran pasar seña
-                        delay(500)
-                        awaitNotPaused()
-                    }
-                }
+            // #20 (pieza B): la IA emite seña tenga compañero IA o HUMANO. El
+            // capitán humano necesita ver la seña para decidir el corte que el
+            // primero le delega; antes solo se emitía IA->IA y el humano
+            // jugaba a ciegas. La interceptación rival (opponentSignPerceived,
+            // prob 0.20 fija) NO depende de esto, así que no añade exposición.
+            // Lectura de `pendingGestures` (no tirada local): asegura que
+            // AILogic.decideMusDelegation y esta corrutina ven la MISMA
+            // decisión "voy a señalizar".
+            val signalerIds = _gameState.value.pendingGestures.keys.toList()
+
+            for (signalerId in signalerIds) {
+                // La seña solo tiene sentido en MUS; tras los delay la fase o
+                // la mano pueden haber cambiado, así que releemos el estado
+                // fresco (no una copia stale): el humano decidirá su corte con
+                // lo que vea, debe reflejar fase y mano reales.
+                if (_gameState.value.gamePhase != GamePhase.MUS) return@launch
+                // Solo si SIGUE en pendingGestures (no se canceló por refresh).
+                if (signalerId !in _gameState.value.pendingGestures) continue
+                onAction(GameAction.ShowGesture, signalerId)
+                // Esperar a que ESTA seña agote su ventana visible para
+                // que la siguiente no la pise. Es la duración propia del
+                // emisor (compañero del humano = 1.5 s; rival = flash), así
+                // una cadena de señas rivales no retrasa 1.5 s la del
+                // compañero (era el "tarda un poco" del playtest).
+                delay(gestureVisibleMs(signalerId))
+                awaitNotPaused()
             }
         }
     }

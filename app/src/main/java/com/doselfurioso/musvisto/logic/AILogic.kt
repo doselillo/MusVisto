@@ -2,6 +2,7 @@ package com.doselfurioso.musvisto.logic
 
 import android.util.Log
 import com.doselfurioso.musvisto.R
+import com.doselfurioso.musvisto.debug.DebugFeatures
 import java.util.UUID
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
@@ -12,15 +13,53 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import kotlin.math.max
 
-// Por debajo de esta fuerza propia (pre-fusión con señas) en un lance, la mano
-// no es independientemente fuerte: si el compañero señalizó y tiene mejor
-// posición, conviene jugar de apoyo en vez de pisarle el envite.
-private const val SUPPORT_OWN_FLOOR = 70
+// Apertura de envite del primero: solo abro yo cuando tengo mano ultra-premium
+// (>90: 4R/31 mano/duples reyes mano). Con cualquier otra mano apoyo y dejo
+// que el capitán decida con su mano + mi seña. Más bajo dejaba al primero
+// abrir manos medias-altas y la pareja se "pisaba"; más alto silencia incluso
+// los value-bets evidentes de la nuts.
+private const val SUPPORT_OWN_FLOOR = 90
 
 // Probabilidad de que un rival INTERCEPTE una seña del equipo contrario.
 // Baja: en el Mus real solo se cazan algunas, de vez en cuando. Antes era
 // 100% (omnisciencia) -> usar señas era perjudicial. (Backlog #7)
 private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
+
+// #23: strength efectivo de Grande para duples-de-reyes propio siendo mano.
+// >78 ("valor fuerte") pero <90 (no es el value-bet 4-5 más leíble); el
+// mus-strategy-reviewer lo fijó en 82.
+private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
+
+// 1c: umbrales de decisión nombrados (mismos valores que los literales
+// previos). Las tablas-`when` de fuerza por jugada se dejan como están: ya
+// son auto-documentadas como tabla.
+// Corte de Mus: fuerza mínima para NoMus (ajustada por riskFactor y bias).
+private const val MUS_CUT_PARES_JUEGO = 75
+private const val MUS_CUT_GRANDE_CHICA = 85
+// Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
+private const val PARTNER_MANO_MUS_BIAS = 10
+// #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
+// VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
+// humano no tendría info → corto por mi mano normal (sin delegar). 5% de
+// "break" para no ser absoluto: humano-like, a veces corto aunque toque
+// delegar. Solo con compañero humano: el simulador probó que delegar IA→IA
+// sangra tantos sin beneficio. Con compañero IA #20 es no-op.
+private const val MUS_DELEGATION_BREAK_PCT = 5
+// Apertura de envite por bandas: > fuerte = valor seguro; [piso..fuerte] =
+// banda media probabilística; < piso = solo farol de robo.
+private const val OPEN_STRONG_VALUE = 78
+private const val OPEN_MID_BAND_FLOOR = 55
+
+// Penalización al strength del capitán cuando responde a un envite del rival
+// y SU compañero (primero del equipo) ya pasó en este lance. Con #20 el
+// primero apoya/pasa con manos no ultra-premium → el equipo queda apostando
+// SOLO con la mano del capitán; sin esta penalización el capitán acepta como
+// si su compañero aportara, y sangra (sim slice: aceptar gana 42% vs 53%
+// baseline, neto -738 vs -162). Validado con simulador (200 partidas):
+// la magnitud 15 deja aceptar 54.6% wins / -83 tantos netos (incluso mejor
+// que baseline). 10 y 12 compensan menos (-225, -142). 15 saca las manos
+// strength 75-85 de la banda Quiero — eran las que sangraban.
+private const val CAPTAIN_ALONE_RESPONSE_PENALTY = 15
 
 data class AIDecision(
     val action: GameAction,
@@ -28,6 +67,18 @@ data class AIDecision(
     /** Log detallado de la decisión, consumido por el panel de debug en builds debug. */
     val debugLog: String = ""
 )
+
+/**
+ * Acumulador del log de decisión de la IA. En builds debug se comporta como
+ * un StringBuilder; en release es un no-op (no se asigna el StringBuilder ni
+ * crecen los appends), evitando el trabajo perdido que señala KNOWN_ISSUES.
+ * No afecta a ninguna decisión: el log es puramente informativo.
+ */
+private class DecisionLog {
+    private val sb: StringBuilder? = if (DebugFeatures.IS_ENABLED) StringBuilder() else null
+    fun appendLine(line: String) { sb?.appendLine(line) }
+    override fun toString(): String = sb?.toString() ?: ""
+}
 
 /**
  * Clase AILogic
@@ -59,7 +110,7 @@ class AILogic constructor(
     // ---------------- Public entry point ----------------
     fun makeDecision(gameState: GameState, aiPlayer: Player): AIDecision {
         val decisionId = UUID.randomUUID().toString().substring(0, 5)
-        val logBuilder = StringBuilder()
+        val logBuilder = DecisionLog()
 
         val rivalTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val myScore = gameState.score[aiPlayer.team] ?: 0
@@ -110,9 +161,6 @@ class AILogic constructor(
         logBuilder.appendLine("4. Final Strength -> $finalLine")
         logBuilder.appendLine("-------------------------------------------------")
 
-        val decision: AIDecision
-        val actionLog: String
-
         // Capitanía de lance (#1/#4): ¿debo jugar de apoyo y cederle la
         // iniciativa al compañero (mejor posición + seña fuerte conocida)?
         val ownBaseLance = when (gameState.gamePhase) {
@@ -123,63 +171,14 @@ class AILogic constructor(
             else -> 0
         }
         val playSupport = shouldPlaySupport(gameState, aiPlayer, gameState.gamePhase, ownBaseLance)
-        if (playSupport) logBuilder.appendLine("4b. Rol de APOYO: compañero capitán de lance (mejor posición + seña fuerte), mano propia floja ($ownBaseLance).")
+        if (playSupport) logBuilder.appendLine(
+            "4b. Rol de APOYO: soy el primero del equipo, mano propia floja ($ownBaseLance); cedo al capitán."
+        )
 
-        if (gameState.currentBet != null) {
-            val strengthForLance = when (gameState.gamePhase) {
-                GamePhase.GRANDE -> finalStrength.grande
-                GamePhase.CHICA -> finalStrength.chica
-                GamePhase.PARES -> finalStrength.pares
-                GamePhase.JUEGO -> finalStrength.juego
-                else -> 0
-            }
-            val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
-            // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
-            // para mantener el bote del equipo sin pisar al capitán.
-            val responseAction = if (playSupport &&
-                (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
-            ) GameAction.Quiero else rawResponse
-            decision = AIDecision(responseAction)
-            val threshold = 70 // Umbral para "Quiero"
-            actionLog = when {
-                playSupport && responseAction !== rawResponse ->
-                    ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
-                responseAction is GameAction.Quiero ->
-                    ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
-                else ->
-                    ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
-            }
+        val (decision, actionLog) = if (gameState.currentBet != null) {
+            decideBettingResponse(gameState, aiPlayer, finalStrength, playSupport)
         } else {
-            when (gameState.gamePhase) {
-                GamePhase.MUS -> {
-                    val musResult = decideMus(finalStrength, aiPlayer, riskFactor, gameState)
-                    decision = AIDecision(musResult.first)
-                    actionLog = ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
-                }
-                GamePhase.DISCARD -> {
-                    decision = decideDiscard(aiPlayer)
-                    actionLog = ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
-                }
-                else -> {
-                    val strengthForLance = when(gameState.gamePhase) {
-                        GamePhase.GRANDE -> finalStrength.grande
-                        GamePhase.CHICA -> finalStrength.chica
-                        GamePhase.PARES -> finalStrength.pares
-                        else -> finalStrength.juego
-                    }
-                    val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
-                    // En apoyo no abro: dejo hablar a rivales y al capitán.
-                    val betAction = if (playSupport &&
-                        (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
-                    ) GameAction.Paso else betResult.first
-                    decision = AIDecision(betAction)
-                    actionLog = if (playSupport && betAction !== betResult.first) {
-                        ">>> FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"
-                    } else {
-                        ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
-                    }
-                }
-            }
+            decideByPhase(gameState, aiPlayer, finalStrength, riskFactor, playSupport)
         }
 
         logBuilder.appendLine(actionLog)
@@ -201,8 +200,84 @@ class AILogic constructor(
             append(" -> ${decision.action.displayText}")
         }
         val log = "$tldr\n${logBuilder}"
-        Log.d(TAG, log)
-        return decision.copy(debugLog = log)
+        if (DebugFeatures.IS_ENABLED) Log.d(TAG, log)
+        return decision.copy(debugLog = if (DebugFeatures.IS_ENABLED) log else "")
+    }
+
+    /** Responder a una apuesta activa. Devuelve (decisión, línea de log). */
+    private fun decideBettingResponse(
+        gameState: GameState,
+        aiPlayer: Player,
+        finalStrength: HandStrength,
+        playSupport: Boolean
+    ): Pair<AIDecision, String> {
+        val strengthForLance = when (gameState.gamePhase) {
+            GamePhase.GRANDE -> finalStrength.grande
+            GamePhase.CHICA -> finalStrength.chica
+            GamePhase.PARES -> finalStrength.pares
+            GamePhase.JUEGO -> finalStrength.juego
+            else -> 0
+        }
+        val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
+        // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
+        // para mantener el bote del equipo sin pisar al capitán.
+        val responseAction = if (playSupport &&
+            (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
+        ) GameAction.Quiero else rawResponse
+        val threshold = 70 // Umbral para "Quiero"
+        val actionLog = when {
+            playSupport && responseAction !== rawResponse ->
+                ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
+            responseAction is GameAction.Quiero ->
+                ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
+            else ->
+                ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
+        }
+        return AIDecision(responseAction) to actionLog
+    }
+
+    /** Decisión sin apuesta activa: MUS / DISCARD / apertura de lance. */
+    private fun decideByPhase(
+        gameState: GameState,
+        aiPlayer: Player,
+        finalStrength: HandStrength,
+        riskFactor: Int,
+        playSupport: Boolean
+    ): Pair<AIDecision, String> {
+        when (gameState.gamePhase) {
+            GamePhase.MUS -> {
+                val musResult = decideMus(finalStrength, aiPlayer, riskFactor, gameState)
+                return AIDecision(musResult.first) to
+                    ">>> FINAL ACTION: ${musResult.first.displayText} (${musResult.second})"
+            }
+            GamePhase.DISCARD -> {
+                val decision = decideDiscard(aiPlayer)
+                return decision to
+                    ">>> FINAL ACTION: ${decision.action.displayText} (Cards: ${decision.cardsToDiscard.joinToString { cardToShortString(it) }})"
+            }
+            else -> {
+                // Intencional: en APERTURA el `else` cae a juego (la rama
+                // else de fase aquí es JUEGO). En decideBettingResponse el
+                // `else` es 0 (allí puede haber fases sin lance). NO unificar.
+                val strengthForLance = when(gameState.gamePhase) {
+                    GamePhase.GRANDE -> finalStrength.grande
+                    GamePhase.CHICA -> finalStrength.chica
+                    GamePhase.PARES -> finalStrength.pares
+                    else -> finalStrength.juego
+                }
+                val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
+                // En apoyo no abro: dejo hablar a rivales y al capitán.
+                val betAction = if (playSupport &&
+                    (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
+                ) GameAction.Paso else betResult.first
+                val actionLog = if (playSupport && betAction !== betResult.first) {
+                    ">>> FINAL ACTION: Paso (Apoyo: no abro desde mala posición, cedo al capitán; era ${betResult.first.displayText})"
+                } else {
+                    ">>> FINAL ACTION: ${betResult.first.displayText} (${betResult.second})"
+                }
+                return AIDecision(betAction) to actionLog
+            }
+        }
     }
 
     private fun getPairingRank(rank: Rank): Rank {
@@ -251,6 +326,13 @@ class AILogic constructor(
         aiPlayer: Player
     ): GameAction {
         val currentBetAmount = gameState.currentBet?.amount ?: 0
+        // Compensación #20: si mi compañero (primero del equipo) ya pasó en
+        // este lance, el equipo está apostando SOLO con mi mano. Bajo el
+        // strength efectivo para que las bandas de aceptación sean más
+        // exigentes — rechazo envites del rival con manos medias que antes
+        // aceptaba contando con "el aporte" del compañero.
+        val effectiveStrength =
+            applyCaptainAlonePenalty(adjustedStrength, gameState, aiPlayer)
 
         // Respuesta a un ÓRDAGO (#28). Antes solo se aceptaba con casi la nuts
         // (adjustedStrength>=95) o perdiendo por >20: un humano spameaba órdago
@@ -285,8 +367,8 @@ class AILogic constructor(
             val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
 
             return when {
-                adjustedStrength >= acceptThreshold -> GameAction.Quiero
-                adjustedStrength < deadFloor -> GameAction.NoQuiero
+                effectiveStrength >= acceptThreshold -> GameAction.Quiero
+                effectiveStrength < deadFloor -> GameAction.NoQuiero
                 // Banda media [deadFloor, umbral): llamada probabilística para
                 // que spamear órdago con mano floja no sea gratis.
                 rng.nextInt(100) < 30 -> GameAction.Quiero
@@ -295,7 +377,7 @@ class AILogic constructor(
         }
 
         // --- LÓGICA DE RESPUESTA MEJORADA ---
-        val advantage = adjustedStrength - currentBetAmount
+        val advantage = effectiveStrength - currentBetAmount
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
 
@@ -306,7 +388,7 @@ class AILogic constructor(
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(adjustedStrength))
+            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength))
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -331,10 +413,41 @@ class AILogic constructor(
     }
 
     // ---------------- Mus / NoMus ----------------
-    // Capitanía de lance por posición (#1/#4): si el compañero ya señalizó
-    // fuerza para este lance y actúa DESPUÉS que yo (mejor posición), y mi mano
-    // propia es floja, debo jugar de apoyo: ni abrir ni subir, para no pisarle
-    // ni delatar la jugada conocida hablando antes el de mano débil.
+    /**
+     * Resta CAPTAIN_ALONE_RESPONSE_PENALTY al strength si el compañero del
+     * jugador ya pasó en este lance — el equipo está apostando solo con su
+     * mano. Devuelve el strength efectivo (con suelo en 0).
+     */
+    private fun applyCaptainAlonePenalty(
+        rawStrength: Int,
+        gameState: GameState,
+        aiPlayer: Player
+    ): Int {
+        val partner = gameState.players.firstOrNull {
+            it.team == aiPlayer.team && it.id != aiPlayer.id
+        }
+        val captainAlone = partner != null && partner.id in gameState.playersWhoPassed
+        return if (captainAlone) {
+            (rawStrength - CAPTAIN_ALONE_RESPONSE_PENALTY).coerceAtLeast(0)
+        } else rawStrength
+    }
+
+    // Capitanía de lance por posición (#1/#4): el primero del equipo cede al
+    // capitán (compañero en posición tardía) por norma general. Apoyo si:
+    //  1) Mi mano propia no es ULTRA-premium (< SUPPORT_OWN_FLOOR=90): solo
+    //     abro yo con 4R/31 mano/duples reyes mano; con cualquier otra mano,
+    //     la coordinación con el capitán pesa más que mi value-bet individual.
+    //  2) Mi compañero actúa después que yo (es capitán por posición).
+    //  3) En lances restringidos (Pares/Juego sin Punto): si el capitán no
+    //     participa y yo sí, juego sin freno (modelo: "capitán fuera del lance
+    //     + primero sí → primero sin freno").
+    //  4) Con compañero HUMANO: solo apoyo si VOY A SEÑALIZAR
+    //     (`pendingGestures` contiene mi id). Si no señalizo, el humano juega
+    //     sin info y la delegación tira tantos a la basura → juego mi mano.
+    //     Coherente con decideMusDelegation: misma puerta para Mus y envites.
+    // La seña del compañero NO es requisito: en el modelo el primero es quien
+    // señaliza y el segundo quien recibe; exigir `knownGestures[partner.id]`
+    // dejaba el apoyo inerte en el caso típico (PR previo, ver KNOWN_ISSUES).
     private fun shouldPlaySupport(
         gameState: GameState,
         aiPlayer: Player,
@@ -349,19 +462,22 @@ class AILogic constructor(
         val myPos = order.indexOfFirst { it.id == aiPlayer.id }
         val partnerPos = order.indexOfFirst { it.id == partner.id }
         if (myPos < 0 || partnerPos < 0) return false
-        // Capitán = el que actúa más tarde (mejor posición). Si lo soy, no apoyo.
+        // Capitán = el que actúa más tarde. Si lo soy yo, no apoyo.
         if (myPos > partnerPos) return false
-        val partnerGesture = gameState.knownGestures[partner.id] ?: return false
-        val resId = partnerGesture.gestureResId
-        return when (lance) {
-            GamePhase.GRANDE -> partnerGrandeBoost(resId) >= 65
-            GamePhase.CHICA -> partnerChicaBoost(resId) >= 65
-            GamePhase.PARES -> getGestureMeaning(resId).let {
-                it is GestureMeaning.Pares && it.play !is ParesPlay.NoPares
-            }
-            GamePhase.JUEGO -> getGestureMeaning(resId) is GestureMeaning.Juego
-            else -> false
-        }
+        // Lance restringido (Pares/Juego sin Punto): si el capitán no está en
+        // el lance y yo sí, juego sin freno — no cedo a quien no participa.
+        val isRestrictedLance = lance == GamePhase.PARES ||
+            (lance == GamePhase.JUEGO && !gameState.isPuntoPhase)
+        val captainOutOfRestrictedLance = isRestrictedLance &&
+            gameState.playersInLance.isNotEmpty() &&
+            partner.id !in gameState.playersInLance
+        // Gating por seña SOLO con compañero humano (con IA-IA #20 está
+        // desactivado y este apoyo es comportamiento-cero respecto a Mus).
+        // Si no voy a señalizar, juego mi mano normal: el humano no podrá
+        // capitanear con info → mejor que abra/responda yo.
+        val humanPartnerWithoutPendingSignal =
+            !partner.isAi && aiPlayer.id !in gameState.pendingGestures
+        return !captainOutOfRestrictedLance && !humanPartnerWithoutPendingSignal
     }
 
     private fun decideMus(
@@ -379,12 +495,21 @@ class AILogic constructor(
         // mano claramente buena (que supera incluso el umbral elevado).
         val partner = gameState.players.firstOrNull { it.team == aiPlayer.team && it.id != aiPlayer.id }
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
-        val manoBias = if (partnerIsMano) 10 else 0
+        val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        val paresCutThreshold = 75 - riskFactor + manoBias // Umbral para cortar por pares
-        val juegoCutThreshold = 75 - riskFactor + manoBias
-        val grandeCutThreshold = 85 - riskFactor + manoBias
-        val chicaCutThreshold = 85 - riskFactor + manoBias
+        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy
+        // a señalizar (pendingGestures), le delego el corte (decide él con
+        // mi seña + su mano). Aplica a partner humano Y partner IA — la
+        // restricción a humano-only sangraba sensación de pareja IA↔IA en
+        // playtest (el primero IA cortaba con buena mano cuando debería
+        // ceder al segundo).
+        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
+        decideMusDelegation(gameState, aiPlayer, iActBeforePartner)?.let { return it }
+
+        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
+        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
+        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
+        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
 
         if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
         if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
@@ -399,15 +524,65 @@ class AILogic constructor(
         return Pair(GameAction.Mus, musReason)
     }
 
+    /** ¿Actúo ANTES que mi compañero en el turno? (capitán = el de después). */
+    private fun actsBeforePartner(
+        gameState: GameState,
+        aiPlayer: Player,
+        partner: Player?
+    ): Boolean {
+        partner ?: return false
+        val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val myPos = order.indexOfFirst { it.id == aiPlayer.id }
+        val partnerPos = order.indexOfFirst { it.id == partner.id }
+        return myPos >= 0 && partnerPos >= 0 && myPos < partnerPos
+    }
 
-    // Importe de envite sesgado por la fuerza de la jugada: con mano floja
-    // (justo sobre el umbral) envida poco; con mano muy fuerte sube más.
-    // Mantiene aleatoriedad dentro de cada tramo para no ser predecible.
-    private fun betAmount(strength: Int): Int = when {
-        strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
-        strength >= 80 -> rng.nextInt(3, 6)  // 3-5
-        strength >= 70 -> rng.nextInt(2, 5)  // 2-4
-        else -> rng.nextInt(2, 4)            // 2-3: manos justas
+    /**
+     * Override de corte por capitanía delegada (#20). Actúa si:
+     *  - Actúo ANTES que mi compañero (posicionalmente soy primero del equipo).
+     *  - Voy a señalizar (mi id en `pendingGestures`). Si no señalizo, el
+     *    capitán juega a ciegas → corto por mis umbrales normales.
+     *
+     * Aplica a compañero humano Y compañero IA. La versión inicial (PR #47)
+     * acotaba a humano-only por el resultado del simulador, pero el playtest
+     * en pareja IA↔IA reveló que el primero seguía cortando con buenas manos
+     * que debería ceder. Por decisión de producto se restablece la simetría
+     * humano/IA aunque el simulador detecte sangrado — la sensación de
+     * pareja real prevalece y la compensación va por otro lado
+     * (`CAPTAIN_ALONE_RESPONSE_PENALTY` ya está activa).
+     *
+     * 5% break para variación humana-like (no ser absoluto).
+     *
+     * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
+     * esta delegación DEBE quedar deshabilitada — el mus corrido prohíbe señas
+     * y exige decisión de corte individual (determina la mano).
+     */
+    private fun decideMusDelegation(
+        gameState: GameState,
+        aiPlayer: Player,
+        iActBeforePartner: Boolean
+    ): Pair<GameAction, String>? {
+        if (!iActBeforePartner) return null
+        if (aiPlayer.id !in gameState.pendingGestures) return null
+        if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
+            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto excepcionalmente"
+        }
+        return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
+    }
+
+
+    // Importe de envite. 90% "envido" seco (2): es el default real del Mus,
+    // las subidas son recurso ocasional, no la norma. El 10% restante sí
+    // sube y sigue sesgado por fuerza — una subida a 4-5 sigue siendo
+    // indicador de mano fuerte, pero rara. Calibración por playtest (#11).
+    private fun betAmount(strength: Int): Int {
+        if (rng.nextInt(100) < 90) return 2
+        return when {
+            strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
+            strength >= 80 -> rng.nextInt(3, 6)  // 3-5
+            strength >= 70 -> rng.nextInt(3, 5)  // 3-4
+            else -> 3
+        }
     }
 
     private fun decideInitialBet(
@@ -452,27 +627,39 @@ class AILogic constructor(
         val stealSpot = opponentsPassed >= 1
         val scoreRisky = opponentScore >= 33 || myTeamScore >= 33
 
+        // #23 Parte B: duples-de-reyes propio + ser mano en GRANDE → strength
+        // efectivo 82 (cae en "valor fuerte"). Sigue las bandas, NO es un flag
+        // determinista: manos de 2 reyes SIN duples siguen entrando por la
+        // banda media probabilística y a veces pasan → no telegrafía.
+        val ownPares = gameLogic.getHandPares(aiPlayer.hand)
+        val duplesDeReyesMano = gameState.gamePhase == GamePhase.GRANDE && isMano &&
+            ownPares is ParesPlay.Duples && ownPares.highPair == Rank.REY
+        val effStrength = if (duplesDeReyesMano) maxOf(strength, DUPLES_REY_MANO_GRANDE_STRENGTH) else strength
+
         // 1) Valor fuerte: como siempre.
-        if (strength > 78) {
-            return Pair(GameAction.Envido(betAmount(strength)),
-                "Reason: Valor fuerte ($strength)")
+        if (effStrength > OPEN_STRONG_VALUE) {
+            val why = if (duplesDeReyesMano)
+                "Valor fuerte ($effStrength) [#23: duples de reyes + mano; Grande base $strength → $effStrength]"
+            else "Valor fuerte ($effStrength)"
+            return Pair(GameAction.Envido(betAmount(effStrength)), "Reason: $why")
         }
 
         // 2) Banda media (55-78): valor fino, prob. sube con fuerza y contexto.
-        if (strength in 55..78) {
-            var p = (strength - 55) / 23.0
+        if (effStrength in OPEN_MID_BAND_FLOOR..OPEN_STRONG_VALUE) {
+            var p = (effStrength - OPEN_MID_BAND_FLOOR) /
+                (OPEN_STRONG_VALUE - OPEN_MID_BAND_FLOOR).toDouble()
             if (isMano) p += 0.15
             if (isLate) p += 0.20
             if (opponentsPassed >= 1) p += 0.15
             p = p.coerceIn(0.0, 0.85) // nunca 100%: no ser leíble
             if (rng.nextDouble() < p) {
-                return Pair(GameAction.Envido(betAmount(strength)),
-                    "Reason: Valor fino media-banda ($strength, p=${"%.2f".format(p)})")
+                return Pair(GameAction.Envido(betAmount(effStrength)),
+                    "Reason: Valor fino media-banda ($effStrength, p=${"%.2f".format(p)})")
             }
         }
 
         // 3) Farol barato: solo si alguien ya pasó (robo) y marcador no delicado.
-        if (strength < 55 && stealSpot && !scoreRisky) {
+        if (effStrength < OPEN_MID_BAND_FLOOR && stealSpot && !scoreRisky) {
             val bluffP = (0.10 + if (isLate) 0.10 else 0.0).coerceAtMost(0.20)
             if (rng.nextDouble() < bluffP) {
                 return Pair(GameAction.Envido(2),
@@ -508,7 +695,8 @@ class AILogic constructor(
         // Regla dura: 31 obliga a descartar — tira la de menor baseRank para
         // preservar Grande (Rey/Tres) y Chica (As/Dos).
         if (juegoValue == 31) {
-            val cardToDiscard = hand.minByOrNull { baseRank(it.rank) }!!
+            // hand no vacía (guard arriba); ?: por robustez ante refactor.
+            val cardToDiscard = hand.minByOrNull { baseRank(it.rank) } ?: hand.first()
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
@@ -529,7 +717,7 @@ class AILogic constructor(
 
         // Mus obligatorio: si nada baja del umbral (mano excelente), descarta la peor.
         if (cardsToDiscard.isEmpty()) {
-            val worstCard = hand.minByOrNull { cardScores[it] ?: 0 }!!
+            val worstCard = hand.minByOrNull { cardScores[it] ?: 0 } ?: hand.first()
             Log.d(TAG, "Mus obligatorio: descartando la peor carta: ${cardToShortString(worstCard)}")
             cardsToDiscard = setOf(worstCard)
         }
@@ -601,13 +789,49 @@ class AILogic constructor(
 
 
     // ---------------- Evaluación de mano ----------------
+    /**
+     * Evalúa la mano en los 4 lances. Orquesta: calcula el contexto de turno
+     * una vez y delega cada lance a su función. Comportamiento idéntico al
+     * monolito previo (mismas fórmulas y mismas líneas de `explanation`, en
+     * el mismo orden Grande→Chica→Pares→Juego).
+     *
+     * NOTA: la fuerza de Pares NO se consolida con `getParesPlayStrength`
+     * a propósito: aquella suma +15 de mano a Duples/Medias (inferencia de
+     * seña del compañero), ésta NO (mano propia). Son divergentes por
+     * diseño; unificarlas cambiaría el comportamiento.
+     */
     private fun evaluateHand(hand: List<Card>, player: Player, gameState: GameState): EvaluationResult {
         if (hand.isEmpty()) return EvaluationResult(HandStrength(0, 0, 0, 0), "   - Empty hand.")
 
         val explanation = StringBuilder()
         val sortedHand = hand.sortedByDescending { getCardGrandeValue(it) }
 
-        // --- CÁLCULO DE GRANDE (LÓGICA MEJORADA) ---
+        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
+        val isMano = playerPositionInTurn == 0
+        // Rivales (no el compañero) que actúan ANTES que yo en el orden de
+        // turno. Clave para el 31: solo se pierde el lance si un RIVAL anterior
+        // también tiene 31 (un 31 del compañero por delante gana igual).
+        val rivalsAhead = orderedPlayers.take(playerPositionInTurn)
+            .count { it.team != player.team }
+
+        val grandeStrength = evaluateGrande(hand, sortedHand, explanation)
+        val chicaStrength = evaluateChica(hand, explanation)
+        val paresStrength = evaluatePares(hand, isMano, explanation)
+        val juegoStrength = evaluateJuego(
+            hand, gameState, isMano, playerPositionInTurn, rivalsAhead, explanation
+        )
+
+        val finalStrength = HandStrength(
+            grande = grandeStrength.coerceIn(0, 100),
+            chica = chicaStrength.coerceIn(0, 100),
+            pares = paresStrength.coerceIn(0, 100),
+            juego = juegoStrength.coerceIn(0, 100)
+        )
+        return EvaluationResult(finalStrength, explanation.toString())
+    }
+
+    private fun evaluateGrande(hand: List<Card>, sortedHand: List<Card>, explanation: StringBuilder): Int {
         explanation.appendLine("   - Grande:")
         val reyes = hand.filter { it.rank == Rank.REY || it.rank == Rank.TRES }
         val nonReyes = hand.filter { it.rank != Rank.REY && it.rank != Rank.TRES }
@@ -652,8 +876,10 @@ class AILogic constructor(
                 explanation.appendLine("     - Kicker Bonus por ${cardToShortString(kicker)} -> +$kickerBonus pts")
             }
         }
+        return grandeStrength
+    }
 
-        // --- CÁLCULO DE CHICA ---
+    private fun evaluateChica(hand: List<Card>, explanation: StringBuilder): Int {
         val lowCardsCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
         var chicaStrength = 0
         explanation.appendLine("   - Chica:")
@@ -680,30 +906,25 @@ class AILogic constructor(
                 explanation.appendLine("     - No Ases/Doses, base = (12 - $minOrderValue) * 4 -> $chicaStrength pts")
             }
         }
-        if (lowCardsCount < 2) {
-            val bestChicaCard = hand.minByOrNull { cardChicaOrderValue(it) }!!
+        // ?: skip del bonus si la mano fuese vacía (no ocurre con el flujo
+        // actual); evita el !! frágil sin alterar el cálculo cuando hay carta.
+        val bestChicaCard = if (lowCardsCount < 2) hand.minByOrNull { cardChicaOrderValue(it) } else null
+        if (bestChicaCard != null) {
             val bonus = ((12 - cardChicaOrderValue(bestChicaCard)) * 1.5).toInt()
             chicaStrength += bonus
             explanation.appendLine("     - Bonus por carta más baja (${cardToShortString(bestChicaCard)}) -> +$bonus pts")
         }
+        return chicaStrength
+    }
 
-        // --- CÁLCULO DE PARES ---
+    private fun evaluatePares(hand: List<Card>, isMano: Boolean, explanation: StringBuilder): Int {
         val paresPlay = gameLogic.getHandPares(hand)
         var paresStrength = 0
         explanation.appendLine("   - Pares:")
-        val orderedPlayers = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
-        // 2. Encontramos la posición del jugador actual EN ESA LISTA (0=mano, 1=segundo, etc.)
-        val playerPositionInTurn = orderedPlayers.indexOfFirst { it.id == player.id }
-        val isMano = playerPositionInTurn == 0
-        // Rivales (no el compañero) que actúan ANTES que yo en el orden de
-        // turno. Clave para el 31: solo se pierde el lance si un RIVAL anterior
-        // también tiene 31 (un 31 del compañero por delante gana igual).
-        val rivalsAhead = orderedPlayers.take(playerPositionInTurn)
-            .count { it.team != player.team }
-
         when (paresPlay) {
             is ParesPlay.Duples -> {
-                paresStrength = 100; explanation.appendLine("     - Duples -> 100 pts (max)")
+                paresStrength = duplesStrength(paresPlay)
+                explanation.appendLine("     - Duples ${paresPlay.highPair.name}/${paresPlay.lowPair.name} -> $paresStrength pts")
             }
 
             is ParesPlay.Medias -> {
@@ -717,8 +938,9 @@ class AILogic constructor(
                 paresStrength = 20 + rankValue.value * 3
                 explanation.appendLine("     - Base por Pares de ${paresPlay.rank.name} (valor $rankValue) -> $paresStrength pts")
                 if (isMano) {
-                    paresStrength += 15
-                    explanation.appendLine("     - Bonus por ser Mano -> +15 pts")
+                    val manoBonus = manoParesBonus(rankValue.value)
+                    paresStrength += manoBonus
+                    explanation.appendLine("     - Bonus por ser Mano (escalado #13) -> +$manoBonus pts")
                 }
             }
 
@@ -726,8 +948,17 @@ class AILogic constructor(
                 paresStrength = 0; explanation.appendLine("     - No Pares -> 0 pts")
             }
         }
+        return paresStrength
+    }
 
-        // --- CÁLCULO DE JUEGO ---
+    private fun evaluateJuego(
+        hand: List<Card>,
+        gameState: GameState,
+        isMano: Boolean,
+        playerPositionInTurn: Int,
+        rivalsAhead: Int,
+        explanation: StringBuilder
+    ): Int {
         val juegoValue = gameLogic.getHandJuegoValue(hand)
         var juegoStrength = 0
         explanation.appendLine("   - Juego (Valor: $juegoValue, Posición: ${playerPositionInTurn + 1}, Es Mano: $isMano):")
@@ -786,15 +1017,7 @@ class AILogic constructor(
                 explanation.appendLine("     - No tiene Juego (y no es lance de Punto) -> 0 pts")
             }
         }
-
-        val finalStrength = HandStrength(
-            grande = grandeStrength.coerceIn(0, 100),
-            chica = chicaStrength.coerceIn(0, 100),
-            pares = paresStrength.coerceIn(0, 100),
-            juego = juegoStrength.coerceIn(0, 100)
-        )
-
-        return EvaluationResult(finalStrength, explanation.toString())
+        return juegoStrength
     }
 
 
@@ -890,7 +1113,7 @@ class AILogic constructor(
         baseStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player,
-        logBuilder: StringBuilder
+        logBuilder: DecisionLog
     ): HandStrength {
         if (gameState.knownGestures.isEmpty()) {
             logBuilder.appendLine("2. No gestures remembered this round.")
@@ -898,12 +1121,38 @@ class AILogic constructor(
         }
 
         logBuilder.appendLine("2. Analyzing Remembered Gestures (Team Strength):")
+        logBuilder.appendLine("   - Own Base -> G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")
+        // Log de la propia seña: visibilidad de si he señalizado al compañero.
+        // Capa importante con delegación amplia (#20): si NO he pasado seña, el
+        // capitán humano juega a ciegas y la delegación pierde valor.
+        val ownGesture = gameState.knownGestures[aiPlayer.id]
+        val ownGestureName = if (ownGesture != null) gestureIdToName(ownGesture.gestureResId) else "(no pasada)"
+        logBuilder.appendLine("   - Mi seña activa: $ownGestureName")
 
-        // Empezamos con la fuerza base de la propia IA
+        val teamStrength = mergePartnerGestures(baseStrength, gameState, aiPlayer, logBuilder)
+        if (teamStrength != baseStrength) {
+            logBuilder.appendLine("   -> Consolidated Team Strength -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
+        }
+
+        val finalAdjustedStrength =
+            applyOpponentGestures(teamStrength, baseStrength, gameState, aiPlayer, logBuilder)
+
+        if (finalAdjustedStrength != baseStrength) {
+            logBuilder.appendLine("   -> Final Adjusted Strength -> G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")
+        } else {
+            logBuilder.appendLine("   -> Strength not adjusted by gestures.")
+        }
+        return finalAdjustedStrength
+    }
+
+    /** Consolida la fuerza del equipo con las señas conocidas del COMPAÑERO. */
+    private fun mergePartnerGestures(
+        baseStrength: HandStrength,
+        gameState: GameState,
+        aiPlayer: Player,
+        logBuilder: DecisionLog
+    ): HandStrength {
         var teamStrength = baseStrength
-        logBuilder.appendLine("   - Own Base -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
-
-        // Primero, consolidamos la fuerza con las señas del compañero
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team == aiPlayer.team && gesturer.id != aiPlayer.id) {
@@ -943,13 +1192,17 @@ class AILogic constructor(
                 }
             }
         }
+        return teamStrength
+    }
 
-        if(teamStrength != baseStrength){
-            logBuilder.appendLine("   -> Consolidated Team Strength -> G:${teamStrength.grande}, C:${teamStrength.chica}, P:${teamStrength.pares}, J:${teamStrength.juego}")
-        }
-
-
-        // Ahora, ajustamos la fuerza del equipo con las señas de los oponentes
+    /** Ajusta la fuerza con las señas RIVALES interceptadas (defensivo, #7/#9). */
+    private fun applyOpponentGestures(
+        teamStrength: HandStrength,
+        baseStrength: HandStrength,
+        gameState: GameState,
+        aiPlayer: Player,
+        logBuilder: DecisionLog
+    ): HandStrength {
         var finalAdjustedStrength = teamStrength
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
@@ -976,6 +1229,9 @@ class AILogic constructor(
                     }
                     is GestureMeaning.Ciega -> {
                         logBuilder.appendLine("     -> Opponent is weak. Increasing Grande/Chica confidence.")
+                        // Intencional: usa el snapshot post-merge (`teamStrength`),
+                        // NO `finalAdjustedStrength` (acumulado). Igualaba el
+                        // monolito; no cambiar a finalAdjustedStrength.
                         finalAdjustedStrength = finalAdjustedStrength.copy(
                             grande = (teamStrength.grande + 15).coerceIn(0, 100),
                             chica = (teamStrength.chica + 15).coerceIn(0, 100)
@@ -1003,12 +1259,6 @@ class AILogic constructor(
                 }
             }
         }
-
-        if (finalAdjustedStrength != baseStrength) {
-            logBuilder.appendLine("   -> Final Adjusted Strength -> G:${finalAdjustedStrength.grande}, C:${finalAdjustedStrength.chica}, P:${finalAdjustedStrength.pares}, J:${finalAdjustedStrength.juego}")
-        } else {
-            logBuilder.appendLine("   -> Strength not adjusted by gestures.")
-        }
         return finalAdjustedStrength
     }
 
@@ -1017,9 +1267,9 @@ class AILogic constructor(
     // que podrían rebajar la jugada real para Grande.
     internal fun partnerGrandeBoost(gestureResId: Int): Int = when (gestureResId) {
         R.drawable.reyes_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
-        R.drawable.sena_31 -> 70   // 31 implica figuras pero no necesariamente Reyes
+        R.drawable.sena_31 -> 35   // #14: 31 da figuras pero 0-1 Reyes modal; señal Grande débil
         R.drawable.reyes_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
-        R.drawable.duples_altos -> 50  // info parcial: por sí sola no dispara, pero suma con la propia
+        R.drawable.duples_altos -> 78  // #23: 2 reyes garantizados sin riesgo de descarte; entre reyes_2 y reyes_3
         else -> 0
     }
 
@@ -1031,15 +1281,39 @@ class AILogic constructor(
         else -> 0
     }
 
+    /**
+     * Bonus de fuerza por ser MANO en un PAR ÚNICO, escalado por rango (#13).
+     * Ser mano en Pares solo gana empates de mismo rango: en pares bajos
+     * (4-7) eso es raro y barato → prima ≈0; en Rey/Tres el empate al tope es
+     * frecuente y caro → +15 íntegro (techo intacto, sin regresión). Sustituye
+     * al antiguo +15 plano que inflaba pares bajos sobre el umbral de corte de
+     * Mus. Curva recomendada por mus-strategy-reviewer. NO aplica a
+     * Duples/Medias (fuera del alcance de #13).
+     */
+    @Suppress("MagicNumber") // Tabla heurística de IA: los valores SON la curva.
+    private fun manoParesBonus(pairingRankValue: Int): Int = when {
+        pairingRankValue <= 5  -> 0      // As/Dos..Cinco
+        pairingRankValue == 6  -> 1      // Seis
+        pairingRankValue == 7  -> 2      // Siete
+        pairingRankValue <= 10 -> 8      // Sota
+        pairingRankValue == 11 -> 11     // Caballo
+        else -> 15                       // Rey/Tres
+    }
+
     private fun getParesPlayStrength(paresPlay: ParesPlay, isMano: Boolean): Int {
         var strength = when (paresPlay) {
-            is ParesPlay.Duples -> 100
+            is ParesPlay.Duples -> duplesStrength(paresPlay)
             is ParesPlay.Medias -> 60 + (getPairingRankValue(paresPlay.rank) * 2)
             is ParesPlay.Pares -> 20 + (getPairingRankValue(paresPlay.rank) * 3)
             is ParesPlay.NoPares -> 0
         }
-        if (isMano && paresPlay !is ParesPlay.NoPares) {
-            strength += 15
+        if (isMano) {
+            strength += when (paresPlay) {
+                // #13: par único escalado por rango; Duples/Medias siguen +15.
+                is ParesPlay.Pares -> manoParesBonus(getPairingRankValue(paresPlay.rank))
+                is ParesPlay.NoPares -> 0
+                else -> 15
+            }
         }
         return strength.coerceIn(0, 100)
     }
@@ -1051,6 +1325,33 @@ class AILogic constructor(
             Rank.DOS -> 1   // As
             else -> rank.value
         }
+    }
+
+    // #12: valor de Duples ESCALONADO por rango (antes era 100 plano: unos
+    // duples de cincos valían igual que unos de reyes, sobrevalorando duples
+    // bajos en Mus/envite/defensa).
+    //
+    // Duples es categóricamente la mejor jugada de pares, así que su PISO debe
+    // quedar por encima del techo de Medias (60 + 12·2 = 84) para que la IA
+    // nunca valore unas medias por encima de unos duples. Escalamos en
+    // [88..100] ponderando SOBRE TODO el par alto, porque en el Mus los duples
+    // se comparan primero por el par alto y luego por el bajo. Duples de reyes
+    // = 100; duples bajos = 88.
+    //
+    // Piso 88 (no 84+1): en `getParesPlayStrength` se suma +15 si isMano antes
+    // del coerce, así que una Medias de reyes mano vale 84+15=99; con piso 88
+    // unos duples bajos mano valen 100 y mantienen el orden sobre esa Medias
+    // (con piso 85 quedaban empatados a 100, ver #13). Span 12 mantiene la
+    // compresión deseada (TODOS los duples son premium: ganan el lance de
+    // pares salvo duples superiores del rival, raro) sin escalones muertos.
+    // Validado con mus-strategy-reviewer; el sim simétrico es ciego a lo que
+    // este fix corrige (sobre-apuesta de duples bajos explotable por humano),
+    // como en #25 → no bloquear por su net, validar con playtest.
+    private fun duplesStrength(duples: ParesPlay.Duples): Int {
+        val hv = getPairingRankValue(duples.highPair) // 1..12
+        val lv = getPairingRankValue(duples.lowPair)   // 1..12
+        val raw = (hv - 1) * 12 + (lv - 1) * 3         // 0..165
+        return (88 + raw * 12 / 165).coerceIn(88, 100)
     }
 }
 
