@@ -1425,7 +1425,8 @@ fun BetSelector(
     onCancel: () -> Unit,
     isRaise: Boolean = false
 ) {
-    var betAmount by remember { mutableStateOf(2) }
+    val minBet = if (isRaise) 1 else 2
+    var betAmount by remember { mutableStateOf(minBet) }
 
     Card(
         modifier = Modifier
@@ -1447,7 +1448,7 @@ fun BetSelector(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Button(onClick = { if (betAmount > 2) betAmount-- }) {
+                Button(onClick = { if (betAmount > minBet) betAmount-- }) {
                     Text("-", fontSize = 24.sp)
                 }
                 Text(

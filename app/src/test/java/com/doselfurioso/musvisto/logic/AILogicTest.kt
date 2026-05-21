@@ -352,14 +352,18 @@ class AILogicTest {
     }
 
     @Test
-    fun `makeDecision - IA should bet bigger with a great hand (strength-scaled amount)`() {
-        // Con tres Reyes (mano muy fuerte a Grande) el importe se escala por
-        // fuerza: betAmount con strength alta -> tramo 3..5 (ya no 2 fijo).
+    fun `makeDecision - IA should bet with a great hand (90% envido seco, 10% cola alta)`() {
+        // Tras la calibración #11 (90% envido seco), incluso con tres Reyes el
+        // 90% de los envites son 2 (default real del Mus). El 10% restante
+        // mantiene escala por fuerza — con strength >= 90, cola en 4..5.
+        // Tamaños posibles: {2, 4, 5}. NO debe salir 3 (esos tramos son para
+        // strength 70-89).
         val hand = listOf(Card(Suit.OROS, Rank.REY), Card(Suit.COPAS, Rank.REY), Card(Suit.ESPADAS, Rank.REY), Card(Suit.BASTOS, Rank.CABALLO))
         val gameState = GameState(players = listOf(testPlayer.copy(hand = hand)), gamePhase = GamePhase.GRANDE)
         val decision = aiLogic.makeDecision(gameState, testPlayer.copy(hand = hand))
         assertTrue(decision.action is GameAction.Envido)
-        assertTrue((decision.action as GameAction.Envido).amount in 3..5)
+        val amount = (decision.action as GameAction.Envido).amount
+        assertTrue("amount $amount fuera de {2, 4, 5}", amount == 2 || amount in 4..5)
     }
 
     @Test

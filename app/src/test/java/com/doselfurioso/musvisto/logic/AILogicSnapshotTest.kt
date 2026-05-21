@@ -152,7 +152,9 @@ class AILogicSnapshotTest {
     }
 
     companion object {
-        // Capturado de master. Regenerar SOLO si la IA cambia a propósito.
+        // Snapshot regenerado tras #11 (90% envido seco, e884657) + bonus de
+        // mano #5 calibrado a 6 + subida mínima +1 al re-envidar (isRaise).
+        // Regenerar SOLO si la IA cambia a propósito.
         private val EXPECTED = """
 MUS/4REY/mano=p2 => NoMus
 MUS/4REY/mano=p4 => NoMus
@@ -181,15 +183,15 @@ DISCARD/PAS => ConfirmDiscard [BCI,ECU]
 MUS/PREY/mano=p2 => Mus
 MUS/PREY/mano=p4 => Mus
 DISCARD/PREY => ConfirmDiscard [BCI,ECU]
-OPEN/GRANDE/4REY/par => Envido(5)
+OPEN/GRANDE/4REY/par => Envido(2)
 OPEN/GRANDE/4REY/detras => Órdago
-OPEN/GRANDE/4REY/delante => Envido(4)
+OPEN/GRANDE/4REY/delante => Envido(2)
 OPEN/CHICA/4REY/par => Paso
 OPEN/CHICA/4REY/detras => Paso
 OPEN/CHICA/4REY/delante => Paso
-OPEN/PARES/4REY/par => Envido(5)
+OPEN/PARES/4REY/par => Envido(2)
 OPEN/PARES/4REY/detras => Órdago
-OPEN/PARES/4REY/delante => Envido(4)
+OPEN/PARES/4REY/delante => Envido(2)
 OPEN/JUEGO/4REY/par => Paso
 OPEN/JUEGO/4REY/detras => Paso
 OPEN/JUEGO/4REY/delante => Paso
@@ -202,18 +204,18 @@ OPEN/CHICA/J31/delante => Paso
 OPEN/PARES/J31/par => Paso
 OPEN/PARES/J31/detras => Paso
 OPEN/PARES/J31/delante => Paso
-OPEN/JUEGO/J31/par => Envido(5)
+OPEN/JUEGO/J31/par => Envido(2)
 OPEN/JUEGO/J31/detras => Órdago
-OPEN/JUEGO/J31/delante => Envido(4)
+OPEN/JUEGO/J31/delante => Envido(2)
 OPEN/GRANDE/DUP/par => Paso
 OPEN/GRANDE/DUP/detras => Paso
 OPEN/GRANDE/DUP/delante => Paso
 OPEN/CHICA/DUP/par => Paso
 OPEN/CHICA/DUP/detras => Paso
 OPEN/CHICA/DUP/delante => Paso
-OPEN/PARES/DUP/par => Envido(5)
+OPEN/PARES/DUP/par => Envido(2)
 OPEN/PARES/DUP/detras => Órdago
-OPEN/PARES/DUP/delante => Envido(4)
+OPEN/PARES/DUP/delante => Envido(2)
 OPEN/JUEGO/DUP/par => Paso
 OPEN/JUEGO/DUP/detras => Paso
 OPEN/JUEGO/DUP/delante => Paso
@@ -250,9 +252,9 @@ OPEN/CHICA/MED/delante => Paso
 OPEN/PARES/MED/par => Paso
 OPEN/PARES/MED/detras => Paso
 OPEN/PARES/MED/delante => Paso
-OPEN/JUEGO/MED/par => Envido(5)
+OPEN/JUEGO/MED/par => Envido(2)
 OPEN/JUEGO/MED/detras => Órdago
-OPEN/JUEGO/MED/delante => Envido(4)
+OPEN/JUEGO/MED/delante => Envido(2)
 OPEN/GRANDE/P7/par => Paso
 OPEN/GRANDE/P7/detras => Paso
 OPEN/GRANDE/P7/delante => Paso
@@ -289,12 +291,12 @@ OPEN/PARES/PREY/delante => Paso
 OPEN/JUEGO/PREY/par => Paso
 OPEN/JUEGO/PREY/detras => Paso
 OPEN/JUEGO/PREY/delante => Paso
-RESP/GRANDE/4REY/bet/mano => Envido(5)
-RESP/GRANDE/4REY/bet/postre => Envido(5)
+RESP/GRANDE/4REY/bet/mano => Envido(1)
+RESP/GRANDE/4REY/bet/postre => Envido(1)
 RESP/GRANDE/4REY/ordago/even => Quiero
 RESP/GRANDE/4REY/ordago/hailmary => Quiero
-RESP/PARES/4REY/bet/mano => Envido(5)
-RESP/PARES/4REY/bet/postre => Envido(5)
+RESP/PARES/4REY/bet/mano => Envido(1)
+RESP/PARES/4REY/bet/postre => Envido(1)
 RESP/PARES/4REY/ordago/even => Quiero
 RESP/PARES/4REY/ordago/hailmary => Quiero
 RESP/JUEGO/4REY/bet/mano => NoQuiero
@@ -309,7 +311,7 @@ RESP/PARES/J31/bet/mano => Quiero
 RESP/PARES/J31/bet/postre => Quiero
 RESP/PARES/J31/ordago/even => Quiero
 RESP/PARES/J31/ordago/hailmary => Quiero
-RESP/JUEGO/J31/bet/mano => Envido(5)
+RESP/JUEGO/J31/bet/mano => Envido(1)
 RESP/JUEGO/J31/bet/postre => Quiero
 RESP/JUEGO/J31/ordago/even => Quiero
 RESP/JUEGO/J31/ordago/hailmary => Quiero
@@ -317,8 +319,8 @@ RESP/GRANDE/DUP/bet/mano => NoQuiero
 RESP/GRANDE/DUP/bet/postre => NoQuiero
 RESP/GRANDE/DUP/ordago/even => NoQuiero
 RESP/GRANDE/DUP/ordago/hailmary => Quiero
-RESP/PARES/DUP/bet/mano => Envido(5)
-RESP/PARES/DUP/bet/postre => Envido(5)
+RESP/PARES/DUP/bet/mano => Envido(1)
+RESP/PARES/DUP/bet/postre => Envido(1)
 RESP/PARES/DUP/ordago/even => Quiero
 RESP/PARES/DUP/ordago/hailmary => Quiero
 RESP/JUEGO/DUP/bet/mano => NoQuiero
@@ -357,7 +359,7 @@ RESP/PARES/MED/bet/mano => NoQuiero
 RESP/PARES/MED/bet/postre => NoQuiero
 RESP/PARES/MED/ordago/even => NoQuiero
 RESP/PARES/MED/ordago/hailmary => Quiero
-RESP/JUEGO/MED/bet/mano => Envido(5)
+RESP/JUEGO/MED/bet/mano => Envido(1)
 RESP/JUEGO/MED/bet/postre => Quiero
 RESP/JUEGO/MED/ordago/even => Quiero
 RESP/JUEGO/MED/ordago/hailmary => Quiero

@@ -37,7 +37,10 @@ private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
 private const val MUS_CUT_PARES_JUEGO = 75
 private const val MUS_CUT_GRANDE_CHICA = 85
 // Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
-private const val PARTNER_MANO_MUS_BIAS = 10
+// Bajado de 10 a 6 en playtest: el sesgo seguía siendo claro pero pedía Mus
+// con manos que ya merecían cortarse (compañero mano no debe convertirse en
+// "no cortar nunca"; sigue siendo señal, no veto).
+private const val PARTNER_MANO_MUS_BIAS = 6
 // #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
 // VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
 // humano no tendría info → corto por mi mano normal (sin delegar). 5% de
@@ -388,7 +391,7 @@ class AILogic constructor(
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength))
+            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength, isRaise = true))
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -571,12 +574,13 @@ class AILogic constructor(
     }
 
 
-    // Importe de envite. 90% "envido" seco (2): es el default real del Mus,
-    // las subidas son recurso ocasional, no la norma. El 10% restante sí
-    // sube y sigue sesgado por fuerza — una subida a 4-5 sigue siendo
-    // indicador de mano fuerte, pero rara. Calibración por playtest (#11).
-    private fun betAmount(strength: Int): Int {
-        if (rng.nextInt(100) < 90) return 2
+    // Importe de envite. 90% mínimo (2 si apertura, 1 si subida): es el default
+    // real del Mus — las subidas son recurso ocasional, no la norma, y subir
+    // sobre un envite previo a +1 es el incremento mínimo realista. El 10%
+    // restante sí sube y sigue sesgado por fuerza — una subida a 4-5 sigue
+    // siendo indicador de mano fuerte, pero rara. Calibración por playtest (#11).
+    private fun betAmount(strength: Int, isRaise: Boolean = false): Int {
+        if (rng.nextInt(100) < 90) return if (isRaise) 1 else 2
         return when {
             strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
             strength >= 80 -> rng.nextInt(3, 6)  // 3-5
