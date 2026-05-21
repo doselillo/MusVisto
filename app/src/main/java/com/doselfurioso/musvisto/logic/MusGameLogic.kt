@@ -489,7 +489,10 @@ class MusGameLogic constructor(private val random: Random){
             currentTurnPlayerId = currentState.manoPlayerId,
             isNewLance = true,
             currentLanceActions = emptyMap(),
-            noMusPlayer = playerId
+            noMusPlayer = playerId,
+            // El plan de señas era solo para el Mus que acaba de cerrarse;
+            // los lances de envite ya no lo usan.
+            pendingGestures = emptyMap()
         )
     }
 

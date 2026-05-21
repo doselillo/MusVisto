@@ -44,6 +44,13 @@ data class GameState(
     @Transient val isSelectingBet: Boolean = false,
     val activeGesture: ActiveGestureInfo? = null,
     val knownGestures: Map<String, ActiveGestureInfo> = emptyMap(),
+    // Pre-decisión por IA: si va a pasar seña en este Mus, qué seña (resId).
+    // null/ausente = no pasa. Permite que AILogic y triggerAiGestures
+    // (corrutinas separadas) decidan coherentemente: si NO voy a señalizar,
+    // no delego el corte ni apoyo envites — mi compañero humano no tendrá
+    // info, así que juego mi mano normal. Se asigna al entrar a MUS y se
+    // limpia al salir.
+    val pendingGestures: Map<String, Int> = emptyMap(),
     val playersInLance: Set<String> = emptySet(),
     @Transient val isPaused: Boolean = false
 )

@@ -13,10 +13,12 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import kotlin.math.max
 
-// Por debajo de esta fuerza propia (pre-fusión con señas) en un lance, la mano
-// no es independientemente fuerte: si el compañero señalizó y tiene mejor
-// posición, conviene jugar de apoyo en vez de pisarle el envite.
-private const val SUPPORT_OWN_FLOOR = 70
+// Apertura de envite del primero: solo abro yo cuando tengo mano ultra-premium
+// (>90: 4R/31 mano/duples reyes mano). Con cualquier otra mano apoyo y dejo
+// que el capitán decida con su mano + mi seña. Más bajo dejaba al primero
+// abrir manos medias-altas y la pareja se "pisaba"; más alto silencia incluso
+// los value-bets evidentes de la nuts.
+private const val SUPPORT_OWN_FLOOR = 90
 
 // Probabilidad de que un rival INTERCEPTE una seña del equipo contrario.
 // Baja: en el Mus real solo se cazan algunas, de vez en cuando. Antes era
@@ -36,18 +38,13 @@ private const val MUS_CUT_PARES_JUEGO = 75
 private const val MUS_CUT_GRANDE_CHICA = 85
 // Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
 private const val PARTNER_MANO_MUS_BIAS = 10
-// #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero y este es
-// HUMANO, le delego el corte (es el capitán; lo decide él viendo mi seña).
-// Solo con compañero humano: el simulador probó que delegar IA->IA sangra
-// tantos a cualquier magnitud (la seña sub-transporta la fuerza de corte y el
-// capitán IA no la recupera), sin ningún beneficio de experiencia. Con
-// compañero IA #20 es no-op (comportamiento-cero, gate del simulador verde).
-// Estrategia mixta anti-lectura: de vez en cuando, con jugada buena, corto
-// igual para que no se cante el patrón "el primero nunca corta". % y suelo
-// provisionales, a afinar con playtest (el simulador IA->IA no mide esta
-// rama; no fijar a ojo).
-private const val MUS_DELEGATION_BREAK_PCT = 12
-private const val MUS_DELEGATION_BREAK_FLOOR = 70
+// #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
+// VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
+// humano no tendría info → corto por mi mano normal (sin delegar). 5% de
+// "break" para no ser absoluto: humano-like, a veces corto aunque toque
+// delegar. Solo con compañero humano: el simulador probó que delegar IA→IA
+// sangra tantos sin beneficio. Con compañero IA #20 es no-op.
+private const val MUS_DELEGATION_BREAK_PCT = 5
 // Apertura de envite por bandas: > fuerte = valor seguro; [piso..fuerte] =
 // banda media probabilística; < piso = solo farol de robo.
 private const val OPEN_STRONG_VALUE = 78
@@ -163,7 +160,9 @@ class AILogic constructor(
             else -> 0
         }
         val playSupport = shouldPlaySupport(gameState, aiPlayer, gameState.gamePhase, ownBaseLance)
-        if (playSupport) logBuilder.appendLine("4b. Rol de APOYO: compañero capitán de lance (mejor posición + seña fuerte), mano propia floja ($ownBaseLance).")
+        if (playSupport) logBuilder.appendLine(
+            "4b. Rol de APOYO: soy el primero del equipo, mano propia floja ($ownBaseLance); cedo al capitán."
+        )
 
         val (decision, actionLog) = if (gameState.currentBet != null) {
             decideBettingResponse(gameState, aiPlayer, finalStrength, playSupport)
@@ -396,10 +395,22 @@ class AILogic constructor(
     }
 
     // ---------------- Mus / NoMus ----------------
-    // Capitanía de lance por posición (#1/#4): si el compañero ya señalizó
-    // fuerza para este lance y actúa DESPUÉS que yo (mejor posición), y mi mano
-    // propia es floja, debo jugar de apoyo: ni abrir ni subir, para no pisarle
-    // ni delatar la jugada conocida hablando antes el de mano débil.
+    // Capitanía de lance por posición (#1/#4): el primero del equipo cede al
+    // capitán (compañero en posición tardía) por norma general. Apoyo si:
+    //  1) Mi mano propia no es ULTRA-premium (< SUPPORT_OWN_FLOOR=90): solo
+    //     abro yo con 4R/31 mano/duples reyes mano; con cualquier otra mano,
+    //     la coordinación con el capitán pesa más que mi value-bet individual.
+    //  2) Mi compañero actúa después que yo (es capitán por posición).
+    //  3) En lances restringidos (Pares/Juego sin Punto): si el capitán no
+    //     participa y yo sí, juego sin freno (modelo: "capitán fuera del lance
+    //     + primero sí → primero sin freno").
+    //  4) Con compañero HUMANO: solo apoyo si VOY A SEÑALIZAR
+    //     (`pendingGestures` contiene mi id). Si no señalizo, el humano juega
+    //     sin info y la delegación tira tantos a la basura → juego mi mano.
+    //     Coherente con decideMusDelegation: misma puerta para Mus y envites.
+    // La seña del compañero NO es requisito: en el modelo el primero es quien
+    // señaliza y el segundo quien recibe; exigir `knownGestures[partner.id]`
+    // dejaba el apoyo inerte en el caso típico (PR previo, ver KNOWN_ISSUES).
     private fun shouldPlaySupport(
         gameState: GameState,
         aiPlayer: Player,
@@ -414,19 +425,22 @@ class AILogic constructor(
         val myPos = order.indexOfFirst { it.id == aiPlayer.id }
         val partnerPos = order.indexOfFirst { it.id == partner.id }
         if (myPos < 0 || partnerPos < 0) return false
-        // Capitán = el que actúa más tarde (mejor posición). Si lo soy, no apoyo.
+        // Capitán = el que actúa más tarde. Si lo soy yo, no apoyo.
         if (myPos > partnerPos) return false
-        val partnerGesture = gameState.knownGestures[partner.id] ?: return false
-        val resId = partnerGesture.gestureResId
-        return when (lance) {
-            GamePhase.GRANDE -> partnerGrandeBoost(resId) >= 65
-            GamePhase.CHICA -> partnerChicaBoost(resId) >= 65
-            GamePhase.PARES -> getGestureMeaning(resId).let {
-                it is GestureMeaning.Pares && it.play !is ParesPlay.NoPares
-            }
-            GamePhase.JUEGO -> getGestureMeaning(resId) is GestureMeaning.Juego
-            else -> false
-        }
+        // Lance restringido (Pares/Juego sin Punto): si el capitán no está en
+        // el lance y yo sí, juego sin freno — no cedo a quien no participa.
+        val isRestrictedLance = lance == GamePhase.PARES ||
+            (lance == GamePhase.JUEGO && !gameState.isPuntoPhase)
+        val captainOutOfRestrictedLance = isRestrictedLance &&
+            gameState.playersInLance.isNotEmpty() &&
+            partner.id !in gameState.playersInLance
+        // Gating por seña SOLO con compañero humano (con IA-IA #20 está
+        // desactivado y este apoyo es comportamiento-cero respecto a Mus).
+        // Si no voy a señalizar, juego mi mano normal: el humano no podrá
+        // capitanear con info → mejor que abra/responda yo.
+        val humanPartnerWithoutPendingSignal =
+            !partner.isAi && aiPlayer.id !in gameState.pendingGestures
+        return !captainOutOfRestrictedLance && !humanPartnerWithoutPendingSignal
     }
 
     private fun decideMus(
@@ -451,8 +465,7 @@ class AILogic constructor(
         // compañero IA -> null (comportamiento-cero; ver constantes #20).
         val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
         val partnerIsAi = partner?.isAi == true
-        val bestStrength = maxOf(strength.pares, strength.juego, strength.grande, strength.chica)
-        decideMusDelegation(iActBeforePartner, partnerIsAi, bestStrength)?.let { return it }
+        decideMusDelegation(gameState, aiPlayer, iActBeforePartner, partnerIsAi)?.let { return it }
 
         val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
         val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
@@ -487,30 +500,28 @@ class AILogic constructor(
 
     /**
      * Override de corte por capitanía delegada (#20). Solo actúa si actúo
-     * ANTES que mi compañero y este es HUMANO: le delego el corte (no corto,
-     * verá mi seña —piezas B/C— y decide él). Estrategia mixta: a veces con
-     * jugada buena corto igual, para no cantar el patrón "el primero nunca
-     * corta". Con compañero IA devuelve null (no-op: el simulador probó que
-     * delegar IA->IA sangra sin beneficio; ver constantes #20). null =
-     * decideMus sigue con sus umbrales de siempre.
+     * ANTES que mi compañero HUMANO Y voy a señalizar (pendingGestures
+     * contiene mi id). Si no señalizo, el humano juega a ciegas → corto por
+     * mi mano normal (return null = decideMus sigue con sus umbrales).
+     * Con compañero IA → null (no-op: simulador probó EV-negativo).
+     * 5% break para variación humana-like (no ser absoluto).
      *
      * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
      * esta delegación DEBE quedar deshabilitada — el mus corrido prohíbe señas
      * y exige decisión de corte individual (determina la mano).
      */
     private fun decideMusDelegation(
+        gameState: GameState,
+        aiPlayer: Player,
         iActBeforePartner: Boolean,
-        partnerIsAi: Boolean,
-        bestStrength: Int
+        partnerIsAi: Boolean
     ): Pair<GameAction, String>? {
         if (!iActBeforePartner || partnerIsAi) return null
-        val breakIt = bestStrength >= MUS_DELEGATION_BREAK_FLOOR &&
-            rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT
-        return if (breakIt) {
-            GameAction.NoMus to "Reason: #20 delegación rota (jugada $bestStrength); capitán humano"
-        } else {
-            GameAction.Mus to "Reason: #20 delego el corte al capitán humano"
+        if (aiPlayer.id !in gameState.pendingGestures) return null
+        if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
+            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto excepcionalmente"
         }
+        return GameAction.Mus to "Reason: #20 delego el corte al capitán humano"
     }
 
 
@@ -1061,6 +1072,12 @@ class AILogic constructor(
 
         logBuilder.appendLine("2. Analyzing Remembered Gestures (Team Strength):")
         logBuilder.appendLine("   - Own Base -> G:${baseStrength.grande}, C:${baseStrength.chica}, P:${baseStrength.pares}, J:${baseStrength.juego}")
+        // Log de la propia seña: visibilidad de si he señalizado al compañero.
+        // Capa importante con delegación amplia (#20): si NO he pasado seña, el
+        // capitán humano juega a ciegas y la delegación pierde valor.
+        val ownGesture = gameState.knownGestures[aiPlayer.id]
+        val ownGestureName = if (ownGesture != null) gestureIdToName(ownGesture.gestureResId) else "(no pasada)"
+        logBuilder.appendLine("   - Mi seña activa: $ownGestureName")
 
         val teamStrength = mergePartnerGestures(baseStrength, gameState, aiPlayer, logBuilder)
         if (teamStrength != baseStrength) {
