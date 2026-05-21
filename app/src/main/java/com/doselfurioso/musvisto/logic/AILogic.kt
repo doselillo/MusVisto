@@ -1055,10 +1055,21 @@ class AILogic constructor(
             // Los empates de Juego los gana quien está más cerca de mano. Con un
             // juego no-31 (empatable a menudo), cuanto más tarde se actúa peor:
             // un 32 en postre pierde el desempate. Penaliza por posición.
-            if (juegoValue in 32..40 && playerPositionInTurn > 0) {
-                val posPenalty = playerPositionInTurn * 6
+            // Los empates de Juego los gana quien está más cerca de mano. Con un
+            // juego no-31 (empatable a menudo), cuantos más RIVALES han actuado
+            // antes peor: un 32 en postre con dos rivales delante pierde a
+            // postre, y además puede perder contra cualquier 31 del rival.
+            //
+            // Sustituye la penalización por POSICIÓN ABSOLUTA (era
+            // `playerPositionInTurn * 6`) que penalizaba al compañero como si
+            // fuera rival. Mismo modelo que el 31: `rivalsAhead` cuenta solo
+            // rivales (no compañero). Multiplicador *10 (era *6 sobre pos
+            // absoluta) para endurecer — el simulador a 50.000p mostraba que
+            // 32-40 no-mano aceptaba envites con win-rate insuficiente.
+            if (juegoValue in 32..40 && rivalsAhead > 0) {
+                val posPenalty = rivalsAhead * 10
                 juegoStrength -= posPenalty
-                explanation.appendLine("     - Penalización por posición ${playerPositionInTurn + 1} con juego no-31 -> -$posPenalty pts")
+                explanation.appendLine("     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts")
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
