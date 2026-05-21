@@ -398,9 +398,22 @@ class AILogic constructor(
             // que ya cae en REGLA 2), alguna probabilidad de no querer. Evita
             // que un rival farmee envidando grande contra, p. ej., un 31 en
             // postre (que pierde el desempate). Los envites pequeños se quieren.
+            //
+            // Curva *6 cap 80 (era *4 cap 25): el simulador a 50.000p (a/b
+            // limpio) mostró que la cap del 25% dejaba aceptar envites 4-13
+            // con win-rate 15-25% — sangraba estructuralmente. Subir a *6/80
+            // pliega envites grandes mucho más sin tocar el caso común
+            // (envite=2 sigue con foldChance=0%). Mejora: aceptar deficitario
+            // −21.390 → −13.819 sobre 50.000p (+35%).
+            //
+            // Override #19 PARTE B: para 31-en-JUEGO no-mano con rivalsAhead,
+            // el foldChance se deriva de P(pierdo) en vez de la curva por
+            // tamaño. Antes con envite=2 (foldChance=0% en la curva) el 31
+            // expuesto en postre se quería SIEMPRE y perdía a otro 31 mano.
             advantage > 70 -> {
-                val foldChance = (((currentBetAmount - 2).coerceAtLeast(0)) * 4)
-                    .coerceAtMost(25)
+                val baseFold = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
+                    .coerceAtMost(80)
+                val foldChance = juego31LossOverride(gameState, aiPlayer) ?: baseFold
                 if (rng.nextInt(100) < foldChance) GameAction.NoQuiero
                 else GameAction.Quiero
             }
@@ -433,6 +446,50 @@ class AILogic constructor(
         return if (captainAlone) {
             (rawStrength - CAPTAIN_ALONE_RESPONSE_PENALTY).coerceAtLeast(0)
         } else rawStrength
+    }
+
+    /**
+     * Override del foldChance de REGLA 3 cuando el aceptante tiene **31 a
+     * Juego, no es mano, y hay rivales que actúan antes** (#19 PARTE B).
+     *
+     * Problema que ataca: la curva por tamaño daba foldChance=0% con
+     * envite=2, así que un 31 expuesto en postre se quería SIEMPRE y a
+     * veces perdía a otro 31 mano. El simulador a 50.000p mostraba JUEGO
+     * sangrando −22.830 tantos netos (61% del sangrado total de aceptar).
+     *
+     * Modelo: foldChance = P(pierdo) · 100, con
+     * P(pierdo) ≈ 1 − (1 − P_RIVAL_31)^rivalsAhead (mismo modelo que la
+     * penalización en `evaluateJuego`). Modulación por marcador:
+     *  - "arriesgoMás" (voy por delante y rival lejos): foldChance −8.
+     *  - "prudente" (voy por detrás o rival al borde de 40): foldChance +12.
+     *
+     * Devuelve null si no es el caso (REGLA 3 normal aplica).
+     */
+    private fun juego31LossOverride(gameState: GameState, aiPlayer: Player): Int? {
+        if (gameState.gamePhase != GamePhase.JUEGO) return null
+        if (gameLogic.getHandJuegoValue(aiPlayer.hand) != 31) return null
+        val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
+        val pos = order.indexOfFirst { it.id == aiPlayer.id }
+        if (pos <= 0) return null  // mano: gana desempates, no necesita override
+        val rivalsAhead = order.take(pos).count { it.team != aiPlayer.team }
+        if (rivalsAhead <= 0) return null  // solo compañero delante: no es pérdida
+
+        val pRival31 = 0.10
+        val pLose = 1.0 - Math.pow(1.0 - pRival31, rivalsAhead.toDouble())
+        var foldChance = (pLose * 100).toInt()
+
+        // Modulación por marcador (#19 PARTE B pieza 1).
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val myScore = gameState.score[aiPlayer.team] ?: 0
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        val scoreDiff = myScore - opponentScore
+        when {
+            scoreDiff >= 0 && opponentScore < 30 ->
+                foldChance = (foldChance - 8).coerceAtLeast(0)
+            scoreDiff < 0 || opponentScore >= 33 ->
+                foldChance = (foldChance + 12).coerceAtMost(80)
+        }
+        return foldChance
     }
 
     // Capitanía de lance por posición (#1/#4): el primero del equipo cede al
@@ -1188,7 +1245,24 @@ class AILogic constructor(
                     is GestureMeaning.Juego -> {
                         // 31 sin ser mano puede perder ante otro 31 más cerca de mano:
                         // mismo trato que para la propia mano en evaluateHand.
-                        val juegoStrength = if (gesturerIsMano) 100 else 85
+                        // #19 PARTE B pieza 3: derivar de rivalsAhead-del-gesturer en
+                        // lugar de 85 plano. P(pierdo) = 1−(1−0.10)^rivalsAhead, mismo
+                        // modelo que el self en evaluateJuego. Un 31 del compañero
+                        // que actúa el penúltimo (1 rival delante) vale ~90; del
+                        // postre con 2 rivales delante, ~81. Coherente con la curva
+                        // propia y con el override #19 PARTE B del aceptante.
+                        val juegoStrength = if (gesturerIsMano) {
+                            100
+                        } else {
+                            val gesturerOrder = gameLogic.getTurnOrderedPlayers(
+                                gameState.players, gameState.manoPlayerId
+                            )
+                            val gPos = gesturerOrder.indexOfFirst { it.id == gesturer.id }
+                            val gRivalsAhead =
+                                if (gPos > 0) gesturerOrder.take(gPos).count { it.team != gesturer.team } else 0
+                            val pLose = 1.0 - Math.pow(0.90, gRivalsAhead.toDouble())
+                            (100 - (pLose * 100).toInt()).coerceIn(0, 100)
+                        }
                         teamStrength = teamStrength.copy(juego = max(teamStrength.juego, juegoStrength))
                         logBuilder.appendLine("     -> Partner Juego Strength is $juegoStrength (mano=$gesturerIsMano). Team Juego Strength is now ${teamStrength.juego}.")
                     }
