@@ -37,7 +37,10 @@ private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
 private const val MUS_CUT_PARES_JUEGO = 75
 private const val MUS_CUT_GRANDE_CHICA = 85
 // Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
-private const val PARTNER_MANO_MUS_BIAS = 10
+// Bajado de 10 a 6 en playtest: el sesgo seguía siendo claro pero pedía Mus
+// con manos que ya merecían cortarse (compañero mano no debe convertirse en
+// "no cortar nunca"; sigue siendo señal, no veto).
+private const val PARTNER_MANO_MUS_BIAS = 6
 // #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
 // VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
 // humano no tendría info → corto por mi mano normal (sin delegar). 5% de
