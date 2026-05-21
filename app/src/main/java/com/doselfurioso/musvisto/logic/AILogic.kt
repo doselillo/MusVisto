@@ -391,7 +391,7 @@ class AILogic constructor(
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength))
+            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength, isRaise = true))
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -574,12 +574,13 @@ class AILogic constructor(
     }
 
 
-    // Importe de envite. 90% "envido" seco (2): es el default real del Mus,
-    // las subidas son recurso ocasional, no la norma. El 10% restante sí
-    // sube y sigue sesgado por fuerza — una subida a 4-5 sigue siendo
-    // indicador de mano fuerte, pero rara. Calibración por playtest (#11).
-    private fun betAmount(strength: Int): Int {
-        if (rng.nextInt(100) < 90) return 2
+    // Importe de envite. 90% mínimo (2 si apertura, 1 si subida): es el default
+    // real del Mus — las subidas son recurso ocasional, no la norma, y subir
+    // sobre un envite previo a +1 es el incremento mínimo realista. El 10%
+    // restante sí sube y sigue sesgado por fuerza — una subida a 4-5 sigue
+    // siendo indicador de mano fuerte, pero rara. Calibración por playtest (#11).
+    private fun betAmount(strength: Int, isRaise: Boolean = false): Int {
+        if (rng.nextInt(100) < 90) return if (isRaise) 1 else 2
         return when {
             strength >= 90 -> rng.nextInt(4, 6)  // 4-5: manos muy fuertes (3+ reyes, 31)
             strength >= 80 -> rng.nextInt(3, 6)  // 3-5
