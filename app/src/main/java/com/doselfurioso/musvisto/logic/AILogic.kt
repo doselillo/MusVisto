@@ -50,6 +50,17 @@ private const val MUS_DELEGATION_BREAK_PCT = 5
 private const val OPEN_STRONG_VALUE = 78
 private const val OPEN_MID_BAND_FLOOR = 55
 
+// Penalización al strength del capitán cuando responde a un envite del rival
+// y SU compañero (primero del equipo) ya pasó en este lance. Con #20 el
+// primero apoya/pasa con manos no ultra-premium → el equipo queda apostando
+// SOLO con la mano del capitán; sin esta penalización el capitán acepta como
+// si su compañero aportara, y sangra (sim slice: aceptar gana 42% vs 53%
+// baseline, neto -738 vs -162). Validado con simulador (200 partidas):
+// la magnitud 15 deja aceptar 54.6% wins / -83 tantos netos (incluso mejor
+// que baseline). 10 y 12 compensan menos (-225, -142). 15 saca las manos
+// strength 75-85 de la banda Quiero — eran las que sangraban.
+private const val CAPTAIN_ALONE_RESPONSE_PENALTY = 15
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -315,6 +326,13 @@ class AILogic constructor(
         aiPlayer: Player
     ): GameAction {
         val currentBetAmount = gameState.currentBet?.amount ?: 0
+        // Compensación #20: si mi compañero (primero del equipo) ya pasó en
+        // este lance, el equipo está apostando SOLO con mi mano. Bajo el
+        // strength efectivo para que las bandas de aceptación sean más
+        // exigentes — rechazo envites del rival con manos medias que antes
+        // aceptaba contando con "el aporte" del compañero.
+        val effectiveStrength =
+            applyCaptainAlonePenalty(adjustedStrength, gameState, aiPlayer)
 
         // Respuesta a un ÓRDAGO (#28). Antes solo se aceptaba con casi la nuts
         // (adjustedStrength>=95) o perdiendo por >20: un humano spameaba órdago
@@ -349,8 +367,8 @@ class AILogic constructor(
             val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
 
             return when {
-                adjustedStrength >= acceptThreshold -> GameAction.Quiero
-                adjustedStrength < deadFloor -> GameAction.NoQuiero
+                effectiveStrength >= acceptThreshold -> GameAction.Quiero
+                effectiveStrength < deadFloor -> GameAction.NoQuiero
                 // Banda media [deadFloor, umbral): llamada probabilística para
                 // que spamear órdago con mano floja no sea gratis.
                 rng.nextInt(100) < 30 -> GameAction.Quiero
@@ -359,7 +377,7 @@ class AILogic constructor(
         }
 
         // --- LÓGICA DE RESPUESTA MEJORADA ---
-        val advantage = adjustedStrength - currentBetAmount
+        val advantage = effectiveStrength - currentBetAmount
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
 
@@ -370,7 +388,7 @@ class AILogic constructor(
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(adjustedStrength))
+            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength))
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -395,6 +413,25 @@ class AILogic constructor(
     }
 
     // ---------------- Mus / NoMus ----------------
+    /**
+     * Resta CAPTAIN_ALONE_RESPONSE_PENALTY al strength si el compañero del
+     * jugador ya pasó en este lance — el equipo está apostando solo con su
+     * mano. Devuelve el strength efectivo (con suelo en 0).
+     */
+    private fun applyCaptainAlonePenalty(
+        rawStrength: Int,
+        gameState: GameState,
+        aiPlayer: Player
+    ): Int {
+        val partner = gameState.players.firstOrNull {
+            it.team == aiPlayer.team && it.id != aiPlayer.id
+        }
+        val captainAlone = partner != null && partner.id in gameState.playersWhoPassed
+        return if (captainAlone) {
+            (rawStrength - CAPTAIN_ALONE_RESPONSE_PENALTY).coerceAtLeast(0)
+        } else rawStrength
+    }
+
     // Capitanía de lance por posición (#1/#4): el primero del equipo cede al
     // capitán (compañero en posición tardía) por norma general. Apoyo si:
     //  1) Mi mano propia no es ULTRA-premium (< SUPPORT_OWN_FLOOR=90): solo
