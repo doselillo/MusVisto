@@ -398,9 +398,16 @@ class AILogic constructor(
             // que ya cae en REGLA 2), alguna probabilidad de no querer. Evita
             // que un rival farmee envidando grande contra, p. ej., un 31 en
             // postre (que pierde el desempate). Los envites pequeños se quieren.
+            //
+            // Curva *6 cap 80 (era *4 cap 25): el simulador a 50.000p (a/b
+            // limpio) mostró que la cap del 25% dejaba aceptar envites 4-13
+            // con win-rate 15-25% — sangraba estructuralmente. Subir a *6/80
+            // pliega envites grandes mucho más sin tocar el caso común
+            // (envite=2 sigue con foldChance=0%). Mejora: aceptar deficitario
+            // −21.390 → −13.819 sobre 50.000p (+35%).
             advantage > 70 -> {
-                val foldChance = (((currentBetAmount - 2).coerceAtLeast(0)) * 4)
-                    .coerceAtMost(25)
+                val foldChance = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
+                    .coerceAtMost(80)
                 if (rng.nextInt(100) < foldChance) GameAction.NoQuiero
                 else GameAction.Quiero
             }
