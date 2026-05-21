@@ -62,6 +62,15 @@ class GameSimulatorTest {
         var envidoWon = 0          // abrió envite y su equipo gana el lance
         var envidoLost = 0         // abrió envite y lo pierde (incluye faroles)
 
+        // INSTRUMENTACIÓN TEMPORAL: aceptar por lance y por tamaño de envite.
+        val acceptWonByPhase = mutableMapOf<GamePhase, Int>()
+        val acceptLostByPhase = mutableMapOf<GamePhase, Int>()
+        val acceptNetByPhase = mutableMapOf<GamePhase, Int>()
+        // Por tamaño del envite aceptado.
+        val acceptWonByAmt = mutableMapOf<Int, Int>()
+        val acceptLostByAmt = mutableMapOf<Int, Int>()
+        val acceptNetByAmt = mutableMapOf<Int, Int>()
+
         fun inc(m: MutableMap<GamePhase, Int>, p: GamePhase) { m[p] = (m[p] ?: 0) + 1 }
     }
 
@@ -279,8 +288,19 @@ class GameSimulatorTest {
                 when (val a = decision.action) {
                     is GameAction.Quiero -> {
                         val amt = state.currentBet?.amount ?: 0
-                        if (mineWins) { stats.acceptWon++; stats.acceptNet += amt }
-                        else { stats.acceptLost++; stats.acceptNet -= amt }
+                        if (mineWins) {
+                            stats.acceptWon++; stats.acceptNet += amt
+                            stats.acceptWonByPhase[phase] = (stats.acceptWonByPhase[phase] ?: 0) + 1
+                            stats.acceptNetByPhase[phase] = (stats.acceptNetByPhase[phase] ?: 0) + amt
+                            stats.acceptWonByAmt[amt] = (stats.acceptWonByAmt[amt] ?: 0) + 1
+                            stats.acceptNetByAmt[amt] = (stats.acceptNetByAmt[amt] ?: 0) + amt
+                        } else {
+                            stats.acceptLost++; stats.acceptNet -= amt
+                            stats.acceptLostByPhase[phase] = (stats.acceptLostByPhase[phase] ?: 0) + 1
+                            stats.acceptNetByPhase[phase] = (stats.acceptNetByPhase[phase] ?: 0) - amt
+                            stats.acceptLostByAmt[amt] = (stats.acceptLostByAmt[amt] ?: 0) + 1
+                            stats.acceptNetByAmt[amt] = (stats.acceptNetByAmt[amt] ?: 0) - amt
+                        }
                     }
                     is GameAction.Envido -> {
                         if (mineWins) stats.envidoWon++ else stats.envidoLost++
@@ -352,6 +372,25 @@ class GameSimulatorTest {
         val accTotal = s.acceptWon + s.acceptLost
         sb.appendLine("- Aceptar 'quiero': gana ${s.acceptWon}/${accTotal} " +
             "(${pct(s.acceptWon, accTotal)}) | tantos netos: ${s.acceptNet}")
+        // BREAKDOWN POR LANCE
+        sb.appendLine("  Por lance:")
+        for (p in bettingLances) {
+            val won = s.acceptWonByPhase[p] ?: 0
+            val lost = s.acceptLostByPhase[p] ?: 0
+            val tot = won + lost
+            val net = s.acceptNetByPhase[p] ?: 0
+            sb.appendLine("    - $p: $won/$tot (${pct(won, tot)}) | netos $net")
+        }
+        // BREAKDOWN POR TAMAÑO DE ENVITE
+        sb.appendLine("  Por tamaño de envite aceptado:")
+        val allAmts = (s.acceptWonByAmt.keys + s.acceptLostByAmt.keys).sorted()
+        for (amt in allAmts) {
+            val won = s.acceptWonByAmt[amt] ?: 0
+            val lost = s.acceptLostByAmt[amt] ?: 0
+            val tot = won + lost
+            val net = s.acceptNetByAmt[amt] ?: 0
+            sb.appendLine("    - envite=$amt: $won/$tot (${pct(won, tot)}) | netos $net")
+        }
         val envTotal = s.envidoWon + s.envidoLost
         sb.appendLine("- Envites abiertos que el equipo gana en showdown: " +
             "${s.envidoWon}/${envTotal} (${pct(s.envidoWon, envTotal)}) " +
