@@ -29,7 +29,11 @@ sealed class GameAction(
 
     // Betting Actions
     object Paso : GameAction("Paso", ActionType.PASS, R.drawable.ic_pass)
-    data class Envido(val amount: Int) : GameAction("Envido $amount", ActionType.BET, R.drawable.ic_bet)
+    data class Envido(val amount: Int) : GameAction(
+        if (amount == 2) "Envido" else "Envido $amount",
+        ActionType.BET,
+        R.drawable.ic_bet
+    )
     object Quiero : GameAction("Quiero", ActionType.CONFIRM, R.drawable.ic_check)
     object NoQuiero : GameAction("No Quiero", ActionType.DENY, R.drawable.ic_close)
     object Órdago : GameAction("Órdago", ActionType.ULTIMATE, R.drawable.ic_ordago)
