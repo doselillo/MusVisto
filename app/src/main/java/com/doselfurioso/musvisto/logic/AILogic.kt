@@ -418,8 +418,18 @@ class AILogic constructor(
                 else GameAction.Quiero
             }
 
-            // REGLA 4: La probabilidad de "pagar por ver" con una mano mediocre es menor.
-            advantage > 60 && rng.nextInt(100) < 20 -> GameAction.Quiero // 20% de probabilidad
+            // REGLA 4: "pagar por ver" con mano media-floja. Bajado 20% -> 5%
+            // tras simulador 50.000p (a/b): la franja advantage 60-70 sale a
+            // favor con frecuencia insuficiente para compensar (manos no-31
+            // y 32-40 no-mano), y el "pagar por ver" sangra sobre todo en
+            // GRANDE y PARES. La curva del 20→10→5 mostró retornos
+            // disminuyentes (-4.426 → -1.805 tantos extra) y a 5% el aceptar
+            // está en break-even (-0.09 tantos/partida).
+            //
+            // OJO follow-up: si en playtest se reporta "IA demasiado tímida",
+            // subir a 8-10%. Bajar más (a 2 o 0) tiene retorno muy pequeño
+            // y profundiza la timidez.
+            advantage > 60 && rng.nextInt(100) < 5 -> GameAction.Quiero
 
             else -> GameAction.NoQuiero
         }
@@ -1055,10 +1065,21 @@ class AILogic constructor(
             // Los empates de Juego los gana quien está más cerca de mano. Con un
             // juego no-31 (empatable a menudo), cuanto más tarde se actúa peor:
             // un 32 en postre pierde el desempate. Penaliza por posición.
-            if (juegoValue in 32..40 && playerPositionInTurn > 0) {
-                val posPenalty = playerPositionInTurn * 6
+            // Los empates de Juego los gana quien está más cerca de mano. Con un
+            // juego no-31 (empatable a menudo), cuantos más RIVALES han actuado
+            // antes peor: un 32 en postre con dos rivales delante pierde a
+            // postre, y además puede perder contra cualquier 31 del rival.
+            //
+            // Sustituye la penalización por POSICIÓN ABSOLUTA (era
+            // `playerPositionInTurn * 6`) que penalizaba al compañero como si
+            // fuera rival. Mismo modelo que el 31: `rivalsAhead` cuenta solo
+            // rivales (no compañero). Multiplicador *10 (era *6 sobre pos
+            // absoluta) para endurecer — el simulador a 50.000p mostraba que
+            // 32-40 no-mano aceptaba envites con win-rate insuficiente.
+            if (juegoValue in 32..40 && rivalsAhead > 0) {
+                val posPenalty = rivalsAhead * 10
                 juegoStrength -= posPenalty
-                explanation.appendLine("     - Penalización por posición ${playerPositionInTurn + 1} con juego no-31 -> -$posPenalty pts")
+                explanation.appendLine("     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts")
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
