@@ -497,12 +497,14 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        // Capitanía delegada (#20): si actúo ANTES que mi compañero y este es
-        // HUMANO, le delego el corte (lo decide él viendo mi seña). Con
-        // compañero IA -> null (comportamiento-cero; ver constantes #20).
+        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy
+        // a señalizar (pendingGestures), le delego el corte (decide él con
+        // mi seña + su mano). Aplica a partner humano Y partner IA — la
+        // restricción a humano-only sangraba sensación de pareja IA↔IA en
+        // playtest (el primero IA cortaba con buena mano cuando debería
+        // ceder al segundo).
         val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
-        val partnerIsAi = partner?.isAi == true
-        decideMusDelegation(gameState, aiPlayer, iActBeforePartner, partnerIsAi)?.let { return it }
+        decideMusDelegation(gameState, aiPlayer, iActBeforePartner)?.let { return it }
 
         val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
         val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
@@ -536,11 +538,19 @@ class AILogic constructor(
     }
 
     /**
-     * Override de corte por capitanía delegada (#20). Solo actúa si actúo
-     * ANTES que mi compañero HUMANO Y voy a señalizar (pendingGestures
-     * contiene mi id). Si no señalizo, el humano juega a ciegas → corto por
-     * mi mano normal (return null = decideMus sigue con sus umbrales).
-     * Con compañero IA → null (no-op: simulador probó EV-negativo).
+     * Override de corte por capitanía delegada (#20). Actúa si:
+     *  - Actúo ANTES que mi compañero (posicionalmente soy primero del equipo).
+     *  - Voy a señalizar (mi id en `pendingGestures`). Si no señalizo, el
+     *    capitán juega a ciegas → corto por mis umbrales normales.
+     *
+     * Aplica a compañero humano Y compañero IA. La versión inicial (PR #47)
+     * acotaba a humano-only por el resultado del simulador, pero el playtest
+     * en pareja IA↔IA reveló que el primero seguía cortando con buenas manos
+     * que debería ceder. Por decisión de producto se restablece la simetría
+     * humano/IA aunque el simulador detecte sangrado — la sensación de
+     * pareja real prevalece y la compensación va por otro lado
+     * (`CAPTAIN_ALONE_RESPONSE_PENALTY` ya está activa).
+     *
      * 5% break para variación humana-like (no ser absoluto).
      *
      * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
@@ -550,15 +560,14 @@ class AILogic constructor(
     private fun decideMusDelegation(
         gameState: GameState,
         aiPlayer: Player,
-        iActBeforePartner: Boolean,
-        partnerIsAi: Boolean
+        iActBeforePartner: Boolean
     ): Pair<GameAction, String>? {
-        if (!iActBeforePartner || partnerIsAi) return null
+        if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
         if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
             return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto excepcionalmente"
         }
-        return GameAction.Mus to "Reason: #20 delego el corte al capitán humano"
+        return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
     }
 
 

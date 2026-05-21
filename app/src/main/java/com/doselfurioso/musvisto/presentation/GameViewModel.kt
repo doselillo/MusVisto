@@ -25,12 +25,16 @@ import kotlinx.coroutines.launch
 private const val GESTURE_VISIBLE_PARTNER_MS = 1500L
 private const val GESTURE_VISIBLE_OTHER_MS = 300L
 
-// #20 (delegación de envite): probabilidad de que la IA marque pasar seña al
-// entrar al Mus. Más alto con compañero humano: si no señalizo, el humano
-// jugaría a ciegas y la delegación deja de tener sentido; con compañero IA es
-// solo variación natural (no se delega corte IA↔IA).
+// #20 (delegación): probabilidad de que la IA marque pasar seña al entrar al
+// Mus. La seña es la puerta tanto del apoyo en envites como de la delegación
+// del corte de Mus (AILogic.decideMusDelegation). Con partner humano ~máxima
+// — sin seña el humano juega a ciegas y la delegación pierde sentido. Con
+// partner IA antes era 0.70 (cuando la delegación de corte estaba acotada a
+// humano-only); ahora 0.90: la delegación IA↔IA está activa y un 70% dejaba
+// demasiados casos donde el primero IA cortaba con buena mano por no haber
+// señalizado.
 private const val PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
-private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.70f
+private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
 
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
