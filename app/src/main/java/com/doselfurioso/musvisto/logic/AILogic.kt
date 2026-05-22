@@ -733,12 +733,30 @@ class AILogic constructor(
             }
         }
 
-        // 3) Farol barato: solo si alguien ya pasó (robo) y marcador no delicado.
+        // 3) Farol barato (importe 2). Solo si alguien ya pasó (robo) y marcador
+        // no delicado. CLAVE (usuario 2026-05-22): el robo es seguro sobre todo
+        // desde el POSTRE. `isLate` (pos2 y pos3) mezclaba penúltimo y postre,
+        // pero NO son iguales: si soy penúltimo, ha pasado un rival pero el
+        // postre AÚN no ha hablado y puede cazar/subir mi farol. Se controla por
+        // `rivalsBehind` = rivales del lance que actúan DESPUÉS que yo: 0
+        // (postre / último rival) → robo pleno; 1 → muy prudente; ≥2 → no farol.
+        val rivalsBehind = order.drop(myPos + 1).count { p ->
+            p.team != aiPlayer.team &&
+                (gameState.playersInLance.isEmpty() || p.id in gameState.playersInLance)
+        }
         if (effStrength < OPEN_MID_BAND_FLOOR && stealSpot && !scoreRisky) {
-            val bluffP = (0.10 + if (isLate) 0.10 else 0.0).coerceAtMost(0.20)
+            val bluffP = when (rivalsBehind) {
+                0 -> 0.20    // postre / sin rivales detrás: robo pleno
+                1 -> 0.08    // un rival aún por hablar: prudente (puede cazarme)
+                else -> 0.0  // ≥2 rivales detrás: no farolear
+            }
+            // OJO: el rng.nextDouble() se consume SIEMPRE que se entra al bloque
+            // (igual que la versión previa), aunque bluffP sea 0 — si no, se
+            // desincroniza el stream del rng y el a/b del simulador deja de ser
+            // limpio (mismas semillas → trayectorias distintas).
             if (rng.nextDouble() < bluffP) {
                 return Pair(GameAction.Envido(2),
-                    "Reason: Farol de robo ($strength, p=${"%.2f".format(bluffP)})")
+                    "Reason: Farol de robo ($strength, rivalsBehind=$rivalsBehind, p=${"%.2f".format(bluffP)})")
             }
         }
 
