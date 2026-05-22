@@ -18,8 +18,14 @@ class AILogicTest {
 
     @Before
     fun setUp() {
-        // Creamos las dependencias que necesitan las clases bajo test
-        val random = Random.Default
+        // RNG SEMBRADO (no Random.Default): los tests probabilísticos
+        // (decisiones con rng: querer/farol/órdago) eran FLAKY con rng del
+        // sistema — p.ej. el override #19 da ~2% de fold a un 31 de postre con
+        // rival delante, y sobre N reps sin semilla fallaban de forma
+        // intermitente. Con semilla fija, cada test es determinista y
+        // reproducible (cada @Before crea un Random nuevo con la misma
+        // semilla → independiente entre tests).
+        val random = Random(20260522)
         gameLogic = MusGameLogic(random)
 
         // Ahora instanciamos AILogic con todas sus dependencias
