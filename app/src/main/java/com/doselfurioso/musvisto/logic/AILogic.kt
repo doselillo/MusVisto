@@ -627,15 +627,17 @@ class AILogic constructor(
      *
      * 5% break para variación humana-like (no ser absoluto).
      *
-     * TODO #17 (mus corrido): en master no existe ese modo, pero al mergearlo
-     * esta delegación DEBE quedar deshabilitada — el mus corrido prohíbe señas
-     * y exige decisión de corte individual (determina la mano).
+     * #17 (mus corrido): deshabilitada mientras el modo está activo — el mus
+     * corrido prohíbe señas y exige corte individual (determina la mano). El
+     * guard de abajo es defensa explícita; además `onEnterMusPhase` no rellena
+     * `pendingGestures` en mus corrido, así que el gate de señas ya falla solo.
      */
     private fun decideMusDelegation(
         gameState: GameState,
         aiPlayer: Player,
         iActBeforePartner: Boolean
     ): Pair<GameAction, String>? {
+        if (gameState.musCorrido) return null
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
         if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
@@ -739,7 +741,8 @@ class AILogic constructor(
         // pero NO son iguales: si soy penúltimo, ha pasado un rival pero el
         // postre AÚN no ha hablado y puede cazar/subir mi farol. Se controla por
         // `rivalsBehind` = rivales del lance que actúan DESPUÉS que yo: 0
-        // (postre / último rival) → robo pleno; 1 → muy prudente; ≥2 → no farol.
+        // (postre / último rival) → robo pleno; 1 → muy prudente; ≥2 → muy raro
+        // (no absoluto: nada de "nunca" categórico).
         val rivalsBehind = order.drop(myPos + 1).count { p ->
             p.team != aiPlayer.team &&
                 (gameState.playersInLance.isEmpty() || p.id in gameState.playersInLance)
@@ -748,7 +751,8 @@ class AILogic constructor(
             val bluffP = when (rivalsBehind) {
                 0 -> 0.20    // postre / sin rivales detrás: robo pleno
                 1 -> 0.08    // un rival aún por hablar: prudente (puede cazarme)
-                else -> 0.0  // ≥2 rivales detrás: no farolear
+                else -> 0.05 // ≥2 detrás: muy raro, pero NO absoluto (usuario
+                             // 2026-05-22: nada de "nunca" categórico; humano)
             }
             // OJO: el rng.nextDouble() se consume SIEMPRE que se entra al bloque
             // (igual que la versión previa), aunque bluffP sea 0 — si no, se

@@ -476,6 +476,10 @@ class MusGameLogic constructor(private val random: Random){
     }
 
     private fun handleNoMus(currentState: GameState, playerId: String): GameState {
+        // Mus corrido (#17): el que corta el mus se convierte en mano (postre =
+        // su izquierda, implícito por el orden de turno desde manoPlayerId).
+        // Termina el modo inicial; a partir de aquí, juego normal.
+        val newManoId = if (currentState.musCorrido) playerId else currentState.manoPlayerId
         return currentState.copy(
             gamePhase = GamePhase.GRANDE,
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago),
@@ -486,13 +490,15 @@ class MusGameLogic constructor(private val random: Random){
             // fase de Mus/descarte).
             discardCounts = emptyMap(),
             currentBet = null,
-            currentTurnPlayerId = currentState.manoPlayerId,
+            manoPlayerId = newManoId,
+            currentTurnPlayerId = newManoId,
             isNewLance = true,
             currentLanceActions = emptyMap(),
             noMusPlayer = playerId,
             // El plan de señas era solo para el Mus que acaba de cerrarse;
             // los lances de envite ya no lo usan.
-            pendingGestures = emptyMap()
+            pendingGestures = emptyMap(),
+            musCorrido = false
         )
     }
 
@@ -718,6 +724,17 @@ class MusGameLogic constructor(private val random: Random){
         val newDiscardCounts = currentState.discardCounts + (playerId to cardsToDiscard.size)
 
         if (newPassedSet.size == updatedPlayers.size) {
+            // Mus corrido (#17): si los 4 piden mus y descartan, el dador rota
+            // a la derecha → en el nuevo mus empieza a decidir el SIGUIENTE
+            // jugador (siguiente en el orden de turno). Fuera de mus corrido,
+            // se reabre el mus con la misma mano. El "siguiente" usa la misma
+            // dirección que setNextPlayerTurn (índice decreciente).
+            val nextStartId = if (currentState.musCorrido) {
+                val manoIdx = updatedPlayers.indexOfFirst { it.id == currentState.manoPlayerId }
+                if (manoIdx >= 0)
+                    updatedPlayers[(manoIdx - 1 + updatedPlayers.size) % updatedPlayers.size].id
+                else currentState.manoPlayerId
+            } else currentState.manoPlayerId
             return currentState.copy(
                 players = updatedPlayers,
                 deck = deck,
@@ -727,7 +744,8 @@ class MusGameLogic constructor(private val random: Random){
                 selectedCardsForDiscard = emptySet(),
                 playersWhoPassed = emptySet(),
                 discardCounts = newDiscardCounts,
-                currentTurnPlayerId = currentState.manoPlayerId,
+                manoPlayerId = nextStartId,
+                currentTurnPlayerId = nextStartId,
                 actionLog = newLog
             )
         }

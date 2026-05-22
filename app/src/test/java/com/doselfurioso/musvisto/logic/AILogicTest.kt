@@ -295,20 +295,26 @@ class AILogicTest {
         return gs to ai
     }
 
-    // Garantía de buen Mus: un envite pequeño con 31 (aunque sea postre)
-    // NUNCA se pliega — puede quererse o subirse (ambas correctas), pero
-    // jamás NoQuiero/Paso. Esto verifica que el fix anti-exploit no degrada
-    // el juego con la mejor jugada ante envites baratos.
+    // Garantía de buen Mus: un envite pequeño con 31 se quiere la INMENSA
+    // mayoría de las veces (no se degrada el juego con la mejor jugada ante
+    // envites baratos). NO es "nunca pliega": el override #19 (PARTE B) hace
+    // que un 31 de postre con un rival delante pliegue un ~2% (P de que un
+    // rival tenga 31 y gane por mano) — es correcto. Antes este test era
+    // "never folds" con 30 reps; con #19 era flaky (rng del test sin sembrar
+    // + ese ~2% → fallaba ~la mitad de las veces). Se mide sobre muchas reps
+    // y se exige que pliegue MUY poco.
     @Test
-    fun `postre 31 never folds a small Juego bet`() {
+    fun `postre 31 rarely folds a small Juego bet`() {
         val (gs, ai) = postre31JuegoState(betAmount = 2)
-        repeat(30) {
+        var folded = 0
+        repeat(300) {
             val action = aiLogic.makeDecision(gs, ai).action
-            assertFalse(
-                "31 no debe plegar un envite pequeño, fue $action",
-                action is GameAction.NoQuiero || action is GameAction.Paso
-            )
+            if (action is GameAction.NoQuiero || action is GameAction.Paso) folded++
         }
+        assertTrue(
+            "31 con envite barato debe quererse casi siempre, plegó $folded/300",
+            folded < 30
+        )
     }
 
     // Anti-exploit: ante un envite mayor, el 31 en postre NO acepta el 100%
