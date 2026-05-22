@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -176,6 +177,13 @@ fun GameScreen(
             // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
             // ActionButtons usa `gameState.availableActions` directamente.)
 
+            // Mus corrido (#17): el icono de mano sigue al jugador que decide
+            // AHORA (el que "tiene el mazo"), no a la mano fija — así se ve el
+            // mus corriendo a la derecha. Quien corta se queda de mano ahí.
+            // Fuera de mus corrido, es el mano normal.
+            val displayedManoId = if (gameState.musCorrido)
+                gameState.currentTurnPlayerId else gameState.manoPlayerId
+
             // ── CAPA 1: el layout real (Column con pesos) ──
             Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
 
@@ -190,7 +198,7 @@ fun GameScreen(
                     HorizontalPlayerArea(
                         player = partner,
                         isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
-                        isMano = gameState.manoPlayerId == partner.id,
+                        isMano = displayedManoId == partner.id,
                         hasCutMus = gameState.noMusPlayer == partner.id,
                         activeGesture = gameState.activeGesture,
                         handContent = {
@@ -222,7 +230,7 @@ fun GameScreen(
                         VerticalPlayerArea(
                             player = rivalLeft,
                             isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                            isMano = gameState.manoPlayerId == rivalLeft.id,
+                            isMano = displayedManoId == rivalLeft.id,
                             hasCutMus = gameState.noMusPlayer == rivalLeft.id,
                             activeGesture = gameState.activeGesture,
                             handContent = {
@@ -263,7 +271,7 @@ fun GameScreen(
                         VerticalPlayerArea(
                             player = rivalRight,
                             isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                            isMano = gameState.manoPlayerId == rivalRight.id,
+                            isMano = displayedManoId == rivalRight.id,
                             hasCutMus = gameState.noMusPlayer == rivalRight.id,
                             activeGesture = gameState.activeGesture,
                             handContent = {
@@ -294,7 +302,7 @@ fun GameScreen(
                     HorizontalPlayerArea(
                         player = player,
                         isCurrentTurn = isMyTurn,
-                        isMano = gameState.manoPlayerId == player.id,
+                        isMano = displayedManoId == player.id,
                         hasCutMus = gameState.noMusPlayer == player.id,
                         activeGesture = gameState.activeGesture,
                         handContent = {
@@ -339,14 +347,35 @@ fun GameScreen(
                             .zIndex(3f),
                         horizontalArrangement = Arrangement.spacedBy(dimens.smallPadding)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(58.dp * scaleFactor)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                        // Seña: oculta durante mus corrido (#17: prohibidas las
+                        // señas hasta el primer corte que determina la mano).
+                        // En su lugar, un indicador del modo que explica por qué
+                        // no hay botón de seña.
+                        if (!gameState.musCorrido) {
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp * scaleFactor)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .height(58.dp * scaleFactor)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .padding(horizontal = dimens.defaultPadding),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Mus corrido\nsin señas",
+                                    color = Color.White,
+                                    fontSize = dimens.fontSizeSmall,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                         Box(
                             modifier = Modifier
