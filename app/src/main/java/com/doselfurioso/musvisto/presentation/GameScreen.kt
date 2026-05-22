@@ -176,6 +176,13 @@ fun GameScreen(
             // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
             // ActionButtons usa `gameState.availableActions` directamente.)
 
+            // Mus corrido (#17): el icono de mano sigue al jugador que decide
+            // AHORA (el que "tiene el mazo"), no a la mano fija — así se ve el
+            // mus corriendo a la derecha. Quien corta se queda de mano ahí.
+            // Fuera de mus corrido, es el mano normal.
+            val displayedManoId = if (gameState.musCorrido)
+                gameState.currentTurnPlayerId else gameState.manoPlayerId
+
             // ── CAPA 1: el layout real (Column con pesos) ──
             Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
 
@@ -190,7 +197,7 @@ fun GameScreen(
                     HorizontalPlayerArea(
                         player = partner,
                         isCurrentTurn = gameState.currentTurnPlayerId == partner.id,
-                        isMano = gameState.manoPlayerId == partner.id,
+                        isMano = displayedManoId == partner.id,
                         hasCutMus = gameState.noMusPlayer == partner.id,
                         activeGesture = gameState.activeGesture,
                         handContent = {
@@ -222,7 +229,7 @@ fun GameScreen(
                         VerticalPlayerArea(
                             player = rivalLeft,
                             isCurrentTurn = gameState.currentTurnPlayerId == rivalLeft.id,
-                            isMano = gameState.manoPlayerId == rivalLeft.id,
+                            isMano = displayedManoId == rivalLeft.id,
                             hasCutMus = gameState.noMusPlayer == rivalLeft.id,
                             activeGesture = gameState.activeGesture,
                             handContent = {
@@ -263,7 +270,7 @@ fun GameScreen(
                         VerticalPlayerArea(
                             player = rivalRight,
                             isCurrentTurn = gameState.currentTurnPlayerId == rivalRight.id,
-                            isMano = gameState.manoPlayerId == rivalRight.id,
+                            isMano = displayedManoId == rivalRight.id,
                             hasCutMus = gameState.noMusPlayer == rivalRight.id,
                             activeGesture = gameState.activeGesture,
                             handContent = {
@@ -294,7 +301,7 @@ fun GameScreen(
                     HorizontalPlayerArea(
                         player = player,
                         isCurrentTurn = isMyTurn,
-                        isMano = gameState.manoPlayerId == player.id,
+                        isMano = displayedManoId == player.id,
                         hasCutMus = gameState.noMusPlayer == player.id,
                         activeGesture = gameState.activeGesture,
                         handContent = {
