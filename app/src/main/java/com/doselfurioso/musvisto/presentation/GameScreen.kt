@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -346,14 +347,35 @@ fun GameScreen(
                             .zIndex(3f),
                         horizontalArrangement = Arrangement.spacedBy(dimens.smallPadding)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(58.dp * scaleFactor)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                        // Seña: oculta durante mus corrido (#17: prohibidas las
+                        // señas hasta el primer corte que determina la mano).
+                        // En su lugar, un indicador del modo que explica por qué
+                        // no hay botón de seña.
+                        if (!gameState.musCorrido) {
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp * scaleFactor)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .height(58.dp * scaleFactor)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .padding(horizontal = dimens.defaultPadding),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Mus corrido\nsin señas",
+                                    color = Color.White,
+                                    fontSize = dimens.fontSizeSmall,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                         Box(
                             modifier = Modifier
