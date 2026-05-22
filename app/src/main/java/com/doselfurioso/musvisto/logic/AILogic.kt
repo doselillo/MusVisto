@@ -1433,11 +1433,15 @@ class AILogic constructor(
             is ParesPlay.NoPares -> 0
         }
         if (isMano) {
+            // #13: el bonus de mano resuelve EMPATES entre jugadas idénticas
+            // (frecuente en par único). En Duples/Medias el empate exacto entre
+            // equipos es casi imposible (4 cartas, 12 rangos) y el +15 solo
+            // cruzaba la jerarquía de showdown: una Medias-Rey mano (84+15=99)
+            // superaba a Duples bajos no-mano, cuando CUALQUIER duples gana a
+            // CUALQUIER medias. Por eso solo el par único recibe bonus de mano.
             strength += when (paresPlay) {
-                // #13: par único escalado por rango; Duples/Medias siguen +15.
                 is ParesPlay.Pares -> manoParesBonus(getPairingRankValue(paresPlay.rank))
-                is ParesPlay.NoPares -> 0
-                else -> 15
+                else -> 0
             }
         }
         return strength.coerceIn(0, 100)
