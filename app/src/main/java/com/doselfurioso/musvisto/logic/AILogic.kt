@@ -418,18 +418,22 @@ class AILogic constructor(
                 else GameAction.Quiero
             }
 
-            // REGLA 4: "pagar por ver" con mano media-floja. Bajado 20% -> 5%
-            // tras simulador 50.000p (a/b): la franja advantage 60-70 sale a
-            // favor con frecuencia insuficiente para compensar (manos no-31
-            // y 32-40 no-mano), y el "pagar por ver" sangra sobre todo en
-            // GRANDE y PARES. La curva del 20→10→5 mostró retornos
-            // disminuyentes (-4.426 → -1.805 tantos extra) y a 5% el aceptar
-            // está en break-even (-0.09 tantos/partida).
-            //
-            // OJO follow-up: si en playtest se reporta "IA demasiado tímida",
-            // subir a 8-10%. Bajar más (a 2 o 0) tiene retorno muy pequeño
-            // y profundiza la timidez.
-            advantage > 60 && rng.nextInt(100) < 5 -> GameAction.Quiero
+            // REGLA 4: "pagar por ver" con mano media-floja. 5% -> 10%
+            // (decisión del usuario 2026-05-22, sensación > EV anti-timidez).
+            // Historia: se bajó 20% -> 5% tras simulador 50.000p (a/b) porque
+            // la franja advantage 60-70 sale a favor con frecuencia
+            // insuficiente para compensar (manos no-31 y 32-40 no-mano) y el
+            // "pagar por ver" sangra sobre todo en GRANDE y PARES; la curva
+            // 20→10→5 daba retornos disminuyentes (-4.426 → -1.805 tantos
+            // extra) y a 5% el aceptar quedaba en break-even (-0.09 t/partida).
+            // El simulador a 5% seguía avisando "IA demasiado tímida (acepta
+            // ~6%)" y el usuario lo confirma por intuición de playtest, así que
+            // se sube a 10% asumiendo el coste de EV (estimado ~+1.800 tantos
+            // de sangrado sobre 50.000p, a confirmar con el sim) a cambio de
+            // que la IA dispute más lances. Si vuelve a sentirse tímida, la
+            // siguiente palanca NO es esta (retorno disminuyente) sino la
+            // agresividad de APERTURA del capitán (ver backlog #20/#11).
+            advantage > 60 && rng.nextInt(100) < 10 -> GameAction.Quiero
 
             else -> GameAction.NoQuiero
         }
