@@ -180,9 +180,13 @@ fun GameScreen(
             // Mus corrido (#17): el icono de mano sigue al jugador que decide
             // AHORA (el que "tiene el mazo"), no a la mano fija — así se ve el
             // mus corriendo a la derecha. Quien corta se queda de mano ahí.
-            // Fuera de mus corrido, es el mano normal.
-            val displayedManoId = if (gameState.musCorrido)
-                gameState.currentTurnPlayerId else gameState.manoPlayerId
+            // SOLO en la fase de pedir Mus: durante el DESCARTE (cuando todos
+            // pidieron Mus y descartan por turnos) el icono NO debe saltar a cada
+            // jugador que descarta — ahí se muestra el mano estable. Fuera de mus
+            // corrido, es el mano normal.
+            val displayedManoId =
+                if (gameState.musCorrido && gameState.gamePhase == GamePhase.MUS)
+                    gameState.currentTurnPlayerId else gameState.manoPlayerId
 
             // ── CAPA 1: el layout real (Column con pesos) ──
             Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
