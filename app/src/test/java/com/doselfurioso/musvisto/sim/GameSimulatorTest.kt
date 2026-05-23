@@ -107,6 +107,22 @@ class GameSimulatorTest {
         )
         val games = System.getProperty("musvisto.games")?.toIntOrNull() ?: 100
         val batches = (System.getProperty("musvisto.batches")?.toIntOrNull() ?: 1).coerceAtLeast(1)
+
+        // Fase 2 — ARNÉS DE DECISIÓN AISLADA (-Dmusvisto.mode=decisions). Modo
+        // aparte que NO juega partidas: evalúa makeDecision sobre un corpus FIJO de
+        // manos independientes y lo puntúa contra el showdown real. Como el corpus
+        // es idéntico entre corridas, el a/b aísla SOLO el cambio de decisión →
+        // señal causal, monótona e inmune al caos de trayectoria del modo partida-
+        // completa. Reusa -Dmusvisto.batches=K como lotes de semilla disjuntos para
+        // la banda de ruido del propio arnés (prueba anti-caos).
+        if (System.getProperty("musvisto.mode") == "decisions") {
+            val scenarios = System.getProperty("musvisto.scenarios")?.toIntOrNull() ?: 5000
+            val report = runDecisionHarness(scenarios, batches)
+            println(report)
+            writeReport(report)
+            return
+        }
+
         val stats = Stats()
 
         // K lotes de `games` partidas con rangos de semilla DISJUNTOS (lote b →
@@ -745,6 +761,346 @@ class GameSimulatorTest {
             out += "⚠️ ${s.stalledGames} partidas se cortaron por límite de acciones " +
                 "(posible bucle en la lógica de juego). Investigar."
 
+        return out
+    }
+
+    // ===================================================================
+    // FASE 2 — ARNÉS DE DECISIÓN AISLADA (-Dmusvisto.mode=decisions)
+    // ===================================================================
+    // Corpus FIJO de manos repartidas con Random(seed). Para cada reparto se
+    // construye el estado de cada lance DIRECTAMENTE (sin jugar los lances
+    // previos, que es lo que en el modo partida-completa hace divergir las
+    // trayectorias) y se puntúa la decisión de makeDecision contra el showdown
+    // real de esas 4 manos. Cada makeDecision recibe un AILogic con su propio
+    // Random determinista (derivado de la semilla + un contador de escenario), de
+    // modo que un cambio en el consumo de rng de UNA decisión no perturba a las
+    // demás → a/b causal, monótono y de bajo ruido.
+
+    private val betSizesProbe = listOf(2, 4, 8)
+
+    private data class RespKey(val phase: GamePhase, val pos: Int, val bet: Int)
+    private data class OpenKey(val phase: GamePhase, val pos: Int)
+
+    private class DecisionStats {
+        var dealsEvaluated = 0
+        var respDecisions = 0
+        var openDecisions = 0
+
+        // RESPUESTA a un envite de tamaño X, puntuada ex-post contra el showdown:
+        //   jugar (Quiero/Envido/Órdago) → +X si gano el lance / −X si lo pierdo
+        //   plegar (NoQuiero)            → −1 (pointsIfRejected del primer envite)
+        // óptimo ex-post = max(jugar, plegar); regret = óptimo − elegido (≥0).
+        val respCount = HashMap<RespKey, Int>()
+        val respPlays = HashMap<RespKey, Int>()
+        val respCorrect = HashMap<RespKey, Int>() // eligió el lado EV-óptimo
+        val respRegret = HashMap<RespKey, Int>()   // tantos dejados en la mesa
+        val respNet = HashMap<RespKey, Int>()      // EV realizado de lo elegido
+        val respPlayWon = HashMap<RespKey, Int>()  // de lo jugado, ganó el showdown
+
+        // APERTURA (sin envite): matriz de selección abrir|pasar × gana|pierde el
+        // showdown. SIN número de EV: el valor de abrir depende del modelo de
+        // plegado del rival (punto ciego del sim simétrico) → se reporta la
+        // selección, no se finge un EV.
+        val openOpenWin = HashMap<OpenKey, Int>()
+        val openOpenLose = HashMap<OpenKey, Int>()
+        val openCheckWin = HashMap<OpenKey, Int>()
+        val openCheckLose = HashMap<OpenKey, Int>()
+    }
+
+    private fun <K> MutableMap<K, Int>.bump(k: K, v: Int = 1) { this[k] = (this[k] ?: 0) + v }
+
+    private fun runDecisionHarness(scenarios: Int, batches: Int): String {
+        val st = DecisionStats()
+        // Foto de los agregados globales de RESPUESTA en cada frontera de lote
+        // (semillas disjuntas) → banda de ruido del arnés (la prueba anti-caos).
+        fun snap() = intArrayOf(
+            st.respCount.values.sum(),
+            st.respCorrect.values.sum(),
+            st.respRegret.values.sum(),
+            st.respNet.values.sum()
+        )
+        val snaps = mutableListOf(snap())
+        for (b in 0 until batches) {
+            val base = b.toLong() * scenarios
+            for (i in 0 until scenarios) evalDeal(base + i, st)
+            snaps += snap()
+        }
+        val perBatch = (1..batches).map { idx ->
+            val p = snaps[idx - 1]; val c = snaps[idx]
+            val dn = c[0] - p[0]
+            val acc = if (dn == 0) 0.0 else 100.0 * (c[1] - p[1]) / dn
+            val reg = if (dn == 0) 0.0 else (c[2] - p[2]).toDouble() / dn
+            acc to reg
+        }
+        return buildDecisionReport(st, scenarios, batches, perBatch)
+    }
+
+    private fun evalDeal(seed: Long, st: DecisionStats) {
+        val rng = Random(seed)
+        val gameLogic = MusGameLogic(rng)
+        val roster = players()
+        // Alternar mano por reparto para equilibrar la distribución de posiciones.
+        val manoId = if (seed % 2L == 0L) roster[0].id else roster[1].id
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, _) = gameLogic.dealCards(roster, deck, manoId)
+        st.dealsEvaluated++
+
+        // Señas conocidas: mirror de startRound (prob 0.90). En un lance real ya se
+        // han mostrado al llegar a GRANDE; mismo plan para todos los lances.
+        val known = mutableMapOf<String, ActiveGestureInfo>()
+        val pending = mutableMapOf<String, Int>()
+        for (p in dealt) {
+            val g = determineGesture(p, gameLogic) ?: continue
+            if (rng.nextFloat() < 0.90f) { pending[p.id] = g; known[p.id] = ActiveGestureInfo(p.id, g) }
+        }
+
+        val baseState = GameState(
+            players = dealt,
+            score = mapOf("teamA" to 0, "teamB" to 0),
+            manoPlayerId = manoId,
+            knownGestures = known,
+            pendingGestures = pending
+        )
+
+        // rng PROPIO por decisión: garantiza independencia/reproducibilidad y que un
+        // cambio de lógica en una decisión no arrastre a otra vía estado de rng.
+        var sc = 0
+        fun freshAi() = AILogic(gameLogic, Random(seed * 10_000L + sc++))
+
+        for (lance in bettingLances) {
+            val inLance = playersInLanceFor(lance, dealt, gameLogic) ?: continue
+            val winnerTeam = lanceWinnerTeam(lance, baseState, gameLogic) ?: continue
+            val isPunto = lance == GamePhase.JUEGO &&
+                dealt.none { gameLogic.getHandJuegoValue(it.hand) >= 31 }
+            val inLanceIds = inLance.map { it.id }.toSet()
+            val ordered = gameLogic.getTurnOrderedPlayers(dealt, manoId).filter { it.id in inLanceIds }
+
+            for (ai in inLance) {
+                val myIdx = ordered.indexOfFirst { it.id == ai.id }
+                val pos = ordered.take(myIdx).count { it.team != ai.team } // rivales por delante
+                val mineWins = ai.team == winnerTeam
+                val lanceState = baseState.copy(
+                    gamePhase = lance,
+                    isPuntoPhase = isPunto,
+                    playersInLance = inLanceIds,
+                    currentTurnPlayerId = ai.id,
+                    availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
+                )
+
+                // APERTURA (sin envite activo).
+                val openDec = freshAi().makeDecision(lanceState, ai)
+                recordOpen(st, OpenKey(lance, pos), openDec.action, mineWins)
+                st.openDecisions++
+
+                // RESPUESTA a un envite SINTÉTICO de tamaño X de un rival del lance.
+                // Inyectarlo (en vez de esperar a que surja de una IA gemela tímida)
+                // desacopla el 'aceptar' del sesgo "el envite solo viene de manos
+                // fuertes" → menos punto ciego que el modo partida-completa.
+                val bettor = ordered.firstOrNull { it.team != ai.team } ?: continue
+                for (x in betSizesProbe) {
+                    val betState = lanceState.copy(
+                        currentBet = BetInfo(
+                            amount = x,
+                            bettingPlayerId = bettor.id,
+                            respondingPlayerId = ai.id,
+                            pointsIfRejected = 1
+                        )
+                    )
+                    recordResp(st, RespKey(lance, pos, x), freshAi().makeDecision(betState, ai).action, mineWins, x)
+                    st.respDecisions++
+                }
+            }
+        }
+    }
+
+    /**
+     * Jugadores que participan en el lance, o null si el lance NO se disputaría
+     * (el motor lo saltaría → no hay decisión). GRANDE/CHICA: los 4. PARES/JUEGO:
+     * solo si AL MENOS DOS equipos tienen jugada (espejo de beginDeclarationBetting);
+     * JUEGO con nadie ≥31 = Punto (los 4 juegan).
+     */
+    private fun playersInLanceFor(lance: GamePhase, dealt: List<Player>, gl: MusGameLogic): List<Player>? =
+        when (lance) {
+            GamePhase.GRANDE, GamePhase.CHICA -> dealt
+            GamePhase.PARES -> {
+                val withPares = dealt.filter { gl.getHandPares(it.hand).strength > 0 }
+                if (withPares.map { it.team }.distinct().size >= 2) withPares else null
+            }
+            GamePhase.JUEGO -> {
+                val withJuego = dealt.filter { gl.getHandJuegoValue(it.hand) >= 31 }
+                when {
+                    withJuego.map { it.team }.distinct().size >= 2 -> withJuego
+                    withJuego.isEmpty() -> dealt          // Punto: todos juegan
+                    else -> null                          // un solo equipo con Juego → saltado
+                }
+            }
+            else -> null
+        }
+
+    private fun lanceWinnerTeam(lance: GamePhase, state: GameState, gl: MusGameLogic): String? =
+        when (lance) {
+            GamePhase.GRANDE -> gl.getGrandeWinner(state)?.team
+            GamePhase.CHICA -> gl.getChicaWinner(state)?.team
+            GamePhase.PARES -> gl.getParesWinner(state)?.team
+            GamePhase.JUEGO -> gl.getJuegoWinner(state)?.team
+            else -> null
+        }
+
+    private fun recordResp(st: DecisionStats, key: RespKey, action: GameAction, mineWins: Boolean, x: Int) {
+        val played = action is GameAction.Quiero || action is GameAction.Envido || action is GameAction.Órdago
+        val evPlay = if (mineWins) x else -x
+        val evFold = -1
+        val chosen = if (played) evPlay else evFold
+        val optimal = maxOf(evPlay, evFold)
+        st.respCount.bump(key)
+        if (played) st.respPlays.bump(key)
+        if (chosen == optimal) st.respCorrect.bump(key)
+        st.respRegret.bump(key, optimal - chosen)
+        st.respNet.bump(key, chosen)
+        if (played && mineWins) st.respPlayWon.bump(key)
+    }
+
+    private fun recordOpen(st: DecisionStats, key: OpenKey, action: GameAction, mineWins: Boolean) {
+        val opened = action is GameAction.Envido || action is GameAction.Órdago
+        when {
+            opened && mineWins -> st.openOpenWin.bump(key)
+            opened && !mineWins -> st.openOpenLose.bump(key)
+            !opened && mineWins -> st.openCheckWin.bump(key)
+            else -> st.openCheckLose.bump(key)
+        }
+    }
+
+    private fun fmt1(x: Double) = String.format(Locale.US, "%.1f", x)
+    private fun fmt3(x: Double) = String.format(Locale.US, "%.3f", x)
+
+    private fun buildDecisionReport(
+        st: DecisionStats,
+        scenarios: Int,
+        batches: Int,
+        perBatch: List<Pair<Double, Double>>
+    ): String {
+        val sb = StringBuilder()
+        val ts = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date())
+        sb.appendLine("MusVisto — Arnés de decisión aislada (Fase 2)")
+        sb.appendLine("Timestamp: $ts | Repartos: ${st.dealsEvaluated} | " +
+            "Decisiones: respuesta ${st.respDecisions}, apertura ${st.openDecisions}")
+        sb.appendLine("Corpus FIJO por semilla: el a/b mide SOLO el cambio de decisión.")
+        sb.appendLine("=".repeat(64))
+        sb.appendLine()
+
+        // ---- RESPUESTA ----
+        val rCount = st.respCount.values.sum()
+        sb.appendLine("RESPUESTA A ENVITE (puntuada ex-post vs showdown real)")
+        sb.appendLine("  jugar = +X si gano / −X si pierdo | plegar = −1 | regret = óptimo − elegido")
+        sb.appendLine("- GLOBAL: acierto ${pct(st.respCorrect.values.sum(), rCount)} (lado EV-óptimo) | " +
+            "regret/decisión ${fmt3(st.respRegret.values.sum().toDouble() / maxOf(rCount, 1))} | " +
+            "juega ${pct(st.respPlays.values.sum(), rCount)} | neto ${st.respNet.values.sum()}")
+        sb.appendLine()
+        sb.appendLine(String.format(Locale.US, "  %-7s %4s %4s %8s %9s %10s %8s",
+            "lance", "pos", "bet", "n", "acierto", "regret/d", "juega%"))
+        for (lance in bettingLances) for (pos in 0..2) for (x in betSizesProbe) {
+            val k = RespKey(lance, pos, x)
+            val n = st.respCount[k] ?: 0
+            if (n == 0) continue
+            sb.appendLine(String.format(Locale.US, "  %-7s %4d %4d %8d %9s %10s %8s",
+                lance.name.take(7), pos, x, n,
+                pct(st.respCorrect[k] ?: 0, n),
+                fmt3((st.respRegret[k] ?: 0).toDouble() / n),
+                pct(st.respPlays[k] ?: 0, n)))
+        }
+        sb.appendLine()
+        sb.appendLine("  Resumen por lance (suma de posición y tamaño):")
+        for (lance in bettingLances) {
+            val keys = st.respCount.keys.filter { it.phase == lance }
+            val n = keys.sumOf { st.respCount[it] ?: 0 }
+            if (n == 0) continue
+            val plays = keys.sumOf { st.respPlays[it] ?: 0 }
+            sb.appendLine("    - ${lance.name}: n=$n | acierto ${pct(keys.sumOf { st.respCorrect[it] ?: 0 }, n)} | " +
+                "regret/d ${fmt3(keys.sumOf { st.respRegret[it] ?: 0 }.toDouble() / n)} | " +
+                "de lo jugado gana ${pct(keys.sumOf { st.respPlayWon[it] ?: 0 }, plays)} showdown | " +
+                "neto ${keys.sumOf { st.respNet[it] ?: 0 }}")
+        }
+        sb.appendLine()
+
+        // ---- APERTURA ----
+        sb.appendLine("APERTURA (sin envite) — SELECCIÓN, no EV")
+        sb.appendLine("  (el EV de abrir depende del plegado del rival: punto ciego del sim simétrico)")
+        sb.appendLine(String.format(Locale.US, "  %-7s %4s %8s %8s %12s %12s",
+            "lance", "pos", "n", "abre%", "%sd abierto", "%sd pasado"))
+        for (lance in bettingLances) for (pos in 0..2) {
+            val k = OpenKey(lance, pos)
+            val ow = st.openOpenWin[k] ?: 0; val ol = st.openOpenLose[k] ?: 0
+            val cw = st.openCheckWin[k] ?: 0; val cl = st.openCheckLose[k] ?: 0
+            val n = ow + ol + cw + cl
+            if (n == 0) continue
+            sb.appendLine(String.format(Locale.US, "  %-7s %4d %8d %8s %12s %12s",
+                lance.name.take(7), pos, n, pct(ow + ol, n), pct(ow, ow + ol), pct(cw, cw + cl)))
+        }
+        sb.appendLine("  Lectura: '%sd abierto' = de lo que abre, cuánto gana el showdown (alto = abre valor / ")
+        sb.appendLine("  bajo = farol o sobre-apertura). '%sd pasado' alto = valor desperdiciado al pasar.")
+        sb.appendLine()
+
+        // ---- RUIDO DEL ARNÉS (prueba anti-caos) ----
+        if (batches >= 2) {
+            sb.appendLine("=".repeat(64))
+            sb.appendLine("RUIDO DEL ARNÉS ($batches lotes de $scenarios repartos, semillas disjuntas)")
+            sb.appendLine("=".repeat(64))
+            val accs = perBatch.map { it.first }
+            val regs = perBatch.map { it.second }
+            val (am, asd) = meanStd(accs)
+            val (rm, rsd) = meanStd(regs)
+            sb.appendLine("- Acierto respuesta: ${fmt1(am)}% ± ${fmt1(asd)}%  " +
+                "[min ${fmt1(accs.minOrNull() ?: 0.0)}, max ${fmt1(accs.maxOrNull() ?: 0.0)}]")
+            sb.appendLine("- Regret/decisión:   ${fmt3(rm)} ± ${fmt3(rsd)}  " +
+                "[min ${fmt3(regs.minOrNull() ?: 0.0)}, max ${fmt3(regs.maxOrNull() ?: 0.0)}]")
+            sb.appendLine("Contraste: en el modo partida-completa el accept-net tiene σ≈27% de la media")
+            sb.appendLine("(caos de trayectoria). Una σ pequeña aquí confirma que el arnés aísla la decisión.")
+            sb.appendLine()
+        }
+
+        // ---- DIAGNÓSTICO ----
+        sb.appendLine("=".repeat(64))
+        sb.appendLine("DIAGNÓSTICO")
+        sb.appendLine("=".repeat(64))
+        diagnoseDecisions(st).forEach { sb.appendLine(it) }
+        return sb.toString()
+    }
+
+    private fun diagnoseDecisions(st: DecisionStats): List<String> {
+        val out = mutableListOf<String>()
+        val rCount = st.respCount.values.sum()
+        if (rCount < 100) {
+            out += "ℹ️ Pocas decisiones de respuesta ($rCount) para concluir; sube -Dmusvisto.scenarios."
+            return out
+        }
+        val acc = 100.0 * st.respCorrect.values.sum() / rCount
+        val reg = st.respRegret.values.sum().toDouble() / rCount
+        val playRate = 100.0 * st.respPlays.values.sum() / rCount
+        out += "Respuesta: acierta el lado EV-óptimo el ${fmt1(acc)}% (regret medio ${fmt3(reg)} tantos/decisión)."
+        when {
+            playRate < 15.0 -> out += "⚠️ Juega solo el ${fmt1(playRate)}% de los envites afrontados: muy plegadora " +
+                "(coherente con la timidez del modo partida-completa). Ver si el regret viene de PLEGAR ganadores."
+            playRate > 60.0 -> out += "⚠️ Juega el ${fmt1(playRate)}% de los envites: poco selectiva."
+            else -> out += "✅ Tasa de juego intermedia (${fmt1(playRate)}%)."
+        }
+        out += "Regret por lance (mayor = peores decisiones de respuesta en ese lance):"
+        bettingLances
+            .map { l -> l to st.respRegret.keys.filter { it.phase == l }.sumOf { st.respRegret[it] ?: 0 } }
+            .sortedByDescending { it.second }
+            .forEach { (l, r) ->
+                val n = st.respCount.keys.filter { it.phase == l }.sumOf { st.respCount[it] ?: 0 }
+                if (n > 0) out += "  - ${l.name}: regret/d ${fmt3(r.toDouble() / n)} (n=$n)"
+            }
+        out += "Regret por posición (rivales por delante; mayor exposición = más fácil decidir mal):"
+        for (pos in 0..2) {
+            val n = st.respCount.keys.filter { it.pos == pos }.sumOf { st.respCount[it] ?: 0 }
+            if (n == 0) continue
+            val r = st.respRegret.keys.filter { it.pos == pos }.sumOf { st.respRegret[it] ?: 0 }
+            out += "  - rivales_delante=$pos: regret/d ${fmt3(r.toDouble() / n)} (n=$n)"
+        }
+        out += "Nota: el showdown es ex-post (no modela el farol del humano). El arnés inyecta el envite, " +
+            "así que el 'aceptar' está MENOS sesgado que en partida-completa, pero la apertura sigue " +
+            "siendo selección, no EV (ver matriz arriba)."
         return out
     }
 
