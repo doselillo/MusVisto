@@ -410,7 +410,27 @@ class AILogic constructor(
             // el foldChance se deriva de P(pierdo) en vez de la curva por
             // tamaño. Antes con envite=2 (foldChance=0% en la curva) el 31
             // expuesto en postre se quería SIEMPRE y perdía a otro 31 mano.
-            advantage > 70 -> {
+            //
+            // ANTI-SOBRE-PLEGADO (umbral 70→60; REGLA 4 60→50): el oponente
+            // asimétrico del simulador (Fase 3) mostró que la IA PIERDE el
+            // matchup contra un rival que farolea/abre flojo (spammer 45%,
+            // loose 48%) porque, calibrada contra apuestas genuinas (sim
+            // simétrico), pliega manos medias que ganarían al farol. Bajar el
+            // umbral a 60 paga envites pequeños con par de reyes / duples-reyes
+            // y arregla el matchup (spammer 55%, loose 57%) sin tocar
+            // station/órdago (otro código). Coste: el aceptar-neto del sim
+            // SIMÉTRICO sangra más (−1525→−4209/2000p) — punto ciego conocido
+            // (vs apostante genuino aceptar siempre sangra; el beneficio real
+            // es vs humano que farolea). El arnés aislado lo confirma causal:
+            // regret 2.34→1.96, acierto EV 59%→66%. La rodilla está en 60: a
+            // 55 sangra más por ganancia marginal.
+            //
+            // Se probó hacerlo POSITION-AWARE (60 ∓6 mano/postre, y postre-only
+            // +6) por recomendación del mus-strategy-reviewer: el arnés y el
+            // matchup salían IGUALES o LIGERAMENTE PEORES (el plano está en la
+            // rodilla y captura mejor el value ex-post). Se mantiene plano.
+            // (Backlog #1, lado respuesta.)
+            advantage > 60 -> {
                 val baseFold = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
                     .coerceAtMost(80)
                 val foldChance = juego31LossOverride(gameState, aiPlayer) ?: baseFold
@@ -433,7 +453,7 @@ class AILogic constructor(
             // que la IA dispute más lances. Si vuelve a sentirse tímida, la
             // siguiente palanca NO es esta (retorno disminuyente) sino la
             // agresividad de APERTURA del capitán (ver backlog #20/#11).
-            advantage > 60 && rng.nextInt(100) < 10 -> GameAction.Quiero
+            advantage > 50 && rng.nextInt(100) < 10 -> GameAction.Quiero
 
             else -> GameAction.NoQuiero
         }

@@ -155,6 +155,11 @@ class AILogicSnapshotTest {
         // Snapshot regenerado tras #11 (90% envido seco, e884657) + bonus de
         // mano #5 calibrado a 6 + subida mínima +1 al re-envidar (isRaise).
         // Regenerar SOLO si la IA cambia a propósito.
+        // Última regeneración: anti-sobre-plegado (REGLA 3 umbral advantage
+        // 70→60, REGLA 4 60→50). 5 casos NoQuiero→Quiero: la IA paga envites
+        // pequeños con par de reyes / duples-reyes (manos medias-fuertes que
+        // ganan al farol). Validado con el oponente asimétrico del simulador
+        // (Fase 3): spammer 45%→55%, loose 48%→57% sin tocar station/ordago.
         private val EXPECTED = """
 MUS/4REY/mano=p2 => NoMus
 MUS/4REY/mano=p4 => NoMus
@@ -315,8 +320,8 @@ RESP/JUEGO/J31/bet/mano => Envido(1)
 RESP/JUEGO/J31/bet/postre => Quiero
 RESP/JUEGO/J31/ordago/even => Quiero
 RESP/JUEGO/J31/ordago/hailmary => Quiero
-RESP/GRANDE/DUP/bet/mano => NoQuiero
-RESP/GRANDE/DUP/bet/postre => NoQuiero
+RESP/GRANDE/DUP/bet/mano => Quiero
+RESP/GRANDE/DUP/bet/postre => Quiero
 RESP/GRANDE/DUP/ordago/even => NoQuiero
 RESP/GRANDE/DUP/ordago/hailmary => Quiero
 RESP/PARES/DUP/bet/mano => Envido(1)
@@ -387,11 +392,11 @@ RESP/JUEGO/PAS/bet/mano => NoQuiero
 RESP/JUEGO/PAS/bet/postre => NoQuiero
 RESP/JUEGO/PAS/ordago/even => NoQuiero
 RESP/JUEGO/PAS/ordago/hailmary => Quiero
-RESP/GRANDE/PREY/bet/mano => NoQuiero
-RESP/GRANDE/PREY/bet/postre => NoQuiero
+RESP/GRANDE/PREY/bet/mano => Quiero
+RESP/GRANDE/PREY/bet/postre => Quiero
 RESP/GRANDE/PREY/ordago/even => NoQuiero
 RESP/GRANDE/PREY/ordago/hailmary => Quiero
-RESP/PARES/PREY/bet/mano => NoQuiero
+RESP/PARES/PREY/bet/mano => Quiero
 RESP/PARES/PREY/bet/postre => NoQuiero
 RESP/PARES/PREY/ordago/even => NoQuiero
 RESP/PARES/PREY/ordago/hailmary => Quiero
