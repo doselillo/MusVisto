@@ -591,24 +591,33 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy
-        // a señalizar (pendingGestures), le delego el corte (decide él con
-        // mi seña + su mano). Aplica a partner humano Y partner IA — la
-        // restricción a humano-only sangraba sensación de pareja IA↔IA en
-        // playtest (el primero IA cortaba con buena mano cuando debería
-        // ceder al segundo).
-        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
-        decideMusDelegation(gameState, aiPlayer, iActBeforePartner)?.let { return it }
-
         val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
         val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
         val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
         val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
 
-        if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
-        if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
-        if (strength.grande >= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)")
-        if (strength.chica >= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)")
+        // ¿Mi mano MERECE cortarse por sí sola? (razón, o null si no supera ningún
+        // umbral). Se calcula ANTES de la delegación para gatear el break: el
+        // primero solo corta por iniciativa con una mano cortable, nunca al azar.
+        val cutReason = when {
+            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)"
+            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)"
+            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)"
+            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)"
+            else -> null
+        }
+
+        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy a
+        // señalizar (pendingGestures), le delego el corte (decide él con mi seña
+        // + su mano). El break (corte por iniciativa) SOLO aplica si mi mano
+        // merece cortarse — no un corte aleatorio con cualquier mano. Aplica a
+        // partner humano Y partner IA — la restricción a humano-only sangraba
+        // sensación de pareja IA↔IA en playtest (el primero IA cortaba con buena
+        // mano cuando debería ceder al segundo).
+        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
+        decideMusDelegation(gameState, aiPlayer, iActBeforePartner, cutReason != null)?.let { return it }
+
+        cutReason?.let { return GameAction.NoMus to "Reason: $it" }
 
         val musReason = if (partnerIsMano) {
             "Reason: No strength exceeds thresholds; compañero es mano, sesgo a Mus (manoBias +$manoBias)"
@@ -645,7 +654,12 @@ class AILogic constructor(
      * pareja real prevalece y la compensación va por otro lado
      * (`CAPTAIN_ALONE_RESPONSE_PENALTY` ya está activa).
      *
-     * 5% break para variación humana-like (no ser absoluto).
+     * Break = el primero toma la INICIATIVA de cortar su BUENA mano en vez de
+     * delegar, ocasionalmente (variación humana-like, no ser absoluto). SOLO si
+     * `handWouldCut` (la mano supera un umbral de corte): un break con mano floja
+     * era un corte sin sentido (sensación de IA tonta en playtest, espíritu del
+     * #13). Con mano no-cortable SIEMPRE delega (pide Mus) y señaliza: el capitán
+     * decide con la seña + su mano.
      *
      * #17 (mus corrido): deshabilitada mientras el modo está activo — el mus
      * corrido prohíbe señas y exige corte individual (determina la mano). El
@@ -655,13 +669,14 @@ class AILogic constructor(
     private fun decideMusDelegation(
         gameState: GameState,
         aiPlayer: Player,
-        iActBeforePartner: Boolean
+        iActBeforePartner: Boolean,
+        handWouldCut: Boolean
     ): Pair<GameAction, String>? {
         if (gameState.musCorrido) return null
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
-        if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
-            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto excepcionalmente"
+        if (handWouldCut && rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
+            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
         }
         return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
     }
