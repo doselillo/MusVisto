@@ -39,6 +39,13 @@ class GameSimulatorTest {
         var deals = 0
         var discardCycles = 0
 
+        // Delegación de corte de Mus (#20): el "primero" del equipo que va a
+        // señalizar cede el corte al capitán (Mus) salvo el break ocasional.
+        // Mide la FIDELIDAD del sim: si es 0, la delegación no se ejerce
+        // (bug D: startRound no rellenaba pendingGestures, gate de la delegación).
+        var delegationFired = 0    // "#20 delego" → pide Mus cediendo el corte
+        var delegationBreak = 0    // "#20 break"  → corta excepcionalmente
+
         // Por lance: phase -> contadores
         val paso = mutableMapOf<GamePhase, Int>()
         val envido = mutableMapOf<GamePhase, Int>()
@@ -71,6 +78,22 @@ class GameSimulatorTest {
         val acceptLostByAmt = mutableMapOf<Int, Int>()
         val acceptNetByAmt = mutableMapOf<Int, Int>()
 
+        // SEGMENTACIÓN (Fase 1·E): aceptar/abrir por POSICIÓN (nº de rivales que
+        // actúan antes que yo en el lance) y por MARCADOR (delante/detrás/
+        // igualado/rival≥33). Aísla si la IA acepta peor desde mala posición
+        // (rivales por delante = más probable que alguien me gane) o bajo presión
+        // de marcador, cosas que el agregado global esconde.
+        val acceptWonByPos = mutableMapOf<Int, Int>()
+        val acceptLostByPos = mutableMapOf<Int, Int>()
+        val acceptNetByPos = mutableMapOf<Int, Int>()
+        val acceptWonByScore = mutableMapOf<String, Int>()
+        val acceptLostByScore = mutableMapOf<String, Int>()
+        val acceptNetByScore = mutableMapOf<String, Int>()
+        val envidoWonByPos = mutableMapOf<Int, Int>()
+        val envidoLostByPos = mutableMapOf<Int, Int>()
+        val envidoWonByScore = mutableMapOf<String, Int>()
+        val envidoLostByScore = mutableMapOf<String, Int>()
+
         fun inc(m: MutableMap<GamePhase, Int>, p: GamePhase) { m[p] = (m[p] ?: 0) + 1 }
     }
 
@@ -83,11 +106,25 @@ class GameSimulatorTest {
             System.getProperty("musvisto.sim") == "true"
         )
         val games = System.getProperty("musvisto.games")?.toIntOrNull() ?: 100
+        val batches = (System.getProperty("musvisto.batches")?.toIntOrNull() ?: 1).coerceAtLeast(1)
         val stats = Stats()
 
-        repeat(games) { i -> playOneGame(seed = i.toLong(), stats = stats) }
+        // K lotes de `games` partidas con rangos de semilla DISJUNTOS (lote b →
+        // [b*games, b*games+games)). Todo se acumula en un único Stats para el
+        // informe detallado; en la frontera de cada lote tomamos un snapshot de
+        // los contadores clave para derivar la métrica por-lote y, entre lotes,
+        // su media ± σ (la banda de ruido). Con batches=1 el comportamiento es
+        // idéntico al de antes (un solo lote, semillas 0..games-1, sin banda).
+        val snapshots = mutableListOf(snapshot(stats))
+        for (b in 0 until batches) {
+            val base = b.toLong() * games
+            repeat(games) { i -> playOneGame(seed = base + i, stats = stats) }
+            snapshots += snapshot(stats)
+        }
+        val batchMetrics = (1..batches).map { batchMetricsBetween(snapshots[it - 1], snapshots[it], games) }
 
-        val report = buildReport(stats, games)
+        val report = buildReport(stats, games) +
+            if (batches >= 2) "\n" + noiseSection(batchMetrics, batches, games) else ""
         println(report)
         writeReport(report)
     }
@@ -204,13 +241,28 @@ class GameSimulatorTest {
         val (dealt, remaining) = gameLogic.dealCards(roster, deck, manoId)
         stats.deals++
 
-        // Gestos: cada IA con compañero IA, 70% de pasar seña (mirror de
-        // GameViewModel.triggerAiGestures + determineGesture).
+        // Señas: mirror fiel de GameViewModel.onEnterMusPhase + triggerAiGestures.
+        //  - pendingGestures = PLAN de seña. Es el gate de la delegación de corte
+        //    #20 (AILogic.decideMusDelegation exige `id in pendingGestures`); sin
+        //    él la delegación NO se ejerce → el sim mediría una IA distinta de la
+        //    enviada (bug de fidelidad D del plan del simulador).
+        //  - knownGestures = señas efectivamente mostradas, DERIVADAS del plan
+        //    (en el VM triggerAiGestures emite cada seña pendiente; headless no
+        //    cancela por timing/cambio de fase, así que todo lo planificado se
+        //    muestra). La interceptación rival (prob 0.20) la modela AILogic
+        //    sobre este map global, no se filtra aquí.
+        // Prob 0.90 = PENDING_GESTURE_PROB_AI_PARTNER (todos los compañeros son
+        // IA en el sim). Antes el sim rellenaba knownGestures directo a 0.70 y
+        // nunca pendingGestures. Se computa la seña primero y solo entonces se
+        // tira (igual que el mapNotNull del VM): un jugador sin seña no consume
+        // tirada.
+        val pending = mutableMapOf<String, Int>()
         val known = mutableMapOf<String, ActiveGestureInfo>()
         for (p in dealt) {
-            if (rng.nextFloat() < 0.70f) {
-                val g = determineGesture(p, gameLogic)
-                if (g != null) known[p.id] = ActiveGestureInfo(p.id, g)
+            val g = determineGesture(p, gameLogic) ?: continue
+            if (rng.nextFloat() < 0.90f) {
+                pending[p.id] = g
+                known[p.id] = ActiveGestureInfo(p.id, g)
             }
         }
 
@@ -222,6 +274,7 @@ class GameSimulatorTest {
             currentTurnPlayerId = manoId,
             gamePhase = GamePhase.MUS,
             availableActions = listOf(GameAction.Mus, GameAction.NoMus),
+            pendingGestures = pending,
             knownGestures = known
         )
     }
@@ -256,6 +309,11 @@ class GameSimulatorTest {
         gameLogic: MusGameLogic
     ) {
         val phase = state.gamePhase
+        // Delegación #20 (gate: id en pendingGestures). Cuenta tanto el ceder
+        // (Mus) como el break (NoMus excepcional). Es la sonda de fidelidad D.
+        if (decision.debugLog.contains("#20 delego")) stats.delegationFired++
+        if (decision.debugLog.contains("#20 break")) stats.delegationBreak++
+
         when (val a = decision.action) {
             is GameAction.Mus -> stats.musDecisions++
             is GameAction.NoMus -> stats.noMusDecisions++
@@ -285,6 +343,8 @@ class GameSimulatorTest {
             }
             if (lanceWinnerTeam != null) {
                 val mineWins = lanceWinnerTeam == player.team
+                val pos = rivalsAheadInLance(state, player, gameLogic)
+                val scoreKey = scoreBucket(state, player)
                 when (val a = decision.action) {
                     is GameAction.Quiero -> {
                         val amt = state.currentBet?.amount ?: 0
@@ -294,16 +354,32 @@ class GameSimulatorTest {
                             stats.acceptNetByPhase[phase] = (stats.acceptNetByPhase[phase] ?: 0) + amt
                             stats.acceptWonByAmt[amt] = (stats.acceptWonByAmt[amt] ?: 0) + 1
                             stats.acceptNetByAmt[amt] = (stats.acceptNetByAmt[amt] ?: 0) + amt
+                            stats.acceptWonByPos[pos] = (stats.acceptWonByPos[pos] ?: 0) + 1
+                            stats.acceptNetByPos[pos] = (stats.acceptNetByPos[pos] ?: 0) + amt
+                            stats.acceptWonByScore[scoreKey] = (stats.acceptWonByScore[scoreKey] ?: 0) + 1
+                            stats.acceptNetByScore[scoreKey] = (stats.acceptNetByScore[scoreKey] ?: 0) + amt
                         } else {
                             stats.acceptLost++; stats.acceptNet -= amt
                             stats.acceptLostByPhase[phase] = (stats.acceptLostByPhase[phase] ?: 0) + 1
                             stats.acceptNetByPhase[phase] = (stats.acceptNetByPhase[phase] ?: 0) - amt
                             stats.acceptLostByAmt[amt] = (stats.acceptLostByAmt[amt] ?: 0) + 1
                             stats.acceptNetByAmt[amt] = (stats.acceptNetByAmt[amt] ?: 0) - amt
+                            stats.acceptLostByPos[pos] = (stats.acceptLostByPos[pos] ?: 0) + 1
+                            stats.acceptNetByPos[pos] = (stats.acceptNetByPos[pos] ?: 0) - amt
+                            stats.acceptLostByScore[scoreKey] = (stats.acceptLostByScore[scoreKey] ?: 0) + 1
+                            stats.acceptNetByScore[scoreKey] = (stats.acceptNetByScore[scoreKey] ?: 0) - amt
                         }
                     }
                     is GameAction.Envido -> {
-                        if (mineWins) stats.envidoWon++ else stats.envidoLost++
+                        if (mineWins) {
+                            stats.envidoWon++
+                            stats.envidoWonByPos[pos] = (stats.envidoWonByPos[pos] ?: 0) + 1
+                            stats.envidoWonByScore[scoreKey] = (stats.envidoWonByScore[scoreKey] ?: 0) + 1
+                        } else {
+                            stats.envidoLost++
+                            stats.envidoLostByPos[pos] = (stats.envidoLostByPos[pos] ?: 0) + 1
+                            stats.envidoLostByScore[scoreKey] = (stats.envidoLostByScore[scoreKey] ?: 0) + 1
+                        }
                     }
                     else -> {}
                 }
@@ -327,10 +403,115 @@ class GameSimulatorTest {
         }
     }
 
+    /**
+     * Nº de RIVALES (no compañero) que actúan ANTES que yo en este lance. Mide
+     * mi exposición en el showdown: cuantos más rivales por delante, más probable
+     * que alguno me gane. Restringido a `playersInLance` en Pares/Juego.
+     */
+    private fun rivalsAheadInLance(state: GameState, player: Player, gameLogic: MusGameLogic): Int {
+        val ordered = gameLogic.getTurnOrderedPlayers(state.players, state.manoPlayerId)
+            .filter { state.playersInLance.isEmpty() || it.id in state.playersInLance }
+        val myIdx = ordered.indexOfFirst { it.id == player.id }
+        if (myIdx < 0) return 0
+        return ordered.take(myIdx).count { it.team != player.team }
+    }
+
+    /** Bucket de marcador desde la óptica de `player` (rival≥33 = presión de cierre). */
+    private fun scoreBucket(state: GameState, player: Player): String {
+        val myScore = state.score[player.team] ?: 0
+        val oppTeam = if (player.team == "teamA") "teamB" else "teamA"
+        val oppScore = state.score[oppTeam] ?: 0
+        return when {
+            oppScore >= 33 -> "rival>=33"
+            myScore > oppScore -> "voy delante"
+            myScore < oppScore -> "voy detras"
+            else -> "igualado"
+        }
+    }
+
+    private val scoreBuckets = listOf("voy delante", "igualado", "voy detras", "rival>=33")
+
     // --- Informe + Diagnóstico ---
 
     private fun pct(n: Int, total: Int): String =
         if (total == 0) "—" else String.format(Locale.US, "%.1f%%", 100.0 * n / total)
+
+    // --- RUIDO / CONFIANZA (Fase 1·C): banda de ruido inter-lote ---
+
+    /** Foto de los contadores ACUMULADOS clave en una frontera de lote. */
+    private class Snapshot(
+        val aWins: Int,
+        val bWins: Int,
+        val quiero: Int,
+        val noQuiero: Int,
+        val acceptNet: Int,
+        val mus: Int,
+        val noMus: Int
+    )
+
+    private fun snapshot(s: Stats) = Snapshot(
+        aWins = s.teamAWins,
+        bWins = s.teamBWins,
+        quiero = bettingLances.sumOf { s.quiero[it] ?: 0 },
+        noQuiero = bettingLances.sumOf { s.noQuiero[it] ?: 0 },
+        acceptNet = s.acceptNet,
+        mus = s.musDecisions,
+        noMus = s.noMusDecisions
+    )
+
+    /** Métricas (tasas) de UN lote, derivadas de dos snapshots consecutivos. */
+    private class BatchMetric(
+        val teamAPct: Double,
+        val acceptPct: Double,
+        val acceptNetPerGame: Double,
+        val musPct: Double
+    )
+
+    private fun batchMetricsBetween(prev: Snapshot, cur: Snapshot, games: Int): BatchMetric {
+        val aWins = cur.aWins - prev.aWins
+        val finished = aWins + (cur.bWins - prev.bWins)
+        val quiero = cur.quiero - prev.quiero
+        val faced = quiero + (cur.noQuiero - prev.noQuiero)
+        val mus = cur.mus - prev.mus
+        val musTotal = mus + (cur.noMus - prev.noMus)
+        return BatchMetric(
+            teamAPct = if (finished == 0) 0.0 else 100.0 * aWins / finished,
+            acceptPct = if (faced == 0) 0.0 else 100.0 * quiero / faced,
+            acceptNetPerGame = (cur.acceptNet - prev.acceptNet).toDouble() / games,
+            musPct = if (musTotal == 0) 0.0 else 100.0 * mus / musTotal
+        )
+    }
+
+    /** Media y desviación estándar muestral (n-1) de una lista. */
+    private fun meanStd(xs: List<Double>): Pair<Double, Double> {
+        val mean = xs.average()
+        val variance = if (xs.size < 2) 0.0
+            else xs.sumOf { (it - mean) * (it - mean) } / (xs.size - 1)
+        return mean to kotlin.math.sqrt(variance)
+    }
+
+    private fun noiseSection(metrics: List<BatchMetric>, batches: Int, games: Int): String {
+        val sb = StringBuilder()
+        sb.appendLine("=".repeat(56))
+        sb.appendLine("RUIDO / CONFIANZA ($batches lotes de $games partidas, semillas disjuntas)")
+        sb.appendLine("=".repeat(56))
+        fun line(label: String, xs: List<Double>, fmt: String) {
+            val (m, sd) = meanStd(xs)
+            sb.appendLine(
+                "- $label: ${String.format(Locale.US, fmt, m)} ± " +
+                    "${String.format(Locale.US, fmt, sd)}  " +
+                    "[min ${String.format(Locale.US, fmt, xs.minOrNull() ?: 0.0)}, " +
+                    "max ${String.format(Locale.US, fmt, xs.maxOrNull() ?: 0.0)}]"
+            )
+        }
+        line("teamA %", metrics.map { it.teamAPct }, "%.1f")
+        line("Aceptación %", metrics.map { it.acceptPct }, "%.1f")
+        line("Aceptar neto / partida", metrics.map { it.acceptNetPerGame }, "%.3f")
+        line("Pedir Mus %", metrics.map { it.musPct }, "%.1f")
+        sb.appendLine("Interpretación: σ es el ruido inter-lote a este N. Un Δ entre dos")
+        sb.appendLine("corridas que NO supere ~2σ es ruido, no señal de un cambio de IA.")
+        return sb.toString()
+    }
 
     private fun buildReport(s: Stats, games: Int): String {
         val sb = StringBuilder()
@@ -353,6 +534,8 @@ class GameSimulatorTest {
             "Cortar (NoMus): ${s.noMusDecisions} (${pct(s.noMusDecisions, musTotal)})")
         sb.appendLine("- Ciclos de descarte / reparto: " +
             if (s.deals == 0) "—" else String.format(Locale.US, "%.2f", s.discardCycles.toDouble() / s.deals))
+        sb.appendLine("- Delegación de corte #20: cede ${s.delegationFired} | " +
+            "break ${s.delegationBreak} (fidelidad: 0 ⇒ la delegación NO se ejerce en el sim)")
         sb.appendLine()
         sb.appendLine("POR LANCE (envida / paso / quiero / no quiero / órdago / apoyo)")
         for (p in bettingLances) {
@@ -391,11 +574,42 @@ class GameSimulatorTest {
             val net = s.acceptNetByAmt[amt] ?: 0
             sb.appendLine("    - envite=$amt: $won/$tot (${pct(won, tot)}) | netos $net")
         }
+        // BREAKDOWN POR POSICIÓN (rivales por delante en el lance)
+        sb.appendLine("  Aceptar por posición (rivales por delante en el lance):")
+        for (pos in (s.acceptWonByPos.keys + s.acceptLostByPos.keys).sorted()) {
+            val won = s.acceptWonByPos[pos] ?: 0
+            val lost = s.acceptLostByPos[pos] ?: 0
+            val tot = won + lost
+            sb.appendLine("    - rivales_delante=$pos: $won/$tot (${pct(won, tot)}) | " +
+                "netos ${s.acceptNetByPos[pos] ?: 0}")
+        }
+        // BREAKDOWN POR MARCADOR
+        sb.appendLine("  Aceptar por marcador:")
+        for (k in scoreBuckets) {
+            val won = s.acceptWonByScore[k] ?: 0
+            val lost = s.acceptLostByScore[k] ?: 0
+            val tot = won + lost
+            if (tot == 0) continue
+            sb.appendLine("    - $k: $won/$tot (${pct(won, tot)}) | netos ${s.acceptNetByScore[k] ?: 0}")
+        }
         val envTotal = s.envidoWon + s.envidoLost
         sb.appendLine("- Envites abiertos que el equipo gana en showdown: " +
             "${s.envidoWon}/${envTotal} (${pct(s.envidoWon, envTotal)}) " +
             "(ojo: un farol que gana porque el rival pliega NO cuenta aquí; " +
             "% bajo puede ser farol legítimo)")
+        sb.appendLine("  Abrir, % showdown por posición (rivales por delante):")
+        for (pos in (s.envidoWonByPos.keys + s.envidoLostByPos.keys).sorted()) {
+            val won = s.envidoWonByPos[pos] ?: 0
+            val tot = won + (s.envidoLostByPos[pos] ?: 0)
+            sb.appendLine("    - rivales_delante=$pos: $won/$tot (${pct(won, tot)})")
+        }
+        sb.appendLine("  Abrir, % showdown por marcador:")
+        for (k in scoreBuckets) {
+            val won = s.envidoWonByScore[k] ?: 0
+            val tot = won + (s.envidoLostByScore[k] ?: 0)
+            if (tot == 0) continue
+            sb.appendLine("    - $k: $won/$tot (${pct(won, tot)})")
+        }
         sb.appendLine()
         sb.appendLine("=".repeat(56))
         sb.appendLine("DIAGNÓSTICO (heurístico, en lenguaje claro)")
@@ -496,6 +710,16 @@ class GameSimulatorTest {
                 out += "✅ El rol de APOYO se activa de forma moderada (${"%.0f".format(supRate)}%). " +
                     "Parece razonable; confirmar en playtest que coordina sin pasividad."
         }
+
+        // Delegación de corte #20 (fidelidad del sim, bug D).
+        val delegTotal = s.delegationFired + s.delegationBreak
+        if (delegTotal == 0)
+            out += "⚠️ La delegación de corte #20 NO se ejerció nunca (cede 0 / break 0). " +
+                "El 'primero' del equipo decide su Mus a ciegas: el sim NO mide la IA real " +
+                "(bug de fidelidad D — startRound no rellena pendingGestures)."
+        else
+            out += "✅ La delegación de corte #20 se ejerce (cede ${s.delegationFired} / " +
+                "break ${s.delegationBreak}): el primero cede el corte al capitán como en el juego real."
 
         // 31 en postre (anti-exploit).
         if (s.postre31Faced >= 10) {
