@@ -34,6 +34,14 @@ class GameSimulatorTest {
         var ordagoGames = 0
         var stalledGames = 0
 
+        // Fase 3 (oponente asimétrico): tantos acumulados por equipo a lo largo de
+        // todas las rondas (mide farmeo más fino que el win%) + acciones del perfil.
+        var teamAPointsTotal = 0
+        var teamBPointsTotal = 0
+        var profileActions = 0
+        var profileOrdagos = 0
+        var profileEnvidos = 0
+
         var musDecisions = 0
         var noMusDecisions = 0
         var deals = 0
@@ -125,6 +133,13 @@ class GameSimulatorTest {
 
         val stats = Stats()
 
+        // Fase 3 — OPONENTE ASIMÉTRICO (-Dmusvisto.opponent=station|spammer|ordago|
+        // loose). Si está activo, teamB juega un PERFIL fijo definido en el sim (no
+        // AILogic) en los lances de apuesta → mide si un patrón explotador farmea a
+        // la IA principal (teamA), el punto ciego del modo simétrico (#28/#1). Sin
+        // el flag, ambos equipos usan AILogic (comportamiento idéntico al de antes).
+        val opponent = System.getProperty("musvisto.opponent")?.takeIf { it.isNotBlank() }
+
         // K lotes de `games` partidas con rangos de semilla DISJUNTOS (lote b →
         // [b*games, b*games+games)). Todo se acumula en un único Stats para el
         // informe detallado; en la frontera de cada lote tomamos un snapshot de
@@ -134,12 +149,12 @@ class GameSimulatorTest {
         val snapshots = mutableListOf(snapshot(stats))
         for (b in 0 until batches) {
             val base = b.toLong() * games
-            repeat(games) { i -> playOneGame(seed = base + i, stats = stats) }
+            repeat(games) { i -> playOneGame(seed = base + i, stats = stats, opponentProfile = opponent) }
             snapshots += snapshot(stats)
         }
         val batchMetrics = (1..batches).map { batchMetricsBetween(snapshots[it - 1], snapshots[it], games) }
 
-        val report = buildReport(stats, games) +
+        val report = buildReport(stats, games, opponent) +
             if (batches >= 2) "\n" + noiseSection(batchMetrics, batches, games) else ""
         println(report)
         writeReport(report)
@@ -154,7 +169,7 @@ class GameSimulatorTest {
         Player(id = "p2", name = "B2", avatarResId = 0, isAi = true, team = "teamB")
     )
 
-    private fun playOneGame(seed: Long, stats: Stats) {
+    private fun playOneGame(seed: Long, stats: Stats, opponentProfile: String? = null) {
         val rng = Random(seed)
         val gameLogic = MusGameLogic(rng)
         val aiLogic = AILogic(gameLogic, rng)
@@ -175,9 +190,13 @@ class GameSimulatorTest {
                 GamePhase.ROUND_OVER -> {
                     val scored = gameLogic.scoreRound(state)
                     val bd = scored.scoreBreakdown ?: run { stats.stalledGames++; return }
+                    val aPts = bd.teamAScoreDetails.sumOf { it.points }
+                    val bPts = bd.teamBScoreDetails.sumOf { it.points }
+                    stats.teamAPointsTotal += aPts
+                    stats.teamBPointsTotal += bPts
                     val newScore = mapOf(
-                        "teamA" to ((state.score["teamA"] ?: 0) + bd.teamAScoreDetails.sumOf { it.points }),
-                        "teamB" to ((state.score["teamB"] ?: 0) + bd.teamBScoreDetails.sumOf { it.points })
+                        "teamA" to ((state.score["teamA"] ?: 0) + aPts),
+                        "teamB" to ((state.score["teamB"] ?: 0) + bPts)
                     )
                     val winner = when {
                         (newScore["teamA"] ?: 0) >= 40 -> "teamA"
@@ -217,15 +236,29 @@ class GameSimulatorTest {
                     val pid = state.currentTurnPlayerId ?: run { stats.stalledGames++; return }
                     val player = state.players.find { it.id == pid } ?: run { stats.stalledGames++; return }
                     val prevPhase = state.gamePhase
-                    val decision = aiLogic.makeDecision(state, player)
-                    recordDecision(stats, state, player, decision, gameLogic)
 
-                    var next = state
-                    if (decision.action is GameAction.ConfirmDiscard) {
-                        next = next.copy(selectedCardsForDiscard = decision.cardsToDiscard)
+                    // Fase 3: en lances de apuesta, teamB juega el PERFIL (no AILogic)
+                    // si hay uno activo. MUS/DISCARD siguen por AILogic (probamos el
+                    // exploit de las APUESTAS, no del descarte). Con perfil activo solo
+                    // registramos las decisiones de teamA → las métricas de calidad son
+                    // de la IA principal, no del perfil.
+                    val useProfile = opponentProfile != null && player.team == "teamB" &&
+                        prevPhase in bettingLances
+                    var working = state
+                    val action: GameAction = if (useProfile) {
+                        profileBet(opponentProfile!!, state, player, rng, stats)
+                    } else {
+                        val decision = aiLogic.makeDecision(state, player)
+                        if (opponentProfile == null || player.team == "teamA") {
+                            recordDecision(stats, state, player, decision, gameLogic)
+                        }
+                        if (decision.action is GameAction.ConfirmDiscard) {
+                            working = working.copy(selectedCardsForDiscard = decision.cardsToDiscard)
+                        }
+                        decision.action
                     }
-                    next = gameLogic.processAction(next, decision.action, pid)
 
+                    val next = gameLogic.processAction(working, action, pid)
                     if (prevPhase == GamePhase.MUS && next.gamePhase == GamePhase.DISCARD) {
                         stats.discardCycles++
                     }
@@ -243,6 +276,69 @@ class GameSimulatorTest {
             "teamB" -> { stats.teamBWins++; stats.totalRounds++ }
             else -> stats.stalledGames++
         }
+    }
+
+    /**
+     * Política del OPONENTE ASIMÉTRICO (Fase 3), definida en el sim — NO es AILogic.
+     * Solo decide en lances de apuesta; ignora la fuerza de mano a propósito (el
+     * objetivo es un patrón EXPLOTADOR, no un buen jugador). Respeta la legalidad
+     * (`availableActions`) y cae a una acción segura si la deseada no es legal.
+     *
+     *  - station  (calling-station): paga TODO, nunca sube, no abre. Castiga el
+     *    farol y paga el valor → ¿extrae bien la IA principal? (under-value-bet).
+     *  - spammer  (farol-spammer): abre/sube basura el 50%, si no, se rinde →
+     *    ¿paga la IA principal los faroles o se deja robar? (#1 apertura).
+     *  - ordago   (órdago-feliz): tira órdago a robar el 30%, se rinde si le pagan
+     *    o le re-ordagan → test DIRECTO del #28 (si la IA solo acepta con la nuts,
+     *    la farmea a base de órdagos rechazados).
+     *  - loose    (loose-opener): abre flojo el 45%, paga flojo → ¿explota la IA
+     *    principal a un rival demasiado suelto?
+     */
+    private fun profileBet(profile: String, state: GameState, player: Player, rng: Random, stats: Stats): GameAction {
+        val facing = state.currentBet != null
+        val isOrdagoBet = state.currentBet?.isOrdago == true
+        val allowed = state.availableActions
+        val canEnvido = allowed.any { it is GameAction.Envido }
+        val canOrdago = allowed.any { it is GameAction.Órdago }
+        val canQuiero = allowed.any { it is GameAction.Quiero }
+        val canNoQuiero = allowed.any { it is GameAction.NoQuiero }
+        val canPaso = allowed.any { it is GameAction.Paso }
+
+        fun fold(): GameAction = when {
+            canNoQuiero -> GameAction.NoQuiero
+            canPaso -> GameAction.Paso
+            else -> GameAction.Quiero
+        }
+        fun call(): GameAction = if (canQuiero) GameAction.Quiero else fold()
+        fun pass(): GameAction = if (canPaso) GameAction.Paso else call()
+        val raise: GameAction = if (canEnvido) GameAction.Envido(2) else pass()
+
+        stats.profileActions++
+        val action = when (profile) {
+            "station" -> if (facing) call() else pass()
+            "spammer" -> when {
+                isOrdagoBet -> if (rng.nextFloat() < 0.30f) call() else fold()
+                rng.nextFloat() < 0.50f -> raise
+                facing -> if (rng.nextFloat() < 0.40f) call() else fold()
+                else -> pass()
+            }
+            "ordago" -> when {
+                isOrdagoBet -> fold()
+                rng.nextFloat() < 0.30f && canOrdago -> GameAction.Órdago
+                facing -> fold()
+                else -> pass()
+            }
+            "loose" -> when {
+                isOrdagoBet -> if (rng.nextFloat() < 0.30f) call() else fold()
+                facing -> if (rng.nextFloat() < 0.45f) call() else fold()
+                rng.nextFloat() < 0.45f -> raise
+                else -> pass()
+            }
+            else -> pass()
+        }
+        if (action is GameAction.Órdago) stats.profileOrdagos++
+        if (action is GameAction.Envido) stats.profileEnvidos++
+        return action
     }
 
     private fun startRound(
@@ -529,10 +625,12 @@ class GameSimulatorTest {
         return sb.toString()
     }
 
-    private fun buildReport(s: Stats, games: Int): String {
+    private fun buildReport(s: Stats, games: Int, profile: String? = null): String {
         val sb = StringBuilder()
         val ts = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date())
-        sb.appendLine("MusVisto — Simulación IA vs IA")
+        val title = if (profile == null) "MusVisto — Simulación IA vs IA"
+            else "MusVisto — Oponente asimétrico (Fase 3): teamA=IA vs teamB='$profile'"
+        sb.appendLine(title)
         sb.appendLine("Timestamp: $ts | Partidas: ${s.games} | Stalled: ${s.stalledGames}")
         sb.appendLine("=".repeat(56))
         sb.appendLine()
@@ -543,6 +641,16 @@ class GameSimulatorTest {
         sb.appendLine("- Rondas/partida (media): " +
             if (finished == 0) "—" else String.format(Locale.US, "%.1f", s.totalRounds.toDouble() / finished))
         sb.appendLine("- Partidas con órdago: ${s.ordagoGames}")
+        if (profile != null) {
+            sb.appendLine()
+            sb.appendLine("OPONENTE ASIMÉTRICO (teamB juega el perfil '$profile', no AILogic)")
+            val ptsTotal = s.teamAPointsTotal + s.teamBPointsTotal
+            sb.appendLine("- Tantos acumulados: teamA ${s.teamAPointsTotal} vs teamB ${s.teamBPointsTotal} " +
+                "(teamA ${pct(s.teamAPointsTotal, ptsTotal)} del total)")
+            sb.appendLine("- Acciones de apuesta del perfil: ${s.profileActions} " +
+                "(órdagos ${s.profileOrdagos}, envidos/subidas ${s.profileEnvidos})")
+            sb.appendLine("  (la sección CALIDAD de abajo es de teamA: cómo responde la IA al perfil)")
+        }
         sb.appendLine()
         sb.appendLine("MUS / DESCARTE")
         val musTotal = s.musDecisions + s.noMusDecisions
@@ -630,17 +738,49 @@ class GameSimulatorTest {
         sb.appendLine("=".repeat(56))
         sb.appendLine("DIAGNÓSTICO (heurístico, en lenguaje claro)")
         sb.appendLine("=".repeat(56))
-        diagnose(s).forEach { sb.appendLine(it) }
+        diagnose(s, profile).forEach { sb.appendLine(it) }
         return sb.toString()
     }
 
     /** Conclusiones automáticas: convierte números en avisos accionables. */
-    private fun diagnose(s: Stats): List<String> {
+    private fun diagnose(s: Stats, profile: String? = null): List<String> {
         val out = mutableListOf<String>()
         val finished = s.teamAWins + s.teamBWins
 
-        // Equilibrio de la partida (sesgo de posición/mano).
-        if (finished >= 20) {
+        // Equilibrio / explotabilidad. Sin perfil, teamA≈50% = sano (simétrico).
+        // Con perfil, teamA≠50% es ESPERADO (asimétrico): el veredicto es si el
+        // perfil explotador FARMEA a la IA principal.
+        if (profile != null) {
+            if (finished >= 20) {
+                val aWin = 100.0 * s.teamAWins / finished
+                val pTot = s.teamAPointsTotal + s.teamBPointsTotal
+                val aPts = if (pTot == 0) 50.0 else 100.0 * s.teamAPointsTotal / pTot
+                val winStr = pct(s.teamAWins, finished)
+                val ptsStr = "${"%.0f".format(aPts)}% de los tantos"
+                when {
+                    aWin >= 55.0 -> out += "✅ La IA principal maneja a '$profile' " +
+                        "(gana $winStr, $ptsStr): no la farmea."
+                    aWin >= 48.0 -> out += "ℹ️ Matchup parejo vs '$profile' " +
+                        "(teamA $winStr, $ptsStr): ni dominada ni dominante."
+                    aWin >= 40.0 -> out += "⚠️ Exploit BLANDO de '$profile' (teamA $winStr, $ptsStr). " +
+                        "Un patrón explotable NO debería ganarle a una IA sólida → la IA SOBRE-PLIEGA " +
+                        "ante la agresión (lado respuesta del #1; el sim simétrico no lo veía)."
+                    else -> out += "⚠️⚠️ EXPLOIT CLARO: '$profile' farmea a la IA " +
+                        "(teamA solo $winStr, $ptsStr). Revisar la respuesta a ese patrón " +
+                        "(#28 órdago / #1 aceptar/plegar)."
+                }
+                // Divergencia gana-partidas / pierde-tantos: típico del órdago-feliz
+                // (un órdago aceptado CIERRA la partida, así que la disciplina gana la
+                // guerra aunque conceda muchos puntos de órdagos rechazados).
+                if (aWin >= 55.0 && aPts < 45.0) {
+                    out += "  ↳ Pero concede el ${"%.0f".format(100 - aPts)}% de los tantos: gana las " +
+                        "partidas pero SANGRA puntos a ese patrón (pliega de más). Una respuesta más " +
+                        "afilada lo castigaría aún más."
+                }
+            } else {
+                out += "ℹ️ Pocas partidas ($finished) para juzgar el matchup vs '$profile'; sube -Dmusvisto.games."
+            }
+        } else if (finished >= 20) {
             val aWin = 100.0 * s.teamAWins / finished
             when {
                 aWin in 42.0..58.0 -> out += "✅ Equilibrio de equipos sano (teamA ${pct(s.teamAWins, finished)})."
