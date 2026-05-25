@@ -96,7 +96,9 @@ class GameViewModel constructor(
      * que altere las manos). A partir de ahí el motor es el normal.
      */
     fun startScenario(scenario: DebugScenario) {
-        val score = mapOf("teamA" to 0, "teamB" to 0)
+        // #29: marcador y chicos iniciales del escenario (para testear finales
+        // de chico/vaca sin llegar jugando). Las reglas (best-of) salen del repo.
+        val score = mapOf("teamA" to scenario.teamAScore, "teamB" to scenario.teamBScore)
         val players = defaultPlayers().map {
             it.copy(hand = scenario.hands[it.id] ?: emptyList())
         }
@@ -107,6 +109,8 @@ class GameViewModel constructor(
             players = players,
             deck = remainingDeck,
             score = score,
+            chicosWon = mapOf("teamA" to scenario.chicosWonA, "teamB" to scenario.chicosWonB),
+            settings = gameRepository.loadSettings(),
             manoPlayerId = scenario.manoId,
             currentTurnPlayerId = scenario.manoId,
             gamePhase = GamePhase.MUS,
