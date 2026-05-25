@@ -615,8 +615,12 @@ class MusGameLogic constructor(private val random: Random){
         val lanceResult = when {
             state.currentBet != null && state.agreedBets.containsKey(state.gamePhase) ->
                 LanceResult(state.gamePhase, "Querido", state.currentBet.amount)
-            state.currentBet != null ->
-                LanceResult(state.gamePhase, "No Querido")
+            state.currentBet != null -> {
+                // En la no querida el ganador se conoce al instante: el equipo que
+                // envidó se lleva pointsIfRejected (mismo cálculo que handleNoQuiero).
+                val winningTeam = state.players.find { it.id == state.currentBet.bettingPlayerId }?.team
+                LanceResult(state.gamePhase, "No Querido", state.currentBet.pointsIfRejected, winningTeam)
+            }
             else -> LanceResult(state.gamePhase, "Paso")
         }
         return state.copy(roundHistory = state.roundHistory + lanceResult)

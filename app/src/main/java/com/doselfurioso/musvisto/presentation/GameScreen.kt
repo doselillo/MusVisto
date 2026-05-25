@@ -1403,14 +1403,30 @@ fun LanceTracker(
                 val result = history.find { it.lance == lance }
                 val wasSkipped = result?.outcome == "Skipped"
                 var resultText = ""
+                // Por defecto el resultado va en gris; la no querida se tiñe por
+                // equipo (verde = lo gana NOSOTROS, rojo = lo gana ELLOS) porque
+                // ahí el ganador y los tantos ya se conocen (#30).
+                var resultColor = Color.Gray
                 if (isCurrent && currentBet != null) {
                     resultText = "En juego: ${currentBet.amount}"
                 } else if (result != null && !wasSkipped) {
-                    resultText = when (result.outcome) {
-                        "Querido" -> "Vale ${result.amount}"
-                        "No Querido" -> "No Querida"
-                        "Paso" -> "En Paso"
-                        else -> ""
+                    when (result.outcome) {
+                        "Querido" -> resultText = "Vale ${result.amount}"
+                        "No Querido" -> {
+                            val team = result.winningTeam
+                            if (team != null) {
+                                val teamLabel = if (team == "teamA") "Nos" else "Ellos"
+                                resultText = "NQ $teamLabel +${result.amount ?: 0}"
+                                resultColor = if (team == "teamA") {
+                                    Color(0xFF66BB6A) // verde
+                                } else {
+                                    Color(0xFFF44336) // rojo (mismo que el botón Rechazar)
+                                }
+                            } else {
+                                resultText = "No Querida" // saves antiguos sin equipo
+                            }
+                        }
+                        "Paso" -> resultText = "En Paso"
                     }
                 }
 
@@ -1441,7 +1457,7 @@ fun LanceTracker(
                     if (resultText.isNotEmpty()) {
                         Text(
                             text = resultText,
-                            color = Color.Gray,
+                            color = resultColor,
                             fontSize = dimens.fontSizeMedium,
                             softWrap = false
                         )
