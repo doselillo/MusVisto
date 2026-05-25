@@ -91,6 +91,13 @@ private const val DIMMED_AVATAR_ALPHA = 0.4f
 // órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
 private const val MAX_BET = 40
 
+// #31: separación horizontal entre cartas de la mano del humano, como FRACCIÓN
+// del ancho de carta (centro a centro). 1.0 = cartas justo tocándose; <1 se
+// solapan; >1 dejan hueco. Derivarlo del ancho de carta (no de un valor en px)
+// lo hace consistente en cualquier densidad de pantalla: antes era un offset en
+// píxeles crudos que se separaba en baja DPI y se solapaba en alta DPI.
+private const val HAND_CARD_SPACING_RATIO = 0.8f
+
 // Custom modifier for the bottom border (no changes here)
 @SuppressLint("UnnecessaryComposedModifier")
 fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
@@ -151,9 +158,6 @@ fun GameScreen(
                 cardBackWidth       = (72.dp * scaleFactor).coerceIn(36.dp, 85.dp),
                 cardAspectRatio     = 0.7f,
                 avatarSize          = (90.dp * scaleFactor).coerceIn(42.dp, 115.dp),
-                handArcTranslationX = 150f * scaleFactor,
-                handArcTranslationY = 15f * scaleFactor,
-                handArcRotation     = 5f * scaleFactor,
                 largePadding        = (48.dp * scaleFactor).coerceIn(12.dp, 88.dp),
                 defaultPadding      = (12.dp * scaleFactor).coerceIn(6.dp, 24.dp),
                 smallPadding        = (6.dp * scaleFactor).coerceIn(3.dp, 10.dp),
@@ -987,7 +991,6 @@ private fun PlayerHandArc(
             val centerOffset = index - (cardCount - 1) / 2f
             val rotation = centerOffset * 5f
             val translationY = abs(centerOffset) * -1f
-            val translationX = centerOffset * 230f * dimens.scaleFactor
 
             GameCard(
                 card = card,
@@ -1002,7 +1005,10 @@ private fun PlayerHandArc(
 
                         this.rotationZ = if (isSelected) 0f else rotation
                         this.translationY = translationY
-                        this.translationX = translationX
+                        // El espaciado se deriva del ancho de carta en px (toPx()
+                        // usa la densidad de ESTA pantalla) → separación uniforme
+                        // en cualquier DPI. Ver HAND_CARD_SPACING_RATIO (#31).
+                        this.translationX = centerOffset * dimens.cardWidth.toPx() * HAND_CARD_SPACING_RATIO
                         this.clip = false
                     },
                 dimens = dimens
@@ -1586,9 +1592,6 @@ data class ResponsiveDimens(
     val cardBackWidth: Dp,
     val cardAspectRatio: Float,
     val avatarSize: Dp,
-    val handArcTranslationX: Float,
-    val handArcTranslationY: Float,
-    val handArcRotation: Float,
     val largePadding: Dp,
     val defaultPadding: Dp,
     val smallPadding: Dp,
