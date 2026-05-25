@@ -261,7 +261,12 @@ fun GameScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom
                     ) {
-                        Scoreboard(score = gameState.score, dimens = dimens)
+                        Scoreboard(
+                            score = gameState.score,
+                            chicosWon = gameState.chicosWon,
+                            chicosToWin = gameState.settings.chicosToWinVaca,
+                            dimens = dimens
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
                         LanceTracker(
                             currentPhase = gameState.gamePhase,
@@ -467,14 +472,23 @@ private fun GameOverlays(
         }
     }
 
-    if (gameState.gamePhase == GamePhase.GAME_OVER && gameState.winningTeam != null) {
+    // #29: el GAME_OVER del motor puede ser fin de VACA (winningTeam) o un chico
+    // ganado por órdago con la vaca aún viva (chicoJustWon).
+    val gameOverWinner = gameState.winningTeam ?: gameState.chicoJustWon
+    if (gameState.gamePhase == GamePhase.GAME_OVER && gameOverWinner != null) {
         GameOverOverlay(
-            winnerTeam = gameState.winningTeam,
+            winnerTeam = gameOverWinner,
+            vacaOver = gameState.winningTeam != null,
+            chicosWon = gameState.chicosWon,
+            chicosToWin = gameState.settings.chicosToWinVaca,
             ordagoInfo = gameState.ordagoInfo,
             players = players,
             bottomPadding = screenHeight * 0.28f,
             onNewGameClick = {
                 gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
+            },
+            onContinueClick = {
+                gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
             }
         )
     }
@@ -488,6 +502,10 @@ private fun GameOverlays(
         ) {
             RoundEndOverlay(
                 breakdown = gameState.scoreBreakdown,
+                chicoWonByTeam = gameState.chicoJustWon ?: gameState.winningTeam,
+                vacaWon = gameState.winningTeam != null,
+                chicosWon = gameState.chicosWon,
+                chicosToWin = gameState.settings.chicosToWinVaca,
                 onContinueClick = {
                     gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
                 },
@@ -865,26 +883,54 @@ private fun PlayerAvatar(
 }
 
 @Composable
-fun Scoreboard(score: Map<String, Int>, modifier: Modifier = Modifier, dimens: ResponsiveDimens? = null) {
+fun Scoreboard(
+    score: Map<String, Int>,
+    modifier: Modifier = Modifier,
+    chicosWon: Map<String, Int> = emptyMap(),
+    chicosToWin: Int = 0,
+    dimens: ResponsiveDimens? = null
+) {
+    val fontSize = dimens?.fontSizeMedium ?: 14.sp
+    // #29 vacas: solo se muestran los chicos si se juega a más de uno.
+    val showChicos = chicosToWin > 1
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(
-                text = "NOSOTROS: ${score["teamA"] ?: 0}",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = dimens?.fontSizeMedium ?: 14.sp
-            )
+            ScoreboardRow(showChicos, chicosWon["teamA"] ?: 0, "NOSOTROS", score["teamA"] ?: 0, fontSize)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "ELLOS: ${score["teamB"] ?: 0}",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = dimens?.fontSizeMedium ?: 14.sp
-            )
+            ScoreboardRow(showChicos, chicosWon["teamB"] ?: 0, "ELLOS", score["teamB"] ?: 0, fontSize)
         }
+    }
+}
+
+// #29: una línea del marcador. Si hay vacas, el nº de chicos ganados va DELANTE
+// del equipo (en amarillo, para no confundirlo con los tantos).
+@Composable
+private fun ScoreboardRow(
+    showChicos: Boolean,
+    chicos: Int,
+    label: String,
+    points: Int,
+    fontSize: androidx.compose.ui.unit.TextUnit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (showChicos) {
+            Text(
+                text = "$chicos",
+                color = Color.Yellow,
+                fontWeight = FontWeight.Bold,
+                fontSize = fontSize
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = "$label: $points",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = fontSize
+        )
     }
 }
 
@@ -1195,19 +1241,39 @@ fun GameOverOverlay(
     ordagoInfo: OrdagoInfo?,
     players: List<Player>,
     bottomPadding: Dp = 240.dp,
-    onNewGameClick: () -> Unit
+    onNewGameClick: () -> Unit,
+    // #29: si la vaca NO ha terminado, este overlay aparece por un chico ganado
+    // por órdago y el botón continúa al siguiente chico en vez de cerrar.
+    vacaOver: Boolean = true,
+    chicosWon: Map<String, Int> = emptyMap(),
+    chicosToWin: Int = 0,
+    onContinueClick: () -> Unit = {}
 ) {
-    // Lógica para mostrar el texto del órdago
+    val winnerName = if (winnerTeam == "teamA") "NOSOTROS" else "ELLOS"
+
+    // Lógica para mostrar el texto del órdago / chico / vaca.
     val titleText: String
     val subtitleText: String
-    if (ordagoInfo != null) {
-        val winnerPlayer = players.find { it.id == ordagoInfo.winnerId }
-        titleText = "¡VICTORIA POR ÓRDAGO!"
-        subtitleText =
-            "Gana el equipo de ${winnerPlayer?.name ?: ""} en ${ordagoInfo.lance.name}"
-    } else {
-        titleText = if (winnerTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
-        subtitleText = "La partida ha terminado"
+    when {
+        // Órdago que gana el chico pero la vaca sigue.
+        !vacaOver && ordagoInfo != null -> {
+            val winnerPlayer = players.find { it.id == ordagoInfo.winnerId }
+            titleText = "¡CHICO POR ÓRDAGO!"
+            subtitleText = "Gana el equipo de ${winnerPlayer?.name ?: ""} en ${ordagoInfo.lance.name}"
+        }
+        !vacaOver -> {
+            titleText = "¡CHICO!"
+            subtitleText = "Chico para $winnerName"
+        }
+        ordagoInfo != null -> {
+            val winnerPlayer = players.find { it.id == ordagoInfo.winnerId }
+            titleText = "¡VICTORIA POR ÓRDAGO!"
+            subtitleText = "Gana el equipo de ${winnerPlayer?.name ?: ""} en ${ordagoInfo.lance.name}"
+        }
+        else -> {
+            titleText = if (winnerTeam == "teamA") "¡HAS GANADO!" else "HAS PERDIDO"
+            subtitleText = "La partida ha terminado"
+        }
     }
 
     Box(
@@ -1231,8 +1297,22 @@ fun GameOverOverlay(
                 color = Color.White,
                 fontSize = 18.sp
             )
-            Button(onClick = onNewGameClick) {
-                Text(text = "Jugar de Nuevo", fontSize = 18.sp)
+            if (chicosToWin > 1) {
+                Text(
+                    text = "Vaca  ${chicosWon["teamA"] ?: 0} - ${chicosWon["teamB"] ?: 0}",
+                    color = Color.Yellow,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+            if (vacaOver) {
+                Button(onClick = onNewGameClick) {
+                    Text(text = "Jugar de Nuevo", fontSize = 18.sp)
+                }
+            } else {
+                Button(onClick = onContinueClick) {
+                    Text(text = "Siguiente chico", fontSize = 18.sp)
+                }
             }
         }
     }
@@ -1341,7 +1421,13 @@ private fun TeamScoreColumn(
 fun RoundEndOverlay(
     breakdown: ScoreBreakdown,
     onContinueClick: () -> Unit,
-    dimens: ResponsiveDimens
+    dimens: ResponsiveDimens,
+    // #29: si esta ronda cerró un chico, banner atribuyéndolo (y si cerró la
+    // vaca, lo anuncia). null = ronda normal sin chico.
+    chicoWonByTeam: String? = null,
+    vacaWon: Boolean = false,
+    chicosWon: Map<String, Int> = emptyMap(),
+    chicosToWin: Int = 0
 ) {
     // La Card ahora es el elemento principal, sin un Box que ocupe toda la pantalla
     Card(
@@ -1361,6 +1447,22 @@ fun RoundEndOverlay(
                 fontWeight = FontWeight.Bold,
                 color = Color.Yellow
             )
+
+            // #29: banner del chico/vaca cuando la ronda lo cierra.
+            if (chicoWonByTeam != null) {
+                val who = if (chicoWonByTeam == "teamA") "NOSOTROS" else "ELLOS"
+                val tally = if (chicosToWin > 1) {
+                    "  (${chicosWon["teamA"] ?: 0}-${chicosWon["teamB"] ?: 0})"
+                } else {
+                    ""
+                }
+                Text(
+                    text = if (vacaWon) "¡VACA para $who!$tally" else "¡Chico para $who!$tally",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (chicoWonByTeam == "teamA") Color(0xFF66BB6A) else Color(0xFFF44336)
+                )
+            }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
