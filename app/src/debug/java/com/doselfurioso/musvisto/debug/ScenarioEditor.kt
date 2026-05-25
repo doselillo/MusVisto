@@ -77,6 +77,11 @@ fun ScenarioEditor(
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var manoId by remember { mutableStateOf(initial?.manoId ?: "p1") }
     var startAtMus by remember { mutableStateOf(initial?.startAtMus ?: false) }
+    // #29 vacas: marcador y chicos iniciales para testear finales de chico/vaca.
+    var teamAScore by remember { mutableStateOf(initial?.teamAScore ?: 0) }
+    var teamBScore by remember { mutableStateOf(initial?.teamBScore ?: 0) }
+    var chicosA by remember { mutableStateOf(initial?.chicosWonA ?: 0) }
+    var chicosB by remember { mutableStateOf(initial?.chicosWonB ?: 0) }
 
     // hands: por jugador, 4 huecos nullable. Se reemplaza el mapa entero en
     // cada edición para que Compose recomponga (sin estado mutable anidado).
@@ -127,7 +132,11 @@ fun ScenarioEditor(
         name = name.trim(),
         hands = hands.mapValues { (_, row) -> row.filterNotNull() },
         manoId = manoId,
-        startAtMus = startAtMus
+        startAtMus = startAtMus,
+        teamAScore = teamAScore,
+        teamBScore = teamBScore,
+        chicosWonA = chicosA,
+        chicosWonB = chicosB
     )
 
     Dialog(
@@ -212,6 +221,21 @@ fun ScenarioEditor(
                         color = Color.LightGray,
                         fontSize = 11.sp
                     )
+                }
+
+                // --- Marcador inicial (#29 vacas) ---
+                Text("Marcador inicial (vacas)", color = Color.Gray, fontSize = 11.sp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF18202A), RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    NumberStepper("Tantos Nosotros", teamAScore, 0, 40) { teamAScore = it }
+                    NumberStepper("Tantos Ellos", teamBScore, 0, 40) { teamBScore = it }
+                    NumberStepper("Chicos Nosotros", chicosA, 0, 4) { chicosA = it }
+                    NumberStepper("Chicos Ellos", chicosB, 0, 4) { chicosB = it }
                 }
 
                 // --- Manos ---
@@ -358,6 +382,36 @@ fun ScenarioEditor(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NumberStepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        StepBtn("−") { if (value > min) onChange(value - 1) }
+        Text(
+            "$value",
+            color = Color(0xFFFFD24A),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(36.dp)
+        )
+        StepBtn("+") { if (value < max) onChange(value + 1) }
+    }
+}
+
+@Composable
+private fun StepBtn(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .background(Color(0xFF2A3640), RoundedCornerShape(6.dp))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 

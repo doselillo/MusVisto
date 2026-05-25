@@ -21,6 +21,7 @@ import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
 import com.doselfurioso.musvisto.presentation.MainMenuScreen
 import com.doselfurioso.musvisto.presentation.MainMenuViewModel
+import com.doselfurioso.musvisto.presentation.OptionsScreen
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
 import kotlin.random.Random
 
@@ -86,6 +87,17 @@ fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewMode
         }
         composable("gestures_screen") {
             GesturesScreen(navController = navController)
+        }
+        composable("options_screen") {
+            // NOTA: esto crea una instancia de MainMenuViewModel DISTINTA de la
+            // del menú (cada destino tiene su ViewModelStoreOwner). Hoy es inocuo
+            // (Options relee settings del repo y el menú no los muestra). Si en el
+            // futuro el menú refleja un ajuste editable aquí, compartir la misma
+            // instancia o que el menú relea settings al volver (ver compose-ui-reviewer).
+            OptionsScreen(
+                navController = navController,
+                viewModel = viewModel(factory = mainMenuFactory)
+            )
         }
     }
 }

@@ -17,11 +17,18 @@ import kotlinx.serialization.Serializable
  *              corte de Mus / descarte). Si es `false` (por defecto), se emite
  *              un "No hay mus" del mano y la partida aterriza en GRANDE con las
  *              manos exactas intactas (sin descarte que las altere).
+ * @param teamAScore / teamBScore marcador inicial del chico (para testear el
+ *              final de chico/vaca #29 sin llegar jugando). Default 0.
+ * @param chicosWonA / chicosWonB chicos ya ganados en la vaca en curso. Default 0.
  */
 @Serializable
 data class DebugScenario(
     val name: String,
     val hands: Map<String, List<Card>>,
     val manoId: String,
-    val startAtMus: Boolean = false
+    val startAtMus: Boolean = false,
+    val teamAScore: Int = 0,
+    val teamBScore: Int = 0,
+    val chicosWonA: Int = 0,
+    val chicosWonB: Int = 0
 )
