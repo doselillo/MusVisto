@@ -140,7 +140,11 @@ class AILogicSnapshotTest {
                     lines += decide("RESP/$phase/$tag/ordago/even", gs, ai)
                 }
                 run {
-                    val (gs, ai) = state(hand, phase, manoId = "p2", myScore = 5, oppScore = 35, bet = ordago)
+                    // Hail-Mary REAL (#33): rival a 39, rechazar le da la no querida
+                    // (pointsIfRejected=1 por defecto) -> 40 -> entrega la partida.
+                    // Solo ahí se acepta a ciegas. (Antes el caso usaba 5/35, que
+                    // bajo el override viejo disparaba el Hail-Mary pero ya no.)
+                    val (gs, ai) = state(hand, phase, manoId = "p2", myScore = 1, oppScore = 39, bet = ordago)
                     lines += decide("RESP/$phase/$tag/ordago/hailmary", gs, ai)
                 }
             }
@@ -160,6 +164,11 @@ class AILogicSnapshotTest {
         // pequeños con par de reyes / duples-reyes (manos medias-fuertes que
         // ganan al farol). Validado con el oponente asimétrico del simulador
         // (Fase 3): spammer 45%→55%, loose 48%→57% sin tocar station/ordago.
+        //
+        // #33 (gate Hail-Mary de respuesta): el golden NO cambia. El escenario
+        // /ordago/hailmary se recalibró a un Hail-Mary REAL (rival a 39: rechazar
+        // entrega la partida) → sigue aceptando (Quiero), que es lo correcto. Las
+        // rutas no-Hail-Mary (/ordago/even) ya plegaban por umbral, intactas.
         private val EXPECTED = """
 MUS/4REY/mano=p2 => NoMus
 MUS/4REY/mano=p4 => NoMus
