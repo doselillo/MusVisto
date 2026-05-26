@@ -793,6 +793,78 @@ class AILogicTest {
         )
     }
 
+    @Test
+    fun `ordago response - pending bet I am losing pushes rival to 40 - accept (#33 follow-up)`() {
+        // Rival a 37. Hay un envite ya QUERIDO de 2 en JUEGO pendiente de showdown
+        // que voy PERDIENDO (mano 7 6 5 4 = juego 22, sin juego). Órdago a GRANDE
+        // (mano también floja ahí). Rechazar deja al rival en 38, PERO al cierre
+        // cobra esos 2 de Juego -> 40 -> pierdo igual; y aceptar CORTA la ronda,
+        // cancelándolos. Es Hail-Mary real aunque opp+pir = 38 < 40.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.SEIS),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 37, "teamB" to 0),
+            currentBet = bet,
+            agreedBets = mapOf(GamePhase.JUEGO to 2),
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Un envite pendiente que pierdo lleva al rival a 40 -> debe aceptar el Hail-Mary (#33 follow-up)",
+            decision.action is GameAction.Quiero
+        )
+    }
+
+    @Test
+    fun `ordago response - pending bet I am WINNING is not counted - still folds (#33 follow-up safe)`() {
+        // Mismo marcador (rival 37) y mismo envite pendiente de 2, PERO ahora lo voy
+        // GANANDO: pendiente en GRANDE con par de reyes (fuerte), órdago a JUEGO
+        // (mano 29, floja). Sumar a ciegas daría 37+1+2=40 y aceptaría un órdago
+        // perdido; pero como gano el pendiente, NO cuenta -> 38 < 40 -> pliega y
+        // conserva esa ganancia. (Sesgo seguro del follow-up.)
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 37, "teamB" to 0),
+            currentBet = bet,
+            agreedBets = mapOf(GamePhase.GRANDE to 2),
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Un envite pendiente que GANO no debe inflar el marcador del rival -> pliega el órdago perdido (#33 follow-up)",
+            decision.action is GameAction.NoQuiero
+        )
+    }
+
     // --- TESTS DE REGRESIÓN: SEÑAS DEL COMPAÑERO ---
 
     @Test

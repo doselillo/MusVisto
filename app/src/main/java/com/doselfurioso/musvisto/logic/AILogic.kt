@@ -64,6 +64,15 @@ private const val OPEN_MID_BAND_FLOOR = 55
 // strength 75-85 de la banda Quiero — eran las que sangraban.
 private const val CAPTAIN_ALONE_RESPONSE_PENALTY = 15
 
+// Umbral de fuerza por DEBAJO del cual, al evaluar el gate del Hail-Mary de
+// respuesta a órdago (#33 follow-up), se asume que un envite YA QUERIDO pendiente
+// de showdown en OTRO lance lo gana el rival (y por tanto suma a su marcador
+// efectivo). Sesgo SEGURO: bajo a propósito (solo cuento lances donde voy
+// claramente perdido) para NO inflar el marcador del rival con lances que en
+// realidad gano → evita aceptar órdagos perdidos teniendo ganancias pendientes.
+// Usa mi fuerza ya ajustada por señas del compañero; nunca mira cartas del rival.
+private const val PENDING_LANCE_LOSS_THRESHOLD = 50
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -221,7 +230,7 @@ class AILogic constructor(
             GamePhase.JUEGO -> finalStrength.juego
             else -> 0
         }
-        val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
+        val rawResponse = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
         // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
         // para mantener el bote del equipo sin pisar al capitán.
         val responseAction = if (playSupport &&
@@ -325,6 +334,7 @@ class AILogic constructor(
     // ---------------- Responder a apuestas activas ----------------
     private fun decideResponse(
         adjustedStrength: Int,
+        finalStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player
     ): GameAction {
@@ -350,15 +360,34 @@ class AILogic constructor(
             val opponentScore = gameState.score[opponentTeam] ?: 0
             val myScore = gameState.score[aiPlayer.team] ?: 0
 
-            // Hail-Mary REAL: rechazar el órdago entrega la partida EN EL ACTO,
-            // porque handleNoQuiero suma pointsIfRejected al rival al instante
-            // (MusGameLogic). Solo entonces vale jugarse este lance a ciegas; si
-            // no, rechazar conserva la varianza de los lances que quedan.
-            // Antes dos overrides ciegos (opp-my>20 y opp>=33 && my<=opp) aceptaban
-            // por el mero hecho de ir por detrás → aceptaba órdagos con la peor
-            // banda yendo 0-38 = -EV explotable (#33, gate mus-strategy-reviewer).
+            // Hail-Mary REAL: rechazar el órdago entrega la partida EN EL ACTO.
+            // Dos vías de "rechazar pierde ya":
+            //  (1) la no querida del órdago: handleNoQuiero suma pointsIfRejected
+            //      al rival al instante (MusGameLogic).
+            //  (2) los envites YA QUERIDOS pendientes de showdown en OTROS lances
+            //      (agreedBets), que se cobran al cierre: si los que voy perdiendo
+            //      bastan para llevar al rival a 40, rechazar también pierde —y
+            //      aceptar este órdago CORTA la ronda, cancelándolos (#33 follow-up)—.
+            // Solo entonces vale jugarse este lance a ciegas; si no, rechazar
+            // conserva la varianza de los lances que quedan. (Antes dos overrides
+            // ciegos aceptaban por el mero hecho de ir detrás → -EV explotable.)
             val pointsIfRejected = gameState.currentBet?.pointsIfRejected ?: 1
-            if (opponentScore + pointsIfRejected >= 40) return GameAction.Quiero
+            // Pendientes que probablemente PIERDO: mi fuerza (ya ajustada por señas
+            // del compañero) está por debajo del umbral en ese lance. Sesgo SEGURO
+            // (subcontar): no inflo el marcador del rival con lances que en realidad
+            // gano, así no acepto órdagos perdidos teniendo ganancias pendientes.
+            // Nunca mira las cartas del rival (#7).
+            val pendingRivalPoints = gameState.agreedBets.entries.sumOf { (lance, amount) ->
+                val myStrength = when (lance) {
+                    GamePhase.GRANDE -> finalStrength.grande
+                    GamePhase.CHICA -> finalStrength.chica
+                    GamePhase.PARES -> finalStrength.pares
+                    GamePhase.JUEGO -> finalStrength.juego
+                    else -> 100
+                }
+                if (lance != gameState.gamePhase && myStrength < PENDING_LANCE_LOSS_THRESHOLD) amount else 0
+            }
+            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
