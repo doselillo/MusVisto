@@ -64,6 +64,15 @@ private const val OPEN_MID_BAND_FLOOR = 55
 // strength 75-85 de la banda Quiero — eran las que sangraban.
 private const val CAPTAIN_ALONE_RESPONSE_PENALTY = 15
 
+// Umbral de fuerza por DEBAJO del cual, al evaluar el gate del Hail-Mary de
+// respuesta a órdago (#33 follow-up), se asume que un envite YA QUERIDO pendiente
+// de showdown en OTRO lance lo gana el rival (y por tanto suma a su marcador
+// efectivo). Sesgo SEGURO: bajo a propósito (solo cuento lances donde voy
+// claramente perdido) para NO inflar el marcador del rival con lances que en
+// realidad gano → evita aceptar órdagos perdidos teniendo ganancias pendientes.
+// Usa mi fuerza ya ajustada por señas del compañero; nunca mira cartas del rival.
+private const val PENDING_LANCE_LOSS_THRESHOLD = 50
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -221,7 +230,7 @@ class AILogic constructor(
             GamePhase.JUEGO -> finalStrength.juego
             else -> 0
         }
-        val rawResponse = decideResponse(strengthForLance, gameState, aiPlayer)
+        val rawResponse = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
         // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
         // para mantener el bote del equipo sin pisar al capitán.
         val responseAction = if (playSupport &&
@@ -325,6 +334,7 @@ class AILogic constructor(
     // ---------------- Responder a apuestas activas ----------------
     private fun decideResponse(
         adjustedStrength: Int,
+        finalStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player
     ): GameAction {
@@ -343,16 +353,41 @@ class AILogic constructor(
         // Ahora: umbral por posición (mano gana desempates → acepta más liviano;
         // postre los pierde → exige más), banda muerta para no regalar el chico
         // (#25), zona probabilística estrecha para que el farol puro no sea
-        // gratis, y conciencia de marcador simétrica (Hail Mary si el rival
-        // está al borde de 40 y no vamos por delante: plegar también pierde).
+        // gratis, y Hail-Mary GATEADO: solo se acepta a ciegas si rechazar
+        // entrega la partida EN EL ACTO (opp + pointsIfRejected >= 40, #33).
         if (gameState.currentBet?.isOrdago == true) {
             val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
             val opponentScore = gameState.score[opponentTeam] ?: 0
             val myScore = gameState.score[aiPlayer.team] ?: 0
 
-            // Desesperación / Hail Mary: rechazar también pierde la partida.
-            if (opponentScore - myScore > 20) return GameAction.Quiero
-            if (opponentScore >= 33 && myScore <= opponentScore) return GameAction.Quiero
+            // Hail-Mary REAL: rechazar el órdago entrega la partida EN EL ACTO.
+            // Dos vías de "rechazar pierde ya":
+            //  (1) la no querida del órdago: handleNoQuiero suma pointsIfRejected
+            //      al rival al instante (MusGameLogic).
+            //  (2) los envites YA QUERIDOS pendientes de showdown en OTROS lances
+            //      (agreedBets), que se cobran al cierre: si los que voy perdiendo
+            //      bastan para llevar al rival a 40, rechazar también pierde —y
+            //      aceptar este órdago CORTA la ronda, cancelándolos (#33 follow-up)—.
+            // Solo entonces vale jugarse este lance a ciegas; si no, rechazar
+            // conserva la varianza de los lances que quedan. (Antes dos overrides
+            // ciegos aceptaban por el mero hecho de ir detrás → -EV explotable.)
+            val pointsIfRejected = gameState.currentBet?.pointsIfRejected ?: 1
+            // Pendientes que probablemente PIERDO: mi fuerza (ya ajustada por señas
+            // del compañero) está por debajo del umbral en ese lance. Sesgo SEGURO
+            // (subcontar): no inflo el marcador del rival con lances que en realidad
+            // gano, así no acepto órdagos perdidos teniendo ganancias pendientes.
+            // Nunca mira las cartas del rival (#7).
+            val pendingRivalPoints = gameState.agreedBets.entries.sumOf { (lance, amount) ->
+                val myStrength = when (lance) {
+                    GamePhase.GRANDE -> finalStrength.grande
+                    GamePhase.CHICA -> finalStrength.chica
+                    GamePhase.PARES -> finalStrength.pares
+                    GamePhase.JUEGO -> finalStrength.juego
+                    else -> 100
+                }
+                if (lance != gameState.gamePhase && myStrength < PENDING_LANCE_LOSS_THRESHOLD) amount else 0
+            }
+            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
@@ -410,7 +445,27 @@ class AILogic constructor(
             // el foldChance se deriva de P(pierdo) en vez de la curva por
             // tamaño. Antes con envite=2 (foldChance=0% en la curva) el 31
             // expuesto en postre se quería SIEMPRE y perdía a otro 31 mano.
-            advantage > 70 -> {
+            //
+            // ANTI-SOBRE-PLEGADO (umbral 70→60; REGLA 4 60→50): el oponente
+            // asimétrico del simulador (Fase 3) mostró que la IA PIERDE el
+            // matchup contra un rival que farolea/abre flojo (spammer 45%,
+            // loose 48%) porque, calibrada contra apuestas genuinas (sim
+            // simétrico), pliega manos medias que ganarían al farol. Bajar el
+            // umbral a 60 paga envites pequeños con par de reyes / duples-reyes
+            // y arregla el matchup (spammer 55%, loose 57%) sin tocar
+            // station/órdago (otro código). Coste: el aceptar-neto del sim
+            // SIMÉTRICO sangra más (−1525→−4209/2000p) — punto ciego conocido
+            // (vs apostante genuino aceptar siempre sangra; el beneficio real
+            // es vs humano que farolea). El arnés aislado lo confirma causal:
+            // regret 2.34→1.96, acierto EV 59%→66%. La rodilla está en 60: a
+            // 55 sangra más por ganancia marginal.
+            //
+            // Se probó hacerlo POSITION-AWARE (60 ∓6 mano/postre, y postre-only
+            // +6) por recomendación del mus-strategy-reviewer: el arnés y el
+            // matchup salían IGUALES o LIGERAMENTE PEORES (el plano está en la
+            // rodilla y captura mejor el value ex-post). Se mantiene plano.
+            // (Backlog #1, lado respuesta.)
+            advantage > 60 -> {
                 val baseFold = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
                     .coerceAtMost(80)
                 val foldChance = juego31LossOverride(gameState, aiPlayer) ?: baseFold
@@ -433,7 +488,7 @@ class AILogic constructor(
             // que la IA dispute más lances. Si vuelve a sentirse tímida, la
             // siguiente palanca NO es esta (retorno disminuyente) sino la
             // agresividad de APERTURA del capitán (ver backlog #20/#11).
-            advantage > 60 && rng.nextInt(100) < 10 -> GameAction.Quiero
+            advantage > 50 && rng.nextInt(100) < 10 -> GameAction.Quiero
 
             else -> GameAction.NoQuiero
         }
@@ -571,24 +626,33 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy
-        // a señalizar (pendingGestures), le delego el corte (decide él con
-        // mi seña + su mano). Aplica a partner humano Y partner IA — la
-        // restricción a humano-only sangraba sensación de pareja IA↔IA en
-        // playtest (el primero IA cortaba con buena mano cuando debería
-        // ceder al segundo).
-        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
-        decideMusDelegation(gameState, aiPlayer, iActBeforePartner)?.let { return it }
-
         val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
         val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
         val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
         val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
 
-        if (strength.pares >= paresCutThreshold) return Pair(GameAction.NoMus, "Reason: Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)")
-        if (strength.juego >= juegoCutThreshold) return Pair(GameAction.NoMus, "Reason: Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)")
-        if (strength.grande >= grandeCutThreshold) return Pair(GameAction.NoMus, "Reason: Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)")
-        if (strength.chica >= chicaCutThreshold) return Pair(GameAction.NoMus, "Reason: Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)")
+        // ¿Mi mano MERECE cortarse por sí sola? (razón, o null si no supera ningún
+        // umbral). Se calcula ANTES de la delegación para gatear el break: el
+        // primero solo corta por iniciativa con una mano cortable, nunca al azar.
+        val cutReason = when {
+            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)"
+            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)"
+            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)"
+            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)"
+            else -> null
+        }
+
+        // Capitanía delegada (#20): si actúo ANTES que mi compañero y voy a
+        // señalizar (pendingGestures), le delego el corte (decide él con mi seña
+        // + su mano). El break (corte por iniciativa) SOLO aplica si mi mano
+        // merece cortarse — no un corte aleatorio con cualquier mano. Aplica a
+        // partner humano Y partner IA — la restricción a humano-only sangraba
+        // sensación de pareja IA↔IA en playtest (el primero IA cortaba con buena
+        // mano cuando debería ceder al segundo).
+        val iActBeforePartner = actsBeforePartner(gameState, aiPlayer, partner)
+        decideMusDelegation(gameState, aiPlayer, iActBeforePartner, cutReason != null)?.let { return it }
+
+        cutReason?.let { return GameAction.NoMus to "Reason: $it" }
 
         val musReason = if (partnerIsMano) {
             "Reason: No strength exceeds thresholds; compañero es mano, sesgo a Mus (manoBias +$manoBias)"
@@ -625,7 +689,12 @@ class AILogic constructor(
      * pareja real prevalece y la compensación va por otro lado
      * (`CAPTAIN_ALONE_RESPONSE_PENALTY` ya está activa).
      *
-     * 5% break para variación humana-like (no ser absoluto).
+     * Break = el primero toma la INICIATIVA de cortar su BUENA mano en vez de
+     * delegar, ocasionalmente (variación humana-like, no ser absoluto). SOLO si
+     * `handWouldCut` (la mano supera un umbral de corte): un break con mano floja
+     * era un corte sin sentido (sensación de IA tonta en playtest, espíritu del
+     * #13). Con mano no-cortable SIEMPRE delega (pide Mus) y señaliza: el capitán
+     * decide con la seña + su mano.
      *
      * #17 (mus corrido): deshabilitada mientras el modo está activo — el mus
      * corrido prohíbe señas y exige corte individual (determina la mano). El
@@ -635,13 +704,14 @@ class AILogic constructor(
     private fun decideMusDelegation(
         gameState: GameState,
         aiPlayer: Player,
-        iActBeforePartner: Boolean
+        iActBeforePartner: Boolean,
+        handWouldCut: Boolean
     ): Pair<GameAction, String>? {
         if (gameState.musCorrido) return null
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
-        if (rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
-            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto excepcionalmente"
+        if (handWouldCut && rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
+            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
         }
         return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
     }

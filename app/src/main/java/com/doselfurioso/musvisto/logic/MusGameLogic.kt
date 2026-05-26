@@ -615,8 +615,12 @@ class MusGameLogic constructor(private val random: Random){
         val lanceResult = when {
             state.currentBet != null && state.agreedBets.containsKey(state.gamePhase) ->
                 LanceResult(state.gamePhase, "Querido", state.currentBet.amount)
-            state.currentBet != null ->
-                LanceResult(state.gamePhase, "No Querido")
+            state.currentBet != null -> {
+                // En la no querida el ganador se conoce al instante: el equipo que
+                // envidó se lleva pointsIfRejected (mismo cálculo que handleNoQuiero).
+                val winningTeam = state.players.find { it.id == state.currentBet.bettingPlayerId }?.team
+                LanceResult(state.gamePhase, "No Querido", state.currentBet.pointsIfRejected, winningTeam)
+            }
             else -> LanceResult(state.gamePhase, "Paso")
         }
         return state.copy(roundHistory = state.roundHistory + lanceResult)
@@ -827,12 +831,22 @@ class MusGameLogic constructor(private val random: Random){
             }
         }
 
-        // 2. PUNTUACIÓN POR VALOR DE LAS JUGADAS (PARES Y JUEGO)
+        // 2. PUNTUACIÓN POR VALOR DE LAS JUGADAS (PARES Y JUEGO/PUNTO)
+        // La jugada (tantos de pares/juego/punto) se la anota el equipo que GANA
+        // el lance. En una "No Querida" lo gana quien ENVIDÓ —no el de mejor
+        // jugada en el showdown—, equipo registrado en LanceResult.winningTeam
+        // (#30). En "Querido"/"Paso"/"Skipped" decide el showdown.
+        fun jugadaWinningTeam(lance: GamePhase, showdownWinner: Player?): String? {
+            val result = historyMap[lance]
+            return if (result?.outcome == "No Querido") result.winningTeam
+            else showdownWinner?.team
+        }
+
         // Puntos por la jugada de Pares
-        getParesWinner(currentState)?.let { winner ->
-            val winningTeam = winner.team
+        val paresTeam = jugadaWinningTeam(GamePhase.PARES, getParesWinner(currentState))
+        if (paresTeam != null) {
             currentState.players.forEach { player ->
-                if (player.team == winningTeam) {
+                if (player.team == paresTeam) {
                     val (reason, playPoints) = getHandPares(player.hand).let {
                         when (it) {
                             is ParesPlay.Duples -> "Duples (${player.name})" to 3
@@ -849,14 +863,14 @@ class MusGameLogic constructor(private val random: Random){
         }
 
         // Puntos por la jugada de Juego y bonificación de Punto
-        getJuegoWinner(currentState)?.let { winner ->
-            val winningTeam = winner.team
+        val juegoTeam = jugadaWinningTeam(GamePhase.JUEGO, getJuegoWinner(currentState))
+        if (juegoTeam != null) {
             if (currentState.isPuntoPhase) {
                 val detail = ScoreDetail("Punto", 1)
-                if (winningTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
+                if (juegoTeam == "teamA") teamADetails.add(detail) else teamBDetails.add(detail)
             }
             currentState.players.forEach { player ->
-                if (player.team == winningTeam) {
+                if (player.team == juegoTeam) {
                     val juegoValue = getHandJuegoValue(player.hand)
                     if (juegoValue >= 31) {
                         val reason = "Juego ${juegoValue} (${player.name})"

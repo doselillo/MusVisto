@@ -26,7 +26,13 @@ data class GameState(
     val agreedBets: Map<GamePhase, Int> = emptyMap(),
     val discardCounts: Map<String, Int> = emptyMap(),
     val selectedCardsForDiscard: Set<Card> = emptySet(),
+    // #29 vacas: winningTeam = la VACA (partida) terminó, este equipo la ganó.
+    // chicoJustWon = se acaba de ganar un chico pero la vaca SIGUE (al Continuar
+    // se arranca un chico nuevo). Mutuamente excluyentes.
     val winningTeam: String? = null,
+    val chicosWon: Map<String, Int> = mapOf("teamA" to 0, "teamB" to 0),
+    val chicoJustWon: String? = null,
+    val settings: GameSettings = GameSettings(),
     val manoPlayerId: String = "",
     @Transient val lastAction: LastActionInfo? = null,
     val event: GameEvent? = null,

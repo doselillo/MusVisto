@@ -654,6 +654,217 @@ class AILogicTest {
         assertFalse("Con marcador igualado no debe cantar órdago proactivo", decision.action is GameAction.Órdago)
     }
 
+    // --- TESTS DE RESPUESTA A ÓRDAGO: gate Hail-Mary (#33) ---
+    //
+    // El bloque órdago de decideResponse aceptaba a ciegas por el mero hecho de ir
+    // por detrás (overrides viejos opp-my>20 / opp>=33 && my<=opp). Ahora solo
+    // acepta sin mirar la mano si rechazar entrega la partida EN EL ACTO
+    // (opponentScore + pointsIfRejected >= 40); si no, cae a la lógica de umbral.
+
+    @Test
+    fun `ordago response - does NOT accept blindly with worst-band hand at 0-38 (#33)`() {
+        // Bug reportado: 0-38, GRANDE 7 6 5 4 (G:29, peor banda), sin seña.
+        // Rechazar deja al rival en 39 (38 + 1 de la no querida), NO en 40 -> no es
+        // Hail-Mary real -> debe plegar (conservar la varianza de los lances que
+        // quedan), no aceptar un órdago perdido.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.SEIS),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand) // teamB
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 38, "teamB" to 0),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Yendo 0-38, rechazar deja al rival en 39: debe plegar el órdago con mano ínfima (#33)",
+            decision.action is GameAction.NoQuiero
+        )
+    }
+
+    @Test
+    fun `ordago response - accepts Hail-Mary only when rejecting hands over the game (#33)`() {
+        // Rival a 39: rechazar le da 1 (no querida) -> 40 -> pierde la partida ahí
+        // mismo. Es Hail-Mary real -> acepta para jugarse la varianza aunque la
+        // mano sea floja.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.SEIS),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 39, "teamB" to 0),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Si rechazar entrega la partida (rival 39 + no querida = 40), debe aceptar el Hail-Mary",
+            decision.action is GameAction.Quiero
+        )
+    }
+
+    @Test
+    fun `ordago response - behind but not losing on reject still folds a weak hand (#33)`() {
+        // Rival a 34: rechazar le da 1 -> 35, sigue lejos de 40. El override viejo
+        // (opp>=33 && my<=opp) habría aceptado; ahora no es Hail-Mary -> umbral
+        // normal -> mano ínfima pliega.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.SEIS),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 34, "teamB" to 0),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Ir 0-34 no justifica aceptar un órdago perdido (rechazar deja al rival en 35) (#33)",
+            decision.action is GameAction.NoQuiero
+        )
+    }
+
+    @Test
+    fun `ordago response - strong hand still accepts regardless of gate (#33 no regression)`() {
+        // 4 Reyes a GRANDE (100) con marcador normal: el gate Hail-Mary no aplica
+        // (20 + 1 < 40) pero la lógica de umbral acepta una mano legítimamente buena.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.REY)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 20, "teamB" to 20),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Con 4 reyes a Grande debe aceptar el órdago",
+            decision.action is GameAction.Quiero
+        )
+    }
+
+    @Test
+    fun `ordago response - pending bet I am losing pushes rival to 40 - accept (#33 follow-up)`() {
+        // Rival a 37. Hay un envite ya QUERIDO de 2 en JUEGO pendiente de showdown
+        // que voy PERDIENDO (mano 7 6 5 4 = juego 22, sin juego). Órdago a GRANDE
+        // (mano también floja ahí). Rechazar deja al rival en 38, PERO al cierre
+        // cobra esos 2 de Juego -> 40 -> pierdo igual; y aceptar CORTA la ronda,
+        // cancelándolos. Es Hail-Mary real aunque opp+pir = 38 < 40.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.SEIS),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 37, "teamB" to 0),
+            currentBet = bet,
+            agreedBets = mapOf(GamePhase.JUEGO to 2),
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Un envite pendiente que pierdo lleva al rival a 40 -> debe aceptar el Hail-Mary (#33 follow-up)",
+            decision.action is GameAction.Quiero
+        )
+    }
+
+    @Test
+    fun `ordago response - pending bet I am WINNING is not counted - still folds (#33 follow-up safe)`() {
+        // Mismo marcador (rival 37) y mismo envite pendiente de 2, PERO ahora lo voy
+        // GANANDO: pendiente en GRANDE con par de reyes (fuerte), órdago a JUEGO
+        // (mano 29, floja). Sumar a ciegas daría 37+1+2=40 y aceptaría un órdago
+        // perdido; pero como gano el pendiente, NO cuenta -> 38 < 40 -> pliega y
+        // conserva esa ganancia. (Sesgo seguro del follow-up.)
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val aiPlayer = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(aiPlayer, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 37, "teamB" to 0),
+            currentBet = bet,
+            agreedBets = mapOf(GamePhase.GRANDE to 2),
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
+        )
+
+        val decision = aiLogic.makeDecision(gameState, aiPlayer)
+
+        assertTrue(
+            "Un envite pendiente que GANO no debe inflar el marcador del rival -> pliega el órdago perdido (#33 follow-up)",
+            decision.action is GameAction.NoQuiero
+        )
+    }
+
     // --- TESTS DE REGRESIÓN: SEÑAS DEL COMPAÑERO ---
 
     @Test

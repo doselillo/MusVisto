@@ -279,4 +279,47 @@ class MusGameLogicFlowTest {
             s.roundHistory.map { it.lance to it.outcome }
         )
     }
+
+    @Test
+    fun `pares no querido - la jugada va al que envido, no al de mejores pares`() {
+        // p1 (teamA) par de Caballos; p2 (teamB) par de Reyes (gana el showdown).
+        // El lance se cerró por NO QUERIDO ganado por teamA (el que envidó).
+        val s = GameState(
+            players = listOf(
+                player("p1", "teamA", listOf(
+                    c(Suit.OROS, Rank.CABALLO), c(Suit.COPAS, Rank.CABALLO),
+                    c(Suit.OROS, Rank.AS), c(Suit.OROS, Rank.CUATRO)
+                )),
+                player("p2", "teamB", listOf(
+                    c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY),
+                    c(Suit.COPAS, Rank.AS), c(Suit.COPAS, Rank.CINCO)
+                )),
+                player("p3", "teamA", lowHand(Suit.BASTOS)),
+                player("p4", "teamB", lowHand(Suit.ESPADAS))
+            ),
+            manoPlayerId = "p1",
+            roundHistory = listOf(
+                LanceResult(GamePhase.GRANDE, "Skipped"),
+                LanceResult(GamePhase.CHICA, "Skipped"),
+                LanceResult(GamePhase.PARES, "No Querido", amount = 1, winningTeam = "teamA"),
+                LanceResult(GamePhase.JUEGO, "Skipped")
+            ),
+            scoreEvents = listOf(ScoreEventInfo("teamA", ScoreDetail("PARES No Querida", 1)))
+        )
+
+        // Sanidad: el showdown de pares lo ganaría teamB (Reyes > Caballos).
+        assertEquals("teamB", logic.getParesWinner(s)?.team)
+
+        val scored = logic.scoreRound(s)
+        val aReasons = scored.scoreBreakdown!!.teamAScoreDetails.map { it.reason }
+        val bReasons = scored.scoreBreakdown!!.teamBScoreDetails.map { it.reason }
+
+        // La jugada de pares la anota teamA (ganó el lance por la no querida).
+        assertTrue("teamA debe anotar su jugada de pares", aReasons.any { it.startsWith("Pares (p1)") })
+        // teamB (mejores pares pero plegó) NO anota jugada de pares.
+        assertFalse(
+            "teamB no debe anotar jugada de pares",
+            bReasons.any { it.startsWith("Pares") || it.startsWith("Medias") || it.startsWith("Duples") }
+        )
+    }
 }

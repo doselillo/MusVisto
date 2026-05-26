@@ -70,8 +70,9 @@ class GameViewModel constructor(
         if (savedData != null) {
             Log.d("GameViewModel", "Datos guardados encontrados. Reanudando con marcador.")
             val score = mapOf("teamA" to savedData.teamAScore, "teamB" to savedData.teamBScore)
+            val chicos = mapOf("teamA" to savedData.chicosWonA, "teamB" to savedData.chicosWonB)
             // Pasamos el ID del último "mano" para que la rotación continúe correctamente
-            startNewGame(score, savedData.lastManoPlayerId)
+            startNewGame(score, savedData.lastManoPlayerId, chicos)
         } else {
             Log.d("GameViewModel", "No se encontraron datos. Empezando partida nueva.")
             // Empezamos una partida de cero, sin marcador ni mano previo
@@ -95,7 +96,9 @@ class GameViewModel constructor(
      * que altere las manos). A partir de ahí el motor es el normal.
      */
     fun startScenario(scenario: DebugScenario) {
-        val score = mapOf("teamA" to 0, "teamB" to 0)
+        // #29: marcador y chicos iniciales del escenario (para testear finales
+        // de chico/vaca sin llegar jugando). Las reglas (best-of) salen del repo.
+        val score = mapOf("teamA" to scenario.teamAScore, "teamB" to scenario.teamBScore)
         val players = defaultPlayers().map {
             it.copy(hand = scenario.hands[it.id] ?: emptyList())
         }
@@ -106,6 +109,8 @@ class GameViewModel constructor(
             players = players,
             deck = remainingDeck,
             score = score,
+            chicosWon = mapOf("teamA" to scenario.chicosWonA, "teamB" to scenario.chicosWonB),
+            settings = gameRepository.loadSettings(),
             manoPlayerId = scenario.manoId,
             currentTurnPlayerId = scenario.manoId,
             gamePhase = GamePhase.MUS,
@@ -198,18 +203,28 @@ class GameViewModel constructor(
         val currentState = _gameState.value
         when (action) {
             is GameAction.Continue -> {
-                if (currentState.winningTeam != null) {
-                    // La ronda que acaba de verse era la decisiva: tras el
-                    // resumen normal, pasamos a la pantalla de fin de partida
-                    // (#26 - flujo secuencia).
-                    setGameState(
+                when {
+                    // Vaca terminada: tras el resumen, a la pantalla de fin de
+                    // partida (#26 - flujo secuencia).
+                    currentState.winningTeam != null -> setGameState(
                         currentState.copy(
                             gamePhase = GamePhase.GAME_OVER,
                             availableActions = emptyList()
                         )
                     )
-                } else {
-                    startNewGame(currentState.score, currentState.manoPlayerId)
+                    // #29: chico ganado pero la vaca sigue → chico nuevo desde
+                    // 0-0, arrastrando los chicos ganados.
+                    currentState.chicoJustWon != null -> startNewGame(
+                        initialScore = null,
+                        lastManoPlayerId = currentState.manoPlayerId,
+                        chicosWon = currentState.chicosWon
+                    )
+                    // Siguiente ronda del mismo chico: se arrastra el marcador.
+                    else -> startNewGame(
+                        currentState.score,
+                        currentState.manoPlayerId,
+                        currentState.chicosWon
+                    )
                 }
                 return
             }
@@ -251,6 +266,55 @@ class GameViewModel constructor(
         }
     }
 
+    /**
+     * #29 vacas: un equipo acaba de ganar un CHICO (por llegar a los tantos o
+     * por órdago). Aplica la contabilidad de chicos y decide si la VACA ha
+     * terminado. `baseState` ya trae score/desglose/ordagoInfo puestos; aquí
+     * solo se tocan los flags de chico/vaca, la fase y la persistencia.
+     *  - vaca terminada -> winningTeam (pantalla final).
+     *  - vaca continúa  -> chicoJustWon (al Continuar arranca chico nuevo 0-0).
+     * El camino del órdago usa GAME_OVER (overlay de órdago); el de los tantos
+     * usa ROUND_OVER (muestra el desglose + banner del chico).
+     */
+    private fun applyChicoWin(baseState: GameState, chicoWinner: String, isOrdago: Boolean): GameState {
+        val newChicos = baseState.chicosWon +
+            (chicoWinner to (baseState.chicosWon[chicoWinner] ?: 0) + 1)
+        val vacaOver = (newChicos[chicoWinner] ?: 0) >= baseState.settings.chicosToWinVaca
+
+        if (vacaOver) {
+            gameRepository.deleteState()
+        } else {
+            // El próximo chico arranca 0-0; si matan la app en el overlay, al
+            // reanudar empezamos el chico nuevo limpio (con los chicos al día).
+            gameRepository.saveState(
+                SaveState(
+                    teamAScore = 0,
+                    teamBScore = 0,
+                    lastManoPlayerId = baseState.manoPlayerId,
+                    chicosWonA = newChicos["teamA"] ?: 0,
+                    chicosWonB = newChicos["teamB"] ?: 0,
+                    bestOfChicos = baseState.settings.bestOfChicos
+                )
+            )
+        }
+
+        return baseState.copy(
+            chicosWon = newChicos,
+            winningTeam = if (vacaOver) chicoWinner else null,
+            chicoJustWon = if (vacaOver) null else chicoWinner,
+            gamePhase = if (isOrdago) GamePhase.GAME_OVER else GamePhase.ROUND_OVER,
+            availableActions = listOf(GameAction.Continue),
+            revealAllHands = true
+        )
+    }
+
+    /** El motor resuelve el órdago marcando GAME_OVER + winningTeam (= gana el
+     *  chico). Aquí lo reinterpretamos en clave de vaca (#29). */
+    private fun processOrdagoChicoEnd(ordagoState: GameState) {
+        val chicoWinner = ordagoState.winningTeam ?: return
+        setGameState(applyChicoWin(ordagoState, chicoWinner, isOrdago = true))
+    }
+
     private fun processEndOfRound(roundEndState: GameState) {
         Log.d("MusVistoTest", "--- ROUND END --- Processing Scores ---")
 
@@ -258,9 +322,14 @@ class GameViewModel constructor(
         val stateWithBreakdown = gameLogic.scoreRound(roundEndState)
         val breakdown = stateWithBreakdown.scoreBreakdown ?: return
 
-        // Calculamos los nuevos totales a partir del desglose
-        val pointsTeamA = breakdown.teamAScoreDetails.sumOf { it.points }
-        val pointsTeamB = breakdown.teamBScoreDetails.sumOf { it.points }
+        // El desglose incluye los eventos instantáneos (la "no querida" ya se
+        // sumó al marcador durante la ronda en handleNoQuiero). Para no contarlos
+        // DOS VECES, el delta que aplicamos al marcador EXCLUYE esos eventos; el
+        // desglose sí los sigue mostrando (atribución #24/#30).
+        val instantA = roundEndState.scoreEvents.filter { it.teamId == "teamA" }.sumOf { it.detail.points }
+        val instantB = roundEndState.scoreEvents.filter { it.teamId == "teamB" }.sumOf { it.detail.points }
+        val pointsTeamA = breakdown.teamAScoreDetails.sumOf { it.points } - instantA
+        val pointsTeamB = breakdown.teamBScoreDetails.sumOf { it.points } - instantB
 
         val currentScore = roundEndState.score
         val newScore = mapOf(
@@ -269,33 +338,32 @@ class GameViewModel constructor(
         )
         Log.d("MusVistoTest", "FINAL SCORE: $newScore")
 
-        val stateToSave = SaveState(
-            teamAScore = newScore["teamA"] ?: 0,
-            teamBScore = newScore["teamB"] ?: 0,
-            lastManoPlayerId = roundEndState.manoPlayerId
-        )
+        val scoreToWin = roundEndState.settings.pointsPerChico
+        val chicoWinner = when {
+            newScore["teamA"]!! >= scoreToWin -> "teamA"
+            newScore["teamB"]!! >= scoreToWin -> "teamB"
+            else -> null
+        }
 
-        gameRepository.saveState(stateToSave)
+        val scoredState = stateWithBreakdown.copy(score = newScore)
 
-        val scoreToWin = 40
-        val winner = if (newScore["teamA"]!! >= scoreToWin) "teamA" else if (newScore["teamB"]!! >= scoreToWin) "teamB" else null
-
-        if (winner != null) {
-            gameRepository.deleteState()
-            // Ronda decisiva: mostramos primero el resumen normal de fin de
-            // ronda (RoundEndOverlay) y, al pulsar Continuar, la pantalla de
-            // fin de partida (#26 - flujo secuencia). winningTeam ya marcado
-            // para que el handler de Continue sepa ir a GAME_OVER.
-            setGameState(stateWithBreakdown.copy(
-                score = newScore,
-                gamePhase = GamePhase.ROUND_OVER,
-                winningTeam = winner,
-                availableActions = listOf(GameAction.Continue),
-                revealAllHands = true
-            ))
+        if (chicoWinner != null) {
+            // Ronda decisiva del chico: mostramos el desglose (RoundEndOverlay) y,
+            // al Continuar, o bien el siguiente chico o la pantalla de fin de
+            // partida (#26). applyChicoWin se encarga de la persistencia.
+            setGameState(applyChicoWin(scoredState, chicoWinner, isOrdago = false))
         } else {
-            setGameState(stateWithBreakdown.copy(
-                score = newScore,
+            gameRepository.saveState(
+                SaveState(
+                    teamAScore = newScore["teamA"] ?: 0,
+                    teamBScore = newScore["teamB"] ?: 0,
+                    lastManoPlayerId = roundEndState.manoPlayerId,
+                    chicosWonA = roundEndState.chicosWon["teamA"] ?: 0,
+                    chicosWonB = roundEndState.chicosWon["teamB"] ?: 0,
+                    bestOfChicos = roundEndState.settings.bestOfChicos
+                )
+            )
+            setGameState(scoredState.copy(
                 gamePhase = GamePhase.ROUND_OVER,
                 availableActions = listOf(GameAction.Continue),
                 revealAllHands = true
@@ -386,6 +454,9 @@ class GameViewModel constructor(
             return
         }
         if (newState.gamePhase == GamePhase.GAME_OVER) {
+            // Único camino vivo motor->GAME_OVER = órdago ganado. En clave de
+            // vaca (#29) eso gana el CHICO, no necesariamente la partida.
+            processOrdagoChicoEnd(newState)
             return
         }
 
@@ -464,8 +535,15 @@ class GameViewModel constructor(
     }
 
 
-    private fun startNewGame(initialScore: Map<String, Int>?, lastManoPlayerId: String?) {
+    private fun startNewGame(
+        initialScore: Map<String, Int>?,
+        lastManoPlayerId: String?,
+        chicosWon: Map<String, Int>? = null
+    ) {
         val score = initialScore ?: mapOf("teamA" to 0, "teamB" to 0)
+        // #29: las reglas vigentes mandan en la partida que arranca (la Fase 2
+        // las edita desde el menú; en Fase 1 = best-of-3 por defecto).
+        val settings = gameRepository.loadSettings()
 
         val players = _gameState.value.players.ifEmpty { defaultPlayers() }
 
@@ -491,6 +569,8 @@ class GameViewModel constructor(
                 players = updatedPlayers,
                 deck = remainingDeck,
                 score = score,
+                chicosWon = chicosWon ?: mapOf("teamA" to 0, "teamB" to 0),
+                settings = settings,
                 manoPlayerId = newManoId,
                 currentTurnPlayerId = newManoId,
                 gamePhase = GamePhase.MUS,
