@@ -343,16 +343,22 @@ class AILogic constructor(
         // Ahora: umbral por posición (mano gana desempates → acepta más liviano;
         // postre los pierde → exige más), banda muerta para no regalar el chico
         // (#25), zona probabilística estrecha para que el farol puro no sea
-        // gratis, y conciencia de marcador simétrica (Hail Mary si el rival
-        // está al borde de 40 y no vamos por delante: plegar también pierde).
+        // gratis, y Hail-Mary GATEADO: solo se acepta a ciegas si rechazar
+        // entrega la partida EN EL ACTO (opp + pointsIfRejected >= 40, #33).
         if (gameState.currentBet?.isOrdago == true) {
             val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
             val opponentScore = gameState.score[opponentTeam] ?: 0
             val myScore = gameState.score[aiPlayer.team] ?: 0
 
-            // Desesperación / Hail Mary: rechazar también pierde la partida.
-            if (opponentScore - myScore > 20) return GameAction.Quiero
-            if (opponentScore >= 33 && myScore <= opponentScore) return GameAction.Quiero
+            // Hail-Mary REAL: rechazar el órdago entrega la partida EN EL ACTO,
+            // porque handleNoQuiero suma pointsIfRejected al rival al instante
+            // (MusGameLogic). Solo entonces vale jugarse este lance a ciegas; si
+            // no, rechazar conserva la varianza de los lances que quedan.
+            // Antes dos overrides ciegos (opp-my>20 y opp>=33 && my<=opp) aceptaban
+            // por el mero hecho de ir por detrás → aceptaba órdagos con la peor
+            // banda yendo 0-38 = -EV explotable (#33, gate mus-strategy-reviewer).
+            val pointsIfRejected = gameState.currentBet?.pointsIfRejected ?: 1
+            if (opponentScore + pointsIfRejected >= 40) return GameAction.Quiero
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
