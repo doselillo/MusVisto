@@ -36,6 +36,16 @@ private const val GESTURE_VISIBLE_OTHER_MS = 300L
 private const val PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
 private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
 
+// #27: ritmo de turno de la IA, UNIFICADO entre fases de apuesta y de
+// declaración (PARES_CHECK/JUEGO_CHECK). Antes la apuesta usaba 1000ms y la
+// declaración 750: la declaración se sentía más rápida y, al apretar el anuncio
+// "Tengo/No tengo" contra su animación de entrada, era donde más parpadeaba al
+// encadenar turnos. Un único tempo da ritmo constante y aire suficiente a cada
+// anuncio (debe quedar >= la entrada+salida del ActionAnnouncement).
+// 850 = compromiso de playtest: la declaración sube desde 750 (menos parpadeo)
+// y la apuesta baja un pelín desde 1000 (1000 se sentía algo lento). Tunable.
+private const val AI_TURN_PACING_MS = 850L
+
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
     private val aiLogic: AILogic,
@@ -391,7 +401,7 @@ class GameViewModel constructor(
 
     private fun handleAiTurn() {
         viewModelScope.launch {
-            delay(1000)
+            delay(AI_TURN_PACING_MS)
             awaitNotPaused()
             val currentState = _gameState.value
             val currentPlayer =
@@ -503,8 +513,8 @@ class GameViewModel constructor(
 
             // Recorremos los jugadores uno por uno en orden de turno
             for (player in playersInOrder) {
-                // Hacemos una pausa para que el efecto sea visible
-                delay(750)
+                // Pausa por jugador, mismo tempo que las fases de apuesta (#27).
+                delay(AI_TURN_PACING_MS)
                 awaitNotPaused()
 
                 // Determinamos si el jugador actual tiene jugada o no
