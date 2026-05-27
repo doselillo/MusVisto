@@ -993,25 +993,34 @@ fun ActionAnnouncement(
     // carrera viejo↔nuevo (#27). El mínimo visible y el desvanecido al quedar
     // null los gestiona el LaunchedEffect de abajo, en local.
     val targetAction: LastActionInfo? = gameState.currentLanceActions[player.id]
+    // Clave de CONTENIDO del anuncio, ignorando `seq` (único por instancia, solo
+    // para la limpieza del ViewModel). Si la animación reaccionara al objeto
+    // entero, una re-emisión del MISMO "Tengo"/"Paso" con seq nuevo dispararía un
+    // cross-fade del mismo texto = parpadeo tenue (#27, sobre todo en declaración).
+    // La animación solo debe reaccionar al contenido (action + amount).
+    val targetKey: Pair<GameAction, Int?>? = targetAction?.let { it.action to it.amount }
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
+    var displayedKey by remember { mutableStateOf<Pair<GameAction, Int?>?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(targetAction) {
+    LaunchedEffect(targetKey) {
         val now = System.currentTimeMillis()
         when {
-            targetAction != null && targetAction != displayedAction -> {
-                if (displayedAction != null) {
+            targetKey != null && targetKey != displayedKey -> {
+                if (displayedKey != null) {
                     val remaining = ANNOUNCEMENT_MIN_BEFORE_REPLACE_MS - (now - shownAt)
                     if (remaining > 0) delay(remaining)
                 }
                 displayedAction = targetAction
+                displayedKey = targetKey
                 shownAt = System.currentTimeMillis()
             }
-            targetAction == null && displayedAction != null -> {
+            targetKey == null && displayedKey != null -> {
                 val remaining = ANNOUNCEMENT_MIN_VISIBLE_MS - (now - shownAt)
                 if (remaining > 0) delay(remaining)
                 displayedAction = null
+                displayedKey = null
             }
         }
     }
