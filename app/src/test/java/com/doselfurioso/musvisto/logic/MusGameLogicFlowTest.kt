@@ -73,6 +73,37 @@ class MusGameLogicFlowTest {
     // ---------------------------------------------------------------------
 
     @Test
+    fun `#37 - completar un ciclo Mus+descarte incrementa musRoundCount`() {
+        // Deck con 4 cartas (1 por descarte) distintas de las manos -> repone
+        // sin barajar (camino determinista, sin RNG).
+        val deckCards = listOf(
+            c(Suit.OROS, Rank.DOS), c(Suit.COPAS, Rank.DOS),
+            c(Suit.ESPADAS, Rank.DOS), c(Suit.BASTOS, Rank.DOS)
+        )
+        var s = musState(
+            lowHand(Suit.OROS), lowHand(Suit.COPAS),
+            lowHand(Suit.ESPADAS), lowHand(Suit.BASTOS)
+        ).copy(deck = deckCards)
+        assertEquals(0, s.musRoundCount)
+
+        // Los 4 piden Mus (en orden de turno) -> DISCARD; el ciclo aún no se
+        // ha completado, el contador sigue en 0.
+        repeat(4) { s = act(s, GameAction.Mus, s.currentTurnPlayerId!!) }
+        assertEquals(GamePhase.DISCARD, s.gamePhase)
+        assertEquals(0, s.musRoundCount)
+
+        // Los 4 descartan 1 carta (en orden de turno) -> vuelve a MUS con +1.
+        repeat(4) {
+            val pid = s.currentTurnPlayerId!!
+            val card = s.players.first { it.id == pid }.hand.first()
+            s = s.copy(selectedCardsForDiscard = setOf(card))
+            s = act(s, GameAction.ConfirmDiscard, pid)
+        }
+        assertEquals(GamePhase.MUS, s.gamePhase)
+        assertEquals(1, s.musRoundCount)
+    }
+
+    @Test
     fun `ronda completa a paso - transiciones, Punto y scoreBreakdown`() {
         var s = musState(
             lowHand(Suit.OROS), lowHand(Suit.COPAS),
