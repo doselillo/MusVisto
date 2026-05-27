@@ -696,50 +696,62 @@ fun ActionButtons(
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class),
                             dimens = dimens
                         )
-                        // #35: Envido rápido de 2 (envite directo, sin selector) +
-                        // botón "+" para otra cantidad. Con envite activo (#18) el
-                        // rápido SUBE 2 (Envido.amount es el incremento) y el "+"
-                        // abre el selector de subida.
+                        // #35: en la APERTURA (sin envite), envido rápido de 2
+                        // (envite directo) + botón "+" para otra cantidad. En la
+                        // SUBIDA (ya hay envite) NO hay importe por defecto —se elige
+                        // cuánto subir— así que un único botón "Subir" abre el selector.
                         val betEnabled = isEnabled &&
                             availableActionsMap.containsKey(GameAction.Envido::class)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp * dimens.scaleFactor),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val quickBet = GameAction.Envido(2)
+                        if (isRaise) {
                             GameActionButton(
-                                action = quickBet,
-                                onClick = { onActionClick(quickBet, currentPlayerId) },
-                                isEnabled = betEnabled,
-                                dimens = dimens,
-                                labelOverride = if (isRaise) "Subir 2" else "Envido 2"
-                            )
-                            // El "+" abre el selector (lo que hacía Envido antes).
-                            // Botón cuadrado y compacto: sin contentPadding y con
-                            // size fijo para no heredar el min-width de Material
-                            // (~58.dp) que ensancharía esta columna en pantallas
-                            // estrechas.
-                            Button(
+                                action = GameAction.ToggleBetSelector,
                                 onClick = {
                                     onActionClick(GameAction.ToggleBetSelector, currentPlayerId)
                                 },
-                                enabled = betEnabled,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFFEB3B)
-                                ),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.size(48.dp * dimens.scaleFactor)
+                                isEnabled = betEnabled,
+                                dimens = dimens,
+                                labelOverride = "Subir"
+                            )
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp * dimens.scaleFactor),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "+",
-                                    // Negro solo habilitado; deshabilitado hereda el
-                                    // gris de Material (igual que el texto BET de
-                                    // GameActionButton), si no se ve negro apagado.
-                                    color = if (betEnabled) Color.Black else Color.Unspecified,
-                                    fontSize = dimens.fontSizeLarge,
-                                    fontWeight = FontWeight.Bold
+                                val quickBet = GameAction.Envido(2)
+                                GameActionButton(
+                                    action = quickBet,
+                                    onClick = { onActionClick(quickBet, currentPlayerId) },
+                                    isEnabled = betEnabled,
+                                    dimens = dimens,
+                                    labelOverride = "Envido 2"
                                 )
+                                // El "+" abre el selector para elegir otra cantidad.
+                                // Botón cuadrado y compacto: sin contentPadding y con
+                                // size fijo para no heredar el min-width de Material
+                                // (~58.dp) que ensancharía esta columna en pantallas
+                                // estrechas.
+                                Button(
+                                    onClick = {
+                                        onActionClick(GameAction.ToggleBetSelector, currentPlayerId)
+                                    },
+                                    enabled = betEnabled,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFEB3B)
+                                    ),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.size(48.dp * dimens.scaleFactor)
+                                ) {
+                                    Text(
+                                        text = "+",
+                                        // Negro solo habilitado; deshabilitado hereda
+                                        // el gris de Material (igual que el texto BET
+                                        // de GameActionButton).
+                                        color = if (betEnabled) Color.Black else Color.Unspecified,
+                                        fontSize = dimens.fontSizeLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                         val ordagoAction = GameAction.Órdago
