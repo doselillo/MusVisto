@@ -465,7 +465,7 @@ private fun GameOverlays(
                     gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
                 },
                 onCancel = {
-                    gameViewModel.onAction(GameAction.ToggleBetSelector, gameViewModel.humanPlayerId)
+                    gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.humanPlayerId)
                 },
                 isRaise = gameState.currentBet != null
             )
@@ -733,7 +733,10 @@ fun ActionButtons(
                             ) {
                                 Text(
                                     text = "+",
-                                    color = Color.Black,
+                                    // Negro solo habilitado; deshabilitado hereda el
+                                    // gris de Material (igual que el texto BET de
+                                    // GameActionButton), si no se ve negro apagado.
+                                    color = if (betEnabled) Color.Black else Color.Unspecified,
                                     fontSize = dimens.fontSizeLarge,
                                     fontWeight = FontWeight.Bold
                                 )
