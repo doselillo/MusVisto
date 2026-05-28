@@ -1097,13 +1097,12 @@ class AILogicTest {
     }
 
     @Test
-    fun `endgame ordago - rama (b) Hail-Mary en juego decisivo con rival al borde de 40 (#16)`() {
-        // Caso #16 con piso 65 (calibración A/B 2026-05-28): mano de Juego
-        // mediocre pero válida (R-R-R-2 = juego 32) en JUEGO con marcador 0-33.
-        // Es el último lance apostable y voy detrás → Hail-Mary. Antes (piso
-        // 55) también disparaba con R-S-S-4 (sin juego), pero el sim
-        // simétrico mostró 5.3× spam de órdago → piso subido a 65 (manos
-        // claras como 32 de juego sí cubren la esencia del #16).
+    fun `endgame ordago - rama (b) Hail-Mary con mano juego + proxy rival flojo (#16)`() {
+        // Caso #16 con piso R1.a 90 (calibración A/B 2026-05-28): mano de
+        // Juego mediocre (R-R-R-2 = juego 32, strength ~85) en JUEGO con
+        // marcador 0-33. Sin proxy, R1.a piso 90 NO dispara (85 < 90); el
+        // espíritu del #16 se cubre con R1.a' piso 70 cuando el proxy
+        // "rival flojo" se cumple (musRoundCount ≥1 + rival descartó ≥3).
         val hand = listOf(
             Card(Suit.OROS, Rank.REY),
             Card(Suit.COPAS, Rank.REY),
@@ -1116,11 +1115,13 @@ class AILogicTest {
             gamePhase = GamePhase.JUEGO,
             score = mapOf("teamA" to 33, "teamB" to 0),
             manoPlayerId = ai.id,
-            currentTurnPlayerId = ai.id
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 1,
+            discardCounts = mapOf(opponentPlayer.id to 3) // proxy rival flojo
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertTrue(
-            "Juego decisivo con rival a 33+ y mano juego clara (32) debe disparar Hail-Mary (#16)",
+            "Juego decisivo con rival 33 + mano media + proxy debe disparar R1.a' (#16)",
             decision.action is GameAction.Órdago
         )
     }

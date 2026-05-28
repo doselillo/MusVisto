@@ -132,8 +132,11 @@ private const val ENDGAME_ORDAGO_TIGHT_FLOOR = 85
 private const val ENDGAME_ORDAGO_LAST_LANCE_FLOOR = 85
 private const val Q2_MAX_DIFF = 5
 // Piso para R1.a "mano excelente" en desventaja crítica sin proxy.
-// 85 mismo nivel que R5 — no quiero regalar la chica con manos medias.
-private const val ENDGAME_ORDAGO_HAILMARY_FLOOR = 85
+// Calibración A/B 2026-05-28: 85 disparaba 3762 órdagos/10000 partidas
+// (37% del spam). Subido a 90 — "mano excelente" interpretada como 4R,
+// duples reyes, 31 mano. Para el caso del backlog #16 con mano media
+// (R-R-R-2, 32 juego) se requiere proxy "rival flojo" (R1.a' piso 70).
+private const val ENDGAME_ORDAGO_HAILMARY_FLOOR = 90
 // Piso para R1.a' "proxy rival flojo" en desventaja crítica. 70 — si
 // el rival pidió Mus + descartó muchas cartas, su mano ORIGINAL era
 // floja; la mía no necesita ser excelente para esperar ganar showdown.
@@ -950,17 +953,32 @@ class AILogic constructor(
         }
 
         // 2) R1.a / R1.a' Hail-Mary en desventaja crítica.
-        //    Aplica cuando voy DETRÁS y el rival está cerca de cerrar.
-        if (myScore < opponentScore && opponentScore >= ENDGAME_BORDER_SCORE) {
-            // R1.a: mano excelente directa (≥85).
+        //    Aplica cuando voy DETRÁS y se cumple UNA de:
+        //    - rival está en zona de cierre (opp ≥ 33), OR
+        //    - rival está cerca (opp ≥ 30) Y yo MUY por detrás (diff ≤ -10).
+        //    La segunda rama sustituye a las legacy "Desperation" y "Block win"
+        //    (eliminadas tras A/B sim 2026-05-28: disparaban 36% del spam).
+        if (myScore < opponentScore &&
+            opponentScore >= 30 &&
+            (opponentScore >= ENDGAME_BORDER_SCORE || diff <= -10)
+        ) {
+            // R1.a: mano excelente directa (≥90 calibrado A/B 2026-05-28).
+            // NO pasa por hasBetterLanceAhead — con la nuts y rival cerca de
+            // cerrar, la urgencia del Hail-Mary manda: lanzar YA en cualquier
+            // lance es +EV vs esperar (rival puede cerrarte en su siguiente
+            // turno). Sí mantiene el gate "ganar este lance normal me cierra".
             if (strength >= ENDGAME_ORDAGO_HAILMARY_FLOOR - pairBonus) {
-                if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
+                if (myScore + ENDGAME_STANDARD_CLOSE_BET >= 40) return null
                 val why = "R1.a Hail-Mary mano excelente (oppScore $opponentScore, " +
                     "myScore $myScore, strength $strength, partnerStrong=$partnerStrong)"
                 return Pair(GameAction.Órdago, "Reason: $why")
             }
-            // R1.a': mano media (≥70) + proxy "rival flojo" (Q3).
-            if (strength >= ENDGAME_ORDAGO_HAILMARY_LOOSE_FLOOR - pairBonus &&
+            // R1.a': mano media (≥70) + proxy "rival flojo" (Q3). Aplica solo
+            // en la zona estricta de R1.a (opp ≥ 33). Con mano MEDIA sí
+            // pasa por hailMaryGatesPass: no quemar el órdago si hay lance
+            // posterior con mano decente (caso típico del backlog #16).
+            if (opponentScore >= ENDGAME_BORDER_SCORE &&
+                strength >= ENDGAME_ORDAGO_HAILMARY_LOOSE_FLOOR - pairBonus &&
                 opponentLooseSignal(gameState, aiPlayer)
             ) {
                 if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
@@ -1118,26 +1136,13 @@ class AILogic constructor(
         val opponentScore = gameState.score[opponentTeam] ?: 0
         val scoreDifference = myTeamScore - opponentScore
 
-        // 1) Módulo R1-R5 endgame ordago (#16). Tiene PRIORIDAD sobre las
-        //    condiciones legacy "Desperation"/"Block win": pasa por
-        //    hailMaryGatesPass (no quema el órdago si hay lance mejor por
-        //    delante) y aplica pisos modernos (85 R1.a / 70 R1.a' con proxy
-        //    / 85 R5 / 80 Q2 / 80 R1.b). Devuelve null si no aplica.
+        // Módulo R1-R5 endgame ordago (#16). Cubre TODOS los casos de órdago
+        // proactivo: R1.b cortar la jugada, R1.a/R1.a' Hail-Mary desventaja
+        // crítica (con la rama ampliada a opp ∈ [30, 32] que sustituyó a las
+        // legacy Desperation + Block win tras A/B sim 2026-05-28), R5 endgame
+        // ajustado timing, Q2 último lance apostable. Devuelve null si no
+        // aplica → apertura por bandas normal sigue.
         decideEndgameOrdago(strength, finalStrength, aiPlayer, gameState)?.let { return it }
-        // 2) Legacy "Desperation": cubre el GAP entre R1.a (opp >= 33) y la
-        //    zona inicial/media — yendo MUY por detrás con mano fuerte y
-        //    rival en [25, 32]. Mantenida porque ninguna rama del módulo
-        //    nuevo lo cubre.
-        if (strength > 75 && scoreDifference < -15 && opponentScore > 25) {
-            return Pair(GameAction.Órdago, "Reason: Desperation legacy (diff $scoreDifference, opp $opponentScore, strength $strength)")
-        }
-        // 3) Legacy "Block win": cubre el GAP de rival cerca de 40 pero por
-        //    debajo del threshold ENDGAME_BORDER_SCORE de R1.a — opp ∈ [30,
-        //    32] con mi mano muy fuerte y diff >= -10. Mantenida por la
-        //    misma razón que (2).
-        if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
-            return Pair(GameAction.Órdago, "Reason: Block win legacy (opp $opponentScore, diff $scoreDifference, strength $strength)")
-        }
         // (Antes había una condición 3 "cerrar partida" con strength > 50:
         // regalaba el chico yendo por delante con mano floja —ordagar 36-29 sin
         // nada— porque jugando valor normal se cierra igual sin downside
