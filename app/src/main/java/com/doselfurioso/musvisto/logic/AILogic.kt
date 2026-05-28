@@ -1119,21 +1119,26 @@ class AILogic constructor(
         val opponentScore = gameState.score[opponentTeam] ?: 0
         val scoreDifference = myTeamScore - opponentScore
 
-        // Órdago proactivo en escenarios marcados:
-        // 1) Desesperación: vamos perdiendo y el rival está cerca de cantar 40. Mano buena.
-        if (strength > 75 && scoreDifference < -15 && opponentScore > 25) {
-            return Pair(GameAction.Órdago, "Reason: Desperation (diff $scoreDifference, opp $opponentScore, strength $strength)")
-        }
-        // 2) Bloquear victoria rival: el rival está a un envite de ganar y tenemos mano muy fuerte.
-        if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
-            return Pair(GameAction.Órdago, "Reason: Block opponent win (opp $opponentScore, diff $scoreDifference, strength $strength)")
-        }
-        // 3) Endgame ordago (#16 + (a)): cierre con casi la nuts yendo delante,
-        //    o Hail-Mary cuando el rival está al borde de 40. El wrapper de
-        //    decideByPhase descarta este órdago si soy apoyo → solo dispara
-        //    para capitán del lance (consistente con #20). Devuelve null si
-        //    no aplica y la apertura por bandas normal toma el control.
+        // 1) Módulo R1-R5 endgame ordago (#16). Tiene PRIORIDAD sobre las
+        //    condiciones legacy "Desperation"/"Block win": pasa por
+        //    hailMaryGatesPass (no quema el órdago si hay lance mejor por
+        //    delante) y aplica pisos modernos (85 R1.a / 70 R1.a' con proxy
+        //    / 85 R5 / 80 Q2 / 80 R1.b). Devuelve null si no aplica.
         decideEndgameOrdago(strength, finalStrength, aiPlayer, gameState)?.let { return it }
+        // 2) Legacy "Desperation": cubre el GAP entre R1.a (opp >= 33) y la
+        //    zona inicial/media — yendo MUY por detrás con mano fuerte y
+        //    rival en [25, 32]. Mantenida porque ninguna rama del módulo
+        //    nuevo lo cubre.
+        if (strength > 75 && scoreDifference < -15 && opponentScore > 25) {
+            return Pair(GameAction.Órdago, "Reason: Desperation legacy (diff $scoreDifference, opp $opponentScore, strength $strength)")
+        }
+        // 3) Legacy "Block win": cubre el GAP de rival cerca de 40 pero por
+        //    debajo del threshold ENDGAME_BORDER_SCORE de R1.a — opp ∈ [30,
+        //    32] con mi mano muy fuerte y diff >= -10. Mantenida por la
+        //    misma razón que (2).
+        if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
+            return Pair(GameAction.Órdago, "Reason: Block win legacy (opp $opponentScore, diff $scoreDifference, strength $strength)")
+        }
         // (Antes había una condición 3 "cerrar partida" con strength > 50:
         // regalaba el chico yendo por delante con mano floja —ordagar 36-29 sin
         // nada— porque jugando valor normal se cierra igual sin downside
