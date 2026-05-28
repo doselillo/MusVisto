@@ -41,6 +41,15 @@ private const val MUS_CUT_GRANDE_CHICA = 85
 // con manos que ya merecían cortarse (compañero mano no debe convertirse en
 // "no cortar nunca"; sigue siendo señal, no veto).
 private const val PARTNER_MANO_MUS_BIAS = 6
+// #37 "Fatiga de Mus": cada ciclo Mus+descarte sin cortar (gameState.
+// musRoundCount) baja el umbral de corte de la IA en este paso → el bucle de
+// Mus TERMINA (tras varias rondas con manos mediocres, en algún momento se
+// juega) y es más realista. Sin tope: por ~ronda 11-14 el umbral cae a ≤0 y
+// cualquier mano corta (bound de terminación), pero ronda 0 no tiene fatiga
+// (pedir Mus unas pocas veces con mano floja es Mus correcto — el refrán).
+// Solo la IA (el humano corta a mano). Calibración (step + posible periodo de
+// gracia) por simulador (distribución de longitud del bucle) + playtest.
+private const val MUS_FATIGUE_STEP = 8
 // #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
 // VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
 // humano no tendría info → corto por mi mano normal (sin delegar). 5% de
@@ -626,19 +635,25 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
-        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
-        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
-        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
+        // #37 Fatiga de Mus: baja el umbral de corte con cada ciclo Mus+descarte
+        // ya jugado en esta ronda (0 en la 1ª decisión). Garantiza que el bucle
+        // de Mus de la IA termina; ramp suave para no matar el Mus legítimo.
+        val fatigue = gameState.musRoundCount * MUS_FATIGUE_STEP
+
+        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias - fatigue // Umbral para cortar por pares
+        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias - fatigue
+        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias - fatigue
+        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias - fatigue
 
         // ¿Mi mano MERECE cortarse por sí sola? (razón, o null si no supera ningún
         // umbral). Se calcula ANTES de la delegación para gatear el break: el
         // primero solo corta por iniciativa con una mano cortable, nunca al azar.
+        val biasInfo = "manoBias $manoBias, fatiga $fatigue (mus #${gameState.musRoundCount})"
         val cutReason = when {
-            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)"
-            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)"
-            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)"
-            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)"
+            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold ($biasInfo)"
+            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold ($biasInfo)"
+            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold ($biasInfo)"
+            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold ($biasInfo)"
             else -> null
         }
 

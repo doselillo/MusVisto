@@ -93,6 +93,60 @@ class AILogicTest {
         }
     }
 
+    // --- TESTS FATIGA DE MUS (#37: el bucle de Mus de la IA termina) ---
+
+    @Test
+    fun `decideMus #37 - la fatiga acaba cortando una mano mediocre`() {
+        // Mano mediocre: sin pares, sin juego, fuerza media-baja. En ronda 0
+        // (sin fatiga) pide Mus —pedir Mus con mano floja es Mus correcto—; con
+        // muchas rondas acumuladas la fatiga baja el umbral hasta forzar el
+        // corte (garantía de terminación del bucle del #37).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SOTA), Card(Suit.COPAS, Rank.SIETE),
+            Card(Suit.ESPADAS, Rank.SEIS), Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val base = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = opponentPlayer.id // rival mano: sin sesgo de compañero-mano
+        )
+
+        val round0 = aiLogic.makeDecision(base.copy(musRoundCount = 0), ai).action
+        assertTrue("Ronda 0 sin fatiga: una mano mediocre pide Mus", round0 is GameAction.Mus)
+
+        val roundN = aiLogic.makeDecision(base.copy(musRoundCount = 15), ai).action
+        assertTrue("La fatiga debe forzar el corte tras muchas rondas", roundN is GameAction.NoMus)
+    }
+
+    @Test
+    fun `decideMus #37 - mas fatiga nunca hace cortar menos (monotonia + terminacion)`() {
+        // Invariante: subir musRoundCount solo puede pasar de Mus -> NoMus
+        // (la fatiga solo baja el umbral). Y dentro de 15 rondas SIEMPRE corta.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CABALLO), Card(Suit.COPAS, Rank.SOTA),
+            Card(Suit.ESPADAS, Rank.CINCO), Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val base = GameState(
+            players = listOf(ai, partner, opponentPlayer),
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = opponentPlayer.id
+        )
+        var sawCut = false
+        for (r in 0..15) {
+            val action = aiLogic.makeDecision(base.copy(musRoundCount = r), ai).action
+            if (action is GameAction.NoMus) sawCut = true
+            if (sawCut) assertTrue(
+                "Tras cortar por fatiga, no debe volver a pedir Mus en rondas posteriores (ronda $r)",
+                action is GameAction.NoMus
+            )
+        }
+        assertTrue("La fatiga debe acabar cortando dentro de 15 rondas", sawCut)
+    }
+
     // --- TESTS CAPITANÍA DE LANCE (#1/#4: rol de apoyo) ---
     // Driver de capitanía = POSICIÓN tardía (no quién señaliza). El primero del
     // equipo cede por norma general; las excepciones son mano propia premium
