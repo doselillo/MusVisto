@@ -124,10 +124,13 @@ private const val PENDING_LANCE_LOSS_THRESHOLD = 50
 // duples bajos, 30 de juego, 3 reyes). El proceso de cobro inmediato
 // compensa el riesgo de no tener la nuts.
 private const val ENDGAME_ORDAGO_TIGHT_FLOOR = 85
-// Piso para Q2 — último lance apostable de la ronda con ventaja >=3 o
-// en cualquier zona. Aceptable más bajo porque "si no cierro aquí,
-// rival cobra al recuento". 80 = mano clara (3 reyes, par grande, 30).
-private const val ENDGAME_ORDAGO_LAST_LANCE_FLOOR = 80
+// Piso para Q2 — último lance apostable de la ronda con ventaja moderada
+// (diff ∈ [3, 5]). Calibración A/B 2026-05-28: piso 80 con diff sin tope
+// disparaba 3190 órdagos/10000 partidas (25% del spam). Subido a 85 +
+// restringido diff <= 5 ⇒ solo dispara cuando la ventaja es contenida y
+// la mano es clara (medias de reyes, 30 mano, 3 reyes con kicker).
+private const val ENDGAME_ORDAGO_LAST_LANCE_FLOOR = 85
+private const val Q2_MAX_DIFF = 5
 // Piso para R1.a "mano excelente" en desventaja crítica sin proxy.
 // 85 mismo nivel que R5 — no quiero regalar la chica con manos medias.
 private const val ENDGAME_ORDAGO_HAILMARY_FLOOR = 85
@@ -522,18 +525,12 @@ class AILogic constructor(
             if (opponentBetStrongInPriorLance(gameState, aiPlayer)) {
                 acceptThreshold += ORDAGO_RESPONSE_OPP_STRONG_BET_PENALTY
             }
-            // (R4.f — timing del cobro en endgame ajustado) Ambos en zona
-            // de cierre (>=33) con diferencia pequeña (<=2). El cobro
-            // inmediato del órdago aceptado me deja cerrar si gano el
-            // showdown; el envido grande aceptado se cobraría al recuento
-            // permitiendo al rival pasarme. Vale aceptar con un poco menos
-            // de mano.
-            if (myScore >= ENDGAME_BORDER_SCORE &&
-                opponentScore >= ENDGAME_BORDER_SCORE &&
-                kotlin.math.abs(myScore - opponentScore) <= ENDGAME_TIGHT_DIFF
-            ) {
-                acceptThreshold -= ORDAGO_RESPONSE_TIGHT_ENDGAME_BONUS
-            }
+            // (R4.f eliminada 2026-05-28) El bonus -3 en endgame ajustado
+            // contribuía al sangrado del aceptar-net en sim simétrico
+            // (-61990 vs baseline -18005): la IA aceptaba demasiados órdagos
+            // basura confiando en el timing del cobro. Si el playtest pide
+            // más agresividad al aceptar en endgame, restaurar con
+            // calibración fina (instrumentar accept-net por zona de score).
 
             val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
 
@@ -985,11 +982,13 @@ class AILogic constructor(
             return Pair(GameAction.Órdago, "Reason: $why")
         }
 
-        // 4) Q2 último lance apostable con mano fuerte en endgame con ventaja.
-        //    No "ventaja holgada" estricta — solo aplica si NO hay lances
-        //    posteriores con mano decente Y este es el momento de cerrar.
+        // 4) Q2 último lance apostable con mano fuerte en endgame con ventaja
+        //    MODERADA (diff ∈ [3, Q2_MAX_DIFF=5]). Calibración A/B 2026-05-28:
+        //    sin tope superior en diff, Q2 disparaba 25% del total de órdagos
+        //    en sim simétrico (3190/10000 partidas, ventajas brutales con
+        //    cualquier mano ≥80). Restringido a ventaja contenida + piso 85.
         if (myScore >= ENDGAME_BORDER_SCORE &&
-            diff >= 3 &&
+            diff in 3..Q2_MAX_DIFF &&
             strength >= ENDGAME_ORDAGO_LAST_LANCE_FLOOR - pairBonus
         ) {
             val remainingLances = remainingLancesAfter(gameState.gamePhase)
