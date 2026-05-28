@@ -61,7 +61,13 @@ data class GameState(
     @Transient val isPaused: Boolean = false,
     // Mus corrido: 1ª ronda del juego, el que corta el mus se convierte en
     // mano. Activo hasta el primer corte; mientras, sin señas (#17).
-    val musCorrido: Boolean = false
+    val musCorrido: Boolean = false,
+    // #37 "Fatiga de Mus": nº de ciclos Mus+descarte completados en esta ronda
+    // SIN que nadie corte. 0 en la 1ª decisión de Mus; +1 en cada transición
+    // descarte→MUS (MusGameLogic). La IA baja su umbral de corte con este
+    // contador (AILogic.decideMus) → el bucle de Mus termina. Reset a 0 por
+    // reparto (GameState nuevo). Serializable: sobrevive guardar/cargar.
+    val musRoundCount: Int = 0
 )
 
 @Serializable

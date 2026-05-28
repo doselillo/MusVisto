@@ -750,7 +750,10 @@ class MusGameLogic constructor(private val random: Random){
                 discardCounts = newDiscardCounts,
                 manoPlayerId = nextStartId,
                 currentTurnPlayerId = nextStartId,
-                actionLog = newLog
+                actionLog = newLog,
+                // #37: un ciclo Mus+descarte más sin cortar → fatiga de Mus de
+                // la IA (AILogic.decideMus baja su umbral de corte por este +1).
+                musRoundCount = currentState.musRoundCount + 1
             )
         }
 
