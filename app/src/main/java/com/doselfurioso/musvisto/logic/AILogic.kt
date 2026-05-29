@@ -147,6 +147,15 @@ private const val R1A_AMPLE_DIFF = -5
 // el rival pidió Mus + descartó muchas cartas, su mano ORIGINAL era
 // floja; la mía no necesita ser excelente para esperar ganar showdown.
 private const val ENDGAME_ORDAGO_HAILMARY_LOOSE_FLOOR = 70
+// R1.a'' "Desesperación catastrófica" — diff ≤ -15 + opp ≥ 33 + mano
+// remotamente jugable. Cubre el caso donde sin mano excelente y sin
+// proxy rival flojo, la IA simplemente se "rendía" en partidas perdidas.
+// Filosofía: cuando vas vendido por ≥15 puntos y rival a 3 manos de
+// cerrar, el downside del all-in es marginal (perderías igual) vs el
+// upside de flippear con fold-equity. Strength 60 = 2 ases/doses chica,
+// medias sotas, 30 juego.
+private const val ENDGAME_CATASTROPHE_DIFF = -15
+private const val ENDGAME_ORDAGO_CATASTROPHE_FLOOR = 60
 // Q3 proxy: nº mínimo de cartas descartadas por el rival en el último
 // ciclo Mus+descarte para considerarlo "rival flojo". 3 = la mitad de
 // la mano + 1 = mano original muy mediocre.
@@ -995,6 +1004,21 @@ class AILogic constructor(
                 if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
                 val why = "R1.a' Hail-Mary + proxy rival flojo (oppScore $opponentScore, " +
                     "myScore $myScore, strength $strength)"
+                return Pair(GameAction.Órdago, "Reason: $why")
+            }
+            // R1.a'' "Desesperación catastrófica": diff ≤ -15 + opp ≥ 33 +
+            // mano remotamente jugable (≥60). Cubre el caso del log
+            // 2026-05-29: rival 17 vs humano 36, max strength 75 (Chica 2
+            // ases), sin proxy → R1.a/R1.a' no disparan → IA se "rinde".
+            // El downside del Hail-Mary es marginal (perderías igual en
+            // 2-3 manos); el upside es flippear con fold-equity del rival.
+            if (opponentScore >= ENDGAME_BORDER_SCORE &&
+                diff <= ENDGAME_CATASTROPHE_DIFF &&
+                strength >= ENDGAME_ORDAGO_CATASTROPHE_FLOOR - pairBonus
+            ) {
+                if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
+                val why = "R1.a'' Desesperación catastrófica (oppScore $opponentScore, " +
+                    "myScore $myScore, diff $diff, strength $strength)"
                 return Pair(GameAction.Órdago, "Reason: $why")
             }
         }

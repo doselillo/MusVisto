@@ -1271,9 +1271,11 @@ class AILogicTest {
 
     @Test
     fun `R1 a prima sin proxy rival flojo NO dispara Hail-Mary con mano media`() {
-        // Mismo escenario pero sin el proxy: musRoundCount=0 y sin descartes
-        // del rival. R1.a directo exige ≥85; R-R-R-S (juego 40, strength ~75
-        // con riskFactor) NO llega. Asegura que el proxy es la palanca.
+        // Marcador 33-19 (diff=-14, en franja donde R1.a'' Desesperación
+        // catastrófica NO aplica — exige diff ≤ -15). R1.a directo exige
+        // ≥90; R-R-R-S (juego 40, strength ~75 con riskFactor) NO llega.
+        // R1.a' exige proxy (musRoundCount=0 → falla). Asegura que sin
+        // proxy ni mano excelente ni catástrofe no se lanza Hail-Mary.
         val hand = listOf(
             Card(Suit.OROS, Rank.REY),
             Card(Suit.COPAS, Rank.REY),
@@ -1284,14 +1286,44 @@ class AILogicTest {
         val gameState = GameState(
             players = listOf(ai, opponentPlayer),
             gamePhase = GamePhase.JUEGO,
-            score = mapOf("teamA" to 33, "teamB" to 0),
+            score = mapOf("teamA" to 33, "teamB" to 19),
             manoPlayerId = ai.id,
             currentTurnPlayerId = ai.id,
             musRoundCount = 0
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertFalse(
-            "Sin proxy rival flojo, mano media (no excelente) NO dispara Hail-Mary",
+            "Sin proxy ni excelente ni catástrofe, mano media NO dispara Hail-Mary",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R1 a doble prima Desesperacion catastrofica dispara con mano decente`() {
+        // Caso del log 2026-05-29 (rival 17 vs humano 36, diff=-19): mano
+        // de Chica 75 (2 ases/doses + riskFactor), sin proxy ni mano
+        // excelente. R1.a'' debe lanzar Hail-Mary porque la partida ya
+        // está perdida (downside marginal vs upside flippear).
+        // Hand 7-3-2-A en CHICA: 2 ases/doses → strength.chica = 65 + 10
+        // riskFactor = 75. Score 36-17 → diff=-19 ≤ -15 ✓
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.TRES),
+            Card(Suit.ESPADAS, Rank.DOS),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.CHICA,
+            score = mapOf("teamA" to 36, "teamB" to 17),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 0
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "Catástrofe diff=-19 + Chica 75 → R1.a'' Desesperación dispara órdago",
             decision.action is GameAction.Órdago
         )
     }
