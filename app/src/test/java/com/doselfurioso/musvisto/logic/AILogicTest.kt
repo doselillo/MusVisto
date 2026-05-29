@@ -1298,16 +1298,16 @@ class AILogicTest {
 
     @Test
     fun `R1 b cortar la jugada con envites pendientes proyectados perdidos`() {
-        // Marcador 32-35, JUEGO en curso. Hay un agreedBet de 4 en GRANDE
-        // donde mi mano grande es floja (R-S-S-A = ~38 strength.grande).
-        // Proyección: oppProjectedPoints = 4 (gana grande) → oppScore + 4 = 39
-        // < 40 → R1.b NO dispara con este solo agreed. Con agreedBet de 5
-        // en GRANDE: 35+5=40 ≥ 40 → R1.b dispara si mi mano juego es ≥80.
-        // R-R-R-A = 31 juego (strength ~95) cumple.
+        // Marcador 32-35, JUEGO en curso. Hay un agreedBet de 5 en GRANDE
+        // donde mi mano grande es floja (R-CAB-SOTA-AS = ~31 strength.grande)
+        // → proyección: oppProj = 5 (rival gana grande) → 35+5=40 ≥ 40 ✓
+        // R-CAB-SOTA-AS suma 31 = juego (strength ~95) ≥80 ✓
+        // diff = -3 (NO entra en R1.a por gate AMPLE_DIFF=-5, v4 2026-05-29)
+        // → la rama que dispara es R1.b: rival cierra al recuento.
         val hand = listOf(
             Card(Suit.OROS, Rank.REY),
-            Card(Suit.COPAS, Rank.REY),
-            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.COPAS, Rank.CABALLO),
+            Card(Suit.ESPADAS, Rank.SOTA),
             Card(Suit.BASTOS, Rank.AS)
         )
         val ai = testPlayer.copy(hand = hand)

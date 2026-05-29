@@ -137,6 +137,12 @@ private const val Q2_MAX_DIFF = 5
 // duples reyes, 31 mano. Para el caso del backlog #16 con mano media
 // (R-R-R-2, 32 juego) se requiere proxy "rival flojo" (R1.a' piso 70).
 private const val ENDGAME_ORDAGO_HAILMARY_FLOOR = 90
+// R1.a "diferencia AMPLIA" según R1 del usuario ("va perdiendo por una
+// diferencia muy amplia"). Calibración A/B 2026-05-29: sin este gate
+// R1.a disparaba 6037 órdagos/10000 partidas (75% del total), muchos
+// con diff ∈ [-1, -4] (no es amplia: 32-34, 33-35) donde un envite
+// normal rinde más con mano excelente. Gate: diff ≤ -5.
+private const val R1A_AMPLE_DIFF = -5
 // Piso para R1.a' "proxy rival flojo" en desventaja crítica. 70 — si
 // el rival pidió Mus + descartó muchas cartas, su mano ORIGINAL era
 // floja; la mía no necesita ser excelente para esperar ganar showdown.
@@ -967,7 +973,12 @@ class AILogic constructor(
             // cerrar, la urgencia del Hail-Mary manda: lanzar YA en cualquier
             // lance es +EV vs esperar (rival puede cerrarte en su siguiente
             // turno). Sí mantiene el gate "ganar este lance normal me cierra".
-            if (strength >= ENDGAME_ORDAGO_HAILMARY_FLOOR - pairBonus) {
+            // Gate AMPLE_DIFF (A/B 2026-05-29): R1 del usuario exige
+            // "diferencia muy amplia"; con diff ∈ [-1,-4] (32-33, 33-35) un
+            // envite normal rinde más con mano excelente.
+            if (strength >= ENDGAME_ORDAGO_HAILMARY_FLOOR - pairBonus &&
+                diff <= R1A_AMPLE_DIFF
+            ) {
                 if (myScore + ENDGAME_STANDARD_CLOSE_BET >= 40) return null
                 val why = "R1.a Hail-Mary mano excelente (oppScore $opponentScore, " +
                     "myScore $myScore, strength $strength, partnerStrong=$partnerStrong)"
