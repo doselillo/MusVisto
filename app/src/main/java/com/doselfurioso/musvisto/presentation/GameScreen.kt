@@ -1587,7 +1587,14 @@ fun LanceTracker(
                 // ahí el ganador y los tantos ya se conocen (#30).
                 var resultColor = Color.Gray
                 if (isCurrent && currentBet != null) {
-                    resultText = "En juego: ${currentBet.amount}"
+                    // Un órdago no es un envite de N puntos: es jugarse la
+                    // partida. Se refleja como tal en vez de "En juego: 40".
+                    if (currentBet.isOrdago) {
+                        resultText = "¡ÓRDAGO!"
+                        resultColor = Color(0xFFFFB300) // ámbar: lance especial
+                    } else {
+                        resultText = "En juego: ${currentBet.amount}"
+                    }
                 } else if (result != null && !wasSkipped) {
                     when (result.outcome) {
                         "Querido" -> resultText = "Vale ${result.amount}"
