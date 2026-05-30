@@ -882,9 +882,17 @@ class AILogic constructor(
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // Regla dura: 3 figuras + 1 no-figura → tira la no-figura buscando el 31.
+        // Regla dura: 3 figuras + 1 no-figura.
+        // (#39) Solo se persigue el 31 manteniendo las 3 figuras si entre
+        // ellas hay AL MENOS UN REY (Rey/Tres): ahí hay respaldo de Grande y
+        // la caza del 31 es legítima. Con 3 figuras flojas (caballo/sota, sin
+        // rey) NO se persigue el 31 a ciegas — se cae al scoring, que descarta
+        // las figuras sueltas y roba buscando reyes (siempre conserva el par,
+        // pues 3 figuras no-rey implican Caballo/Sota emparejadas). Evita el
+        // "quedarse demasiadas figuras a por el 31 y regalar reyes al resto".
         val figures = hand.filter { it.rank in figureRanks }
-        if (figures.size == 3) {
+        val hasKingFigure = figures.any { it.rank == Rank.REY || it.rank == Rank.TRES }
+        if (figures.size == 3 && hasKingFigure) {
             val nonFigureCard = hand.first { it !in figures }
             return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
         }
