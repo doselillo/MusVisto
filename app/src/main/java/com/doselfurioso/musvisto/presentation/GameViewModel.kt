@@ -662,6 +662,14 @@ class GameViewModel constructor(
     }
 
     /**
+     * ¿Tiene [player] una seña que pasar con su mano actual? (#38) Reutiliza
+     * `determineGesture` para que la UI atenúe el botón de seña cuando el
+     * jugador tiene jugada pero no es señalizable (p. ej. par de caballos,
+     * juego ≠ 31): no hay seña que comunicar, el botón no debe parecer activo.
+     */
+    fun hasShowableGesture(player: Player): Boolean = determineGesture(player) != null
+
+    /**
      * #20 (pieza C): cuánto dura visible en pantalla la seña de [signalerId].
      * Solo la del COMPAÑERO del humano es legible (1.5 s, para que decida el
      * corte que se le delega); la del rival y la propia, flash corto, para que
