@@ -9,6 +9,7 @@ import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -399,11 +400,29 @@ class GameViewModel constructor(
         _isDebugMode.value = !_isDebugMode.value
     }
 
+    // Motor SERIALIZADO de avance de turno/declaración (#27). Un único Job
+    // vivo a la vez: antes de lanzar el siguiente paso se cancela el anterior,
+    // de modo que un avance de lance mata cualquier handleAiTurn rezagado
+    // pendiente. Evita dos secuencias de declaración concurrentes escribiendo
+    // los anuncios en paralelo (causa confirmada del parpadeo/solape).
+    private var engineJob: Job? = null
+
     private fun handleAiTurn() {
-        viewModelScope.launch {
+        // Contexto esperado capturado ANTES del delay. Si al despertar la fase
+        // o el turno han cambiado (otra coroutine ya avanzó el lance), este
+        // turno quedó obsoleto → abortamos en vez de procesar a ciegas, que es
+        // lo que disparaba la 2ª secuencia de declaración sobre un snapshot
+        // viejo (anuncios que reviven y se pisan, #27).
+        val expectedPhase = _gameState.value.gamePhase
+        val expectedTurn = _gameState.value.currentTurnPlayerId
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             delay(AI_TURN_PACING_MS)
             awaitNotPaused()
             val currentState = _gameState.value
+            if (currentState.gamePhase != expectedPhase ||
+                currentState.currentTurnPlayerId != expectedTurn
+            ) return@launch
             val currentPlayer =
                 currentState.players.find { it.id == currentState.currentTurnPlayerId }
 
@@ -470,8 +489,11 @@ class GameViewModel constructor(
             return
         }
 
-        // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
-        viewModelScope.launch {
+        // Lanzamos una corrutina para gestionar la secuencia de forma ordenada.
+        // Parte del motor serializado (#27): cancela la anterior antes de
+        // lanzar, para que el avance de lance mate cualquier paso rezagado.
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             // Frontera de lance. Durante este beat se mantienen visibles
             // TODAS las acciones del lance que acaba de cerrar (incl. la de
             // cierre) para que el jugador lea el lance resuelto sin perderse
@@ -507,7 +529,8 @@ class GameViewModel constructor(
         }
     }
     private fun handleDeclarationSequence(currentState: GameState) {
-        viewModelScope.launch {
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             var tempState = currentState
             val playersInOrder = gameLogic.getTurnOrderedPlayers(tempState.players, tempState.manoPlayerId)
 
