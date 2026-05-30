@@ -353,21 +353,19 @@ class AILogic constructor(
             GamePhase.JUEGO -> finalStrength.juego
             else -> 0
         }
-        val rawResponse = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
+        val (rawResponse, responseReason) = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
         // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
         // para mantener el bote del equipo sin pisar al capitán.
         val responseAction = if (playSupport &&
             (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
         ) GameAction.Quiero else rawResponse
-        val threshold = 70 // Umbral para "Quiero"
-        val actionLog = when {
-            playSupport && responseAction !== rawResponse ->
-                ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
-            responseAction is GameAction.Quiero ->
-                ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
-            else ->
-                ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
-        }
+        // El umbral de aceptación es CONTEXTUAL (órdago vs envite, posición,
+        // marcador, foldChance…). decideResponse devuelve la razón real para
+        // que el log no afirme un umbral fijo inexistente.
+        val actionLog = if (playSupport && responseAction !== rawResponse)
+            ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán; base: $responseReason)"
+        else
+            ">>> FINAL ACTION: ${responseAction.displayText} (Reason: $responseReason)"
         return AIDecision(responseAction) to actionLog
     }
 
@@ -460,7 +458,7 @@ class AILogic constructor(
         finalStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player
-    ): GameAction {
+    ): Pair<GameAction, String> {
         val currentBetAmount = gameState.currentBet?.amount ?: 0
         // Compensación #20: si mi compañero (primero del equipo) ya pasó en
         // este lance, el equipo está apostando SOLO con mi mano. Bajo el
@@ -510,7 +508,8 @@ class AILogic constructor(
                 }
                 if (lance != gameState.gamePhase && myStrength < PENDING_LANCE_LOSS_THRESHOLD) amount else 0
             }
-            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero
+            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero to
+                "Órdago: Quiero forzado — rechazar entrega la partida (opp $opponentScore + noQuerida $pointsIfRejected + pendientes $pendingRivalPoints >= 40)"
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
@@ -553,12 +552,16 @@ class AILogic constructor(
             val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
 
             return when {
-                effectiveStrength >= acceptThreshold -> GameAction.Quiero
-                effectiveStrength < deadFloor -> GameAction.NoQuiero
+                effectiveStrength >= acceptThreshold ->
+                    GameAction.Quiero to "Órdago: Quiero (effStrength $effectiveStrength >= umbral $acceptThreshold)"
+                effectiveStrength < deadFloor ->
+                    GameAction.NoQuiero to "Órdago: NoQuiero (effStrength $effectiveStrength < piso $deadFloor)"
                 // Banda media [deadFloor, umbral): llamada probabilística para
                 // que spamear órdago con mano floja no sea gratis.
-                rng.nextInt(100) < 30 -> GameAction.Quiero
-                else -> GameAction.NoQuiero
+                rng.nextInt(100) < 30 ->
+                    GameAction.Quiero to "Órdago: Quiero (banda media [$deadFloor,$acceptThreshold), llamada 30%)"
+                else ->
+                    GameAction.NoQuiero to "Órdago: NoQuiero (banda media [$deadFloor,$acceptThreshold), sin llamada)"
             }
         }
 
@@ -567,14 +570,17 @@ class AILogic constructor(
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
 
-        val action = when {
+        val (action, reason) = when {
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
-            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
+            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) ->
+                GameAction.Órdago to "REGLA1: Órdago (ventaja $advantage > 95, envite $currentBetAmount / opp $opponentScore)"
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength, isRaise = true))
+            advantage > 85 ->
+                GameAction.Envido(betAmount(effectiveStrength, isRaise = true)) to
+                    "REGLA2: subo el envite (ventaja $advantage > 85)"
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -617,8 +623,10 @@ class AILogic constructor(
                 val baseFold = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
                     .coerceAtMost(80)
                 val foldChance = juego31LossOverride(gameState, aiPlayer) ?: baseFold
-                if (rng.nextInt(100) < foldChance) GameAction.NoQuiero
-                else GameAction.Quiero
+                if (rng.nextInt(100) < foldChance)
+                    GameAction.NoQuiero to "REGLA3: NoQuiero (ventaja $advantage > 60, foldChance $foldChance%)"
+                else
+                    GameAction.Quiero to "REGLA3: Quiero (ventaja $advantage > 60, foldChance $foldChance%)"
             }
 
             // REGLA 4: "pagar por ver" con mano media-floja. 5% -> 10%
@@ -636,13 +644,14 @@ class AILogic constructor(
             // que la IA dispute más lances. Si vuelve a sentirse tímida, la
             // siguiente palanca NO es esta (retorno disminuyente) sino la
             // agresividad de APERTURA del capitán (ver backlog #20/#11).
-            advantage > 50 && rng.nextInt(100) < 10 -> GameAction.Quiero
+            advantage > 50 && rng.nextInt(100) < 10 ->
+                GameAction.Quiero to "REGLA4: Quiero pagar-por-ver (ventaja $advantage > 50, 10%)"
 
-            else -> GameAction.NoQuiero
+            else -> GameAction.NoQuiero to "Sin ventaja suficiente: NoQuiero (ventaja $advantage)"
         }
         // --- FIN DE LA LÓGICA MEJORADA ---
 
-        return action
+        return action to reason
     }
 
     // ---------------- Mus / NoMus ----------------
