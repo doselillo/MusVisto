@@ -365,14 +365,29 @@ fun GameScreen(
                         // En su lugar, un indicador del modo que explica por qué
                         // no hay botón de seña.
                         if (!gameState.musCorrido) {
+                            // #38: si la mano no da para seña (jugada no señalizable,
+                            // p. ej. par de caballos o juego ≠ 31), el botón se atenúa
+                            // y no responde — no hay seña que pasar.
+                            val canShowGesture = gameViewModel.hasShowableGesture(player)
                             Box(
                                 modifier = Modifier
                                     .size(58.dp * scaleFactor)
-                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                    .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                                    .background(
+                                        Color.Black.copy(alpha = if (canShowGesture) 0.5f else 0.25f),
+                                        RoundedCornerShape(14.dp)
+                                    )
+                                    .then(
+                                        if (canShowGesture) Modifier.clickable {
+                                            gameViewModel.onAction(GameAction.ShowGesture, player.id)
+                                        } else Modifier
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                                Text(
+                                    "Seña",
+                                    color = Color.White.copy(alpha = if (canShowGesture) 1f else 0.4f),
+                                    fontSize = dimens.fontSizeLarge
+                                )
                             }
                         } else {
                             Box(
