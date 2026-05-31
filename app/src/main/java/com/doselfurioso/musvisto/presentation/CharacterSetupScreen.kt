@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -63,6 +64,11 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
     val settings by viewModel.settings.collectAsState()
     var activeSlot by remember { mutableStateOf(TableSlot.PARTNER) }
     val activeCharId = characterIdFor(settings, activeSlot)
+    // Callbacks estables → la fila de asientos y la rejilla se saltan la
+    // recomposición cuando solo cambia el nombre tecleado.
+    val onActivate: (TableSlot) -> Unit = remember { { activeSlot = it } }
+    val onPickCharacter: (String) -> Unit =
+        remember(activeSlot) { { id -> viewModel.assignCharacter(activeSlot, id) } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxSize(), color = GAME_GREEN) {}
@@ -80,7 +86,14 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
             NameField(settings.humanName, viewModel::setHumanName)
             Spacer(Modifier.height(20.dp))
 
-            TableSlotsRow(settings, activeSlot) { activeSlot = it }
+            TableSlotsRow(
+                humanId = settings.humanCharacterId,
+                partnerId = settings.partnerCharacterId,
+                rivalLeftId = settings.rivalLeftCharacterId,
+                rivalRightId = settings.rivalRightCharacterId,
+                activeSlot = activeSlot,
+                onActivate = onActivate
+            )
             Spacer(Modifier.height(16.dp))
             Text(
                 "Toca un asiento y elige un personaje",
@@ -89,7 +102,7 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
             )
             Spacer(Modifier.height(12.dp))
 
-            RosterGrid(activeCharId) { viewModel.assignCharacter(activeSlot, it) }
+            RosterGrid(activeCharId, onPickCharacter)
             Spacer(Modifier.height(8.dp))
 
             TraitPanel(activeSlot, CharacterRoster.byId(activeCharId))
@@ -97,10 +110,14 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
 
             SetupActions(
                 onStart = {
+                    viewModel.commitSettings()
                     viewModel.startNewGame()
                     navController.navigate("game_screen") { popUpTo("main_menu") }
                 },
-                onBack = { navController.popBackStack() }
+                onBack = {
+                    viewModel.commitSettings()
+                    navController.popBackStack()
+                }
             )
         }
     }
@@ -137,16 +154,20 @@ private fun NameField(name: String, onChange: (String) -> Unit) {
 
 @Composable
 private fun TableSlotsRow(
-    settings: GameSettings,
+    humanId: String,
+    partnerId: String,
+    rivalLeftId: String,
+    rivalRightId: String,
     activeSlot: TableSlot,
     onActivate: (TableSlot) -> Unit
 ) {
-    // El asiento activo se resalta; tocar uno lo activa.
+    // Ids estables (String) por asiento → la fila se salta la recomposición al
+    // teclear el nombre. El asiento activo se resalta; tocar uno lo activa.
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        SlotChip(TableSlot.HUMAN, "Tú", settings, activeSlot, onActivate)
-        SlotChip(TableSlot.PARTNER, "Pareja", settings, activeSlot, onActivate)
-        SlotChip(TableSlot.RIVAL_LEFT, "Rival Izq.", settings, activeSlot, onActivate)
-        SlotChip(TableSlot.RIVAL_RIGHT, "Rival Der.", settings, activeSlot, onActivate)
+        SlotChip(TableSlot.HUMAN, "Tú", humanId, activeSlot, onActivate)
+        SlotChip(TableSlot.PARTNER, "Pareja", partnerId, activeSlot, onActivate)
+        SlotChip(TableSlot.RIVAL_LEFT, "Rival Izq.", rivalLeftId, activeSlot, onActivate)
+        SlotChip(TableSlot.RIVAL_RIGHT, "Rival Der.", rivalRightId, activeSlot, onActivate)
     }
 }
 
@@ -154,12 +175,12 @@ private fun TableSlotsRow(
 private fun SlotChip(
     slot: TableSlot,
     label: String,
-    settings: GameSettings,
+    characterId: String,
     activeSlot: TableSlot,
     onActivate: (TableSlot) -> Unit
 ) {
     val isActive = slot == activeSlot
-    val character = CharacterRoster.byId(characterIdFor(settings, slot))
+    val character = CharacterRoster.byId(characterId)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -180,7 +201,13 @@ private fun SlotChip(
                 .clip(CircleShape)
         )
         Spacer(Modifier.height(2.dp))
-        Text(character.name, color = Color.White, fontSize = 10.sp, maxLines = 1)
+        Text(
+            character.name,
+            color = Color.White,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -225,12 +252,20 @@ private fun CharacterCard(character: Character, selected: Boolean, onClick: () -
                 .clip(CircleShape)
         )
         Spacer(Modifier.height(4.dp))
-        Text(character.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(
+            character.name,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Text(
             character.archetype.displayName,
             color = Color.White.copy(alpha = 0.7f),
             fontSize = 11.sp,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -248,7 +283,9 @@ private fun TraitPanel(slot: TableSlot, character: Character) {
             "${character.name} · ${character.archetype.displayName}",
             color = Color.White,
             fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         if (slot == TableSlot.HUMAN) {
             Spacer(Modifier.height(6.dp))

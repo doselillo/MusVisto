@@ -2,13 +2,22 @@ package com.doselfurioso.musvisto.presentation
 
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.model.GameSettings
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /** Asientos de la mesa que el usuario puede personalizar (#34/#36). */
 enum class TableSlot { HUMAN, PARTNER, RIVAL_LEFT, RIVAL_RIGHT }
+
+// El nombre es texto libre de alta frecuencia: persistir en cada tecla serializa
+// JSON + escribe a disco. Se actualiza en memoria al instante y se guarda con
+// debounce; commitSettings() fuerza el guardado al salir de la pantalla.
+private const val NAME_SAVE_DEBOUNCE_MS = 400L
 
 class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel() {
 
@@ -35,7 +44,30 @@ class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel(
 
     fun setBestOfChicos(bestOf: Int) = update { it.copy(bestOfChicos = bestOf) }
 
-    fun setHumanName(name: String) = update { it.copy(humanName = name) }
+    private var nameSaveJob: Job? = null
+
+    /**
+     * Edita el nombre del humano: actualiza el StateFlow al instante (tecleo
+     * fluido) y persiste con debounce, sin tocar disco en cada pulsación.
+     */
+    fun setHumanName(name: String) {
+        _settings.value = _settings.value.copy(humanName = name)
+        nameSaveJob?.cancel()
+        nameSaveJob = viewModelScope.launch {
+            delay(NAME_SAVE_DEBOUNCE_MS)
+            gameRepository.saveSettings(_settings.value)
+        }
+    }
+
+    /**
+     * Persiste de inmediato cualquier cambio pendiente (el nombre con debounce).
+     * Llamar ANTES de navegar fuera: GameViewModel relee `GameSettings` del disco
+     * al arrancar, así que el último nombre tecleado debe estar ya guardado.
+     */
+    fun commitSettings() {
+        nameSaveJob?.cancel()
+        gameRepository.saveSettings(_settings.value)
+    }
 
     /**
      * Asigna [characterId] al [slot]. Para mantener los 4 asientos con personajes
