@@ -19,6 +19,11 @@ import kotlin.math.max
 // que las antiguas constantes, así que los cuerpos de los métodos no cambian.
 // La documentación/rationale de cada palanca está junto a su campo en AIProfile.
 
+// Probabilidad de que mi juego AGUANTE frente a UN rival por delante (modelo de
+// showdown de juego: 1 - 0.90^nRivales = prob. de que al menos uno me gane). No
+// es palanca de personalidad: es una constante del modelo de fuerza, no del perfil.
+private const val JUEGO_HOLD_PROB_PER_RIVAL = 0.90
+
 data class AIDecision(
     val action: GameAction,
     val cardsToDiscard: Set<Card> = emptySet(),
@@ -234,7 +239,8 @@ class AILogic constructor(
         // marcador, foldChance…). decideResponse devuelve la razón real para
         // que el log no afirme un umbral fijo inexistente.
         val actionLog = if (playSupport && responseAction !== rawResponse)
-            ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán; base: $responseReason)"
+            ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} " +
+                "para no pisar al capitán; base: $responseReason)"
         else
             ">>> FINAL ACTION: ${responseAction.displayText} (Reason: $responseReason)"
         return AIDecision(responseAction) to actionLog
@@ -324,6 +330,9 @@ class AILogic constructor(
             .joinToString(" ") { cardToShortString(it) }
 
     // ---------------- Responder a apuestas activas ----------------
+    // Complejidad pre-existente de un método de decisión central; reducirla es una
+    // tarea aparte con validación de simulador (el comportamiento lo fija el snapshot).
+    @Suppress("CyclomaticComplexMethod")
     private fun decideResponse(
         adjustedStrength: Int,
         finalStrength: HandStrength,
@@ -380,7 +389,8 @@ class AILogic constructor(
                 if (lance != gameState.gamePhase && myStrength < PENDING_LANCE_LOSS_THRESHOLD) amount else 0
             }
             if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero to
-                "Órdago: Quiero forzado — rechazar entrega la partida (opp $opponentScore + noQuerida $pointsIfRejected + pendientes $pendingRivalPoints >= 40)"
+                "Órdago: Quiero forzado — rechazar entrega la partida (opp $opponentScore + " +
+                    "noQuerida $pointsIfRejected + pendientes $pendingRivalPoints >= 40)"
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
@@ -445,7 +455,8 @@ class AILogic constructor(
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
             advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) ->
-                GameAction.Órdago to "REGLA1: Órdago (ventaja $advantage > 95, envite $currentBetAmount / opp $opponentScore)"
+                GameAction.Órdago to "REGLA1: Órdago (ventaja $advantage > 95, " +
+                    "envite $currentBetAmount / opp $opponentScore)"
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
@@ -669,10 +680,14 @@ class AILogic constructor(
         // primero solo corta por iniciativa con una mano cortable, nunca al azar.
         val biasInfo = "manoBias $manoBias, fatiga $fatigue (mus #${gameState.musRoundCount})"
         val cutReason = when {
-            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold ($biasInfo)"
-            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold ($biasInfo)"
-            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold ($biasInfo)"
-            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold ($biasInfo)"
+            strength.pares >= paresCutThreshold ->
+                "Pares strength ${strength.pares} >= threshold $paresCutThreshold ($biasInfo)"
+            strength.juego >= juegoCutThreshold ->
+                "Juego strength ${strength.juego} >= threshold $juegoCutThreshold ($biasInfo)"
+            strength.grande >= grandeCutThreshold ->
+                "Grande strength ${strength.grande} >= threshold $grandeCutThreshold ($biasInfo)"
+            strength.chica >= chicaCutThreshold ->
+                "Chica strength ${strength.chica} >= threshold $chicaCutThreshold ($biasInfo)"
             else -> null
         }
 
@@ -745,7 +760,8 @@ class AILogic constructor(
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
         if (handWouldCut && rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
-            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
+            return GameAction.NoMus to
+                "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
         }
         return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
     }
@@ -815,6 +831,10 @@ class AILogic constructor(
      * de `decideByPhase` ya descarta el órdago si soy apoyo (`playSupport`):
      * este módulo SOLO dispara para capitán del lance (#20).
      */
+    // Complejidad/returns/condiciones pre-existentes del módulo de órdago endgame
+    // (#16); reducirlos es tarea aparte con validación de simulador (comportamiento
+    // fijado por el snapshot).
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
     private fun decideEndgameOrdago(
         strength: Int,
         finalStrength: HandStrength,
@@ -1040,6 +1060,9 @@ class AILogic constructor(
         else -> 0
     }
 
+    // Complejidad pre-existente de la apertura por bandas; reducirla es tarea aparte
+    // con validación de simulador (el comportamiento lo fija el snapshot).
+    @Suppress("CyclomaticComplexMethod")
     private fun decideInitialBet(
         strength: Int,
         finalStrength: HandStrength,
@@ -1489,7 +1512,9 @@ class AILogic constructor(
             if (juegoValue in 32..40 && rivalsAhead > 0) {
                 val posPenalty = rivalsAhead * 10
                 juegoStrength -= posPenalty
-                explanation.appendLine("     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts")
+                explanation.appendLine(
+                    "     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts"
+                )
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
@@ -1691,7 +1716,7 @@ class AILogic constructor(
                             val gPos = gesturerOrder.indexOfFirst { it.id == gesturer.id }
                             val gRivalsAhead =
                                 if (gPos > 0) gesturerOrder.take(gPos).count { it.team != gesturer.team } else 0
-                            val pLose = 1.0 - Math.pow(0.90, gRivalsAhead.toDouble())
+                            val pLose = 1.0 - Math.pow(JUEGO_HOLD_PROB_PER_RIVAL, gRivalsAhead.toDouble())
                             (100 - (pLose * 100).toInt()).coerceIn(0, 100)
                         }
                         teamStrength = teamStrength.copy(juego = max(teamStrength.juego, juegoStrength))
