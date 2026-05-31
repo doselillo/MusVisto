@@ -114,12 +114,24 @@ class GameViewModel constructor(
         }
     }
 
-    private fun defaultPlayers(): List<Player> = listOf(
-        Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-        Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-        Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-        Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
-    )
+    // #34/#36: la mesa se construye desde la selección persistida en GameSettings
+    // (humano + pareja + 2 rivales del CharacterRoster). Se conservan los ids de
+    // asiento y equipos (p1+p3 = teamA, p2+p4 = teamB; pareja arriba, rivales a los
+    // lados). Defaults del repo = la mesa clásica. profileFor sigue baseline (Fase C
+    // conecta el arquetipo de cada personaje a su AILogic).
+    private fun defaultPlayers(): List<Player> {
+        val settings = gameRepository.loadSettings()
+        val human = CharacterRoster.byId(settings.humanCharacterId)
+        val partner = CharacterRoster.byId(settings.partnerCharacterId)
+        val rivalLeft = CharacterRoster.byId(settings.rivalLeftCharacterId)
+        val rivalRight = CharacterRoster.byId(settings.rivalRightCharacterId)
+        return listOf(
+            Player(id = "p1", name = settings.humanName, avatarResId = human.avatarResId, isAi = false, team = "teamA"),
+            Player(id = "p4", name = rivalLeft.name, avatarResId = rivalLeft.avatarResId, isAi = true, team = "teamB"),
+            Player(id = "p3", name = partner.name, avatarResId = partner.avatarResId, isAi = true, team = "teamA"),
+            Player(id = "p2", name = rivalRight.name, avatarResId = rivalRight.avatarResId, isAi = true, team = "teamB")
+        )
+    }
 
     /**
      * Arranca una partida de prueba con manos forzadas (panel de debug).

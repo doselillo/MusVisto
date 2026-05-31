@@ -17,6 +17,7 @@ import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
+import com.doselfurioso.musvisto.presentation.CharacterSetupScreen
 import com.doselfurioso.musvisto.presentation.GameScreen
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
@@ -88,6 +89,12 @@ fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewMode
             // Esta línea ahora funcionará porque las dependencias de 'viewModel' están en el proyecto
             GameScreen(gameViewModel = viewModel(factory = factory),
                 navController = navController,
+            )
+        }
+        composable("character_setup_screen") {
+            CharacterSetupScreen(
+                navController = navController,
+                viewModel = viewModel(factory = mainMenuFactory)
             )
         }
         composable("gestures_screen") {

@@ -75,16 +75,15 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
                 StyledMenuButton(
                     text = "Nueva Partida",
-                    onClick = {
-                        viewModel.startNewGame()
-                        navController.navigate("game_screen")
-                    }
+                    // La partida nueva se elige y arranca desde la pantalla de mesa
+                    // (#34/#36); allí "Comenzar" llama a startNewGame().
+                    onClick = { navController.navigate("character_setup_screen") }
                 )
             } else {
                 // Si no hay partida guardada
                 StyledMenuButton(
                     text = "Jugar",
-                    onClick = { navController.navigate("game_screen") }
+                    onClick = { navController.navigate("character_setup_screen") }
                 )
             }
 
