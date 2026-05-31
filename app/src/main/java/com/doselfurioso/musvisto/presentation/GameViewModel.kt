@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
@@ -49,11 +50,33 @@ private const val AI_TURN_PACING_MS = 850L
 
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
-    private val aiLogic: AILogic,
+    /**
+     * Crea un [AILogic] para un perfil dado (#34). El ViewModel construye uno por
+     * jugador de IA según su personalidad → los rivales dejan de ser clones.
+     */
+    private val aiLogicFactory: (AIProfile) -> AILogic,
     private val gameRepository: GameRepository
 ) : ViewModel() {
 
     private val TAG = "GameViewModelDebug"
+
+    // Un AILogic por jugador de IA (keyed por playerId), reconstruido al arrancar
+    // cada partida/escenario. En Fase A todos usan el perfil baseline; la
+    // asignación de arquetipos por personaje llega en Fase B/C (ver profileFor).
+    private var aiLogics: Map<String, AILogic> = emptyMap()
+
+    private fun rebuildAiLogics(players: List<Player>) {
+        aiLogics = players.filter { it.isAi }
+            .associate { player -> player.id to aiLogicFactory(profileFor(player)) }
+    }
+
+    /**
+     * Perfil de personalidad de un jugador de IA. Fase A: todos baseline
+     * (`EQUILIBRADO`). Fase C: resolver el arquetipo del personaje asignado
+     * (de ahí el parámetro `player`, aún sin usar).
+     */
+    @Suppress("UnusedParameter")
+    private fun profileFor(player: Player): AIProfile = AIProfile.EQUILIBRADO
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -113,6 +136,7 @@ class GameViewModel constructor(
         val players = defaultPlayers().map {
             it.copy(hand = scenario.hands[it.id] ?: emptyList())
         }
+        rebuildAiLogics(players)
         val dealtCards = scenario.hands.values.flatten().toSet()
         val remainingDeck = gameLogic.createDeck().filter { it !in dealtCards }
 
@@ -429,8 +453,11 @@ class GameViewModel constructor(
             if (currentPlayer != null && currentPlayer.isAi) {
                 Log.d("MusVistoDebug", "AI's turn detected for: ${currentPlayer.name}")
 
-                // Obtenemos la decisión completa de la IA (acción + cartas)
-                val aiDecision = aiLogic.makeDecision(currentState, currentPlayer)
+                // Obtenemos la decisión completa de la IA (acción + cartas) con
+                // el AILogic del perfil de ESTE jugador (#34). Fallback baseline
+                // por si el mapa no estuviese poblado (no debería ocurrir).
+                val ai = aiLogics[currentPlayer.id] ?: aiLogicFactory(AIProfile())
+                val aiDecision = ai.makeDecision(currentState, currentPlayer)
                 Log.d(
                     "MusVistoDebug",
                     "AI (${currentPlayer.name}) decided to: ${aiDecision.action.displayText}"
@@ -579,6 +606,7 @@ class GameViewModel constructor(
         val settings = gameRepository.loadSettings()
 
         val players = _gameState.value.players.ifEmpty { defaultPlayers() }
+        rebuildAiLogics(players)
 
         val newManoId = if (lastManoPlayerId != null) {
             val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }

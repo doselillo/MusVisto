@@ -14,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.presentation.GameScreen
@@ -47,11 +48,15 @@ class MainActivity : ComponentActivity() {
                 if (modelClass.isAssignableFrom(GameViewModel::class.java)) {
                     val random = Random(System.currentTimeMillis())
                     val gameLogic = MusGameLogic(random)
-                    val aiLogic = AILogic(gameLogic, random)
+                    // #34: factory de AILogic por perfil. Todas las IA comparten
+                    // el mismo `random` (interleave determinista por orden de turno).
+                    val aiLogicFactory: (AIProfile) -> AILogic = { profile ->
+                        AILogic(gameLogic, random, profile)
+                    }
                     val gameRepository = GameRepository(applicationContext)
 
                     @Suppress("UNCHECKED_CAST")
-                    return GameViewModel(gameLogic, aiLogic, gameRepository) as T
+                    return GameViewModel(gameLogic, aiLogicFactory, gameRepository) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }
