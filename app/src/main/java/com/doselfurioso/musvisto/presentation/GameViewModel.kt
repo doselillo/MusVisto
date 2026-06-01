@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,11 +50,33 @@ private const val AI_TURN_PACING_MS = 850L
 
 class GameViewModel constructor(
     internal val gameLogic: MusGameLogic,
-    private val aiLogic: AILogic,
+    /**
+     * Crea un [AILogic] para un perfil dado (#34). El ViewModel construye uno por
+     * jugador de IA según su personalidad → los rivales dejan de ser clones.
+     */
+    private val aiLogicFactory: (AIProfile) -> AILogic,
     private val gameRepository: GameRepository
 ) : ViewModel() {
 
     private val TAG = "GameViewModelDebug"
+
+    // Un AILogic por jugador de IA (keyed por playerId), reconstruido al arrancar
+    // cada partida/escenario. En Fase A todos usan el perfil baseline; la
+    // asignación de arquetipos por personaje llega en Fase B/C (ver profileFor).
+    private var aiLogics: Map<String, AILogic> = emptyMap()
+
+    private fun rebuildAiLogics(players: List<Player>) {
+        aiLogics = players.filter { it.isAi }
+            .associate { player -> player.id to aiLogicFactory(profileFor(player)) }
+    }
+
+    /**
+     * Perfil de personalidad de un jugador de IA. Fase A: todos baseline
+     * (`EQUILIBRADO`). Fase C: resolver el arquetipo del personaje asignado
+     * (de ahí el parámetro `player`, aún sin usar).
+     */
+    @Suppress("UnusedParameter")
+    private fun profileFor(player: Player): AIProfile = AIProfile.EQUILIBRADO
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -90,12 +114,24 @@ class GameViewModel constructor(
         }
     }
 
-    private fun defaultPlayers(): List<Player> = listOf(
-        Player(id = "p1", name = "Tú", avatarResId = R.drawable.avatar_castilla, isAi = false, team = "teamA"),
-        Player(id = "p4", name = "Rival Izq.", avatarResId = R.drawable.avatar_navarra, isAi = true, team = "teamB"),
-        Player(id = "p3", name = "Pareja", avatarResId = R.drawable.avatar_aragon, isAi = true, team = "teamA"),
-        Player(id = "p2", name = "Rival Der.", avatarResId = R.drawable.avatar_granada, isAi = true, team = "teamB")
-    )
+    // #34/#36: la mesa se construye desde la selección persistida en GameSettings
+    // (humano + pareja + 2 rivales del CharacterRoster). Se conservan los ids de
+    // asiento y equipos (p1+p3 = teamA, p2+p4 = teamB; pareja arriba, rivales a los
+    // lados). Defaults del repo = la mesa clásica. profileFor sigue baseline (Fase C
+    // conecta el arquetipo de cada personaje a su AILogic).
+    private fun defaultPlayers(): List<Player> {
+        val settings = gameRepository.loadSettings()
+        val human = CharacterRoster.byId(settings.humanCharacterId)
+        val partner = CharacterRoster.byId(settings.partnerCharacterId)
+        val rivalLeft = CharacterRoster.byId(settings.rivalLeftCharacterId)
+        val rivalRight = CharacterRoster.byId(settings.rivalRightCharacterId)
+        return listOf(
+            Player(id = "p1", name = settings.humanName, avatarResId = human.avatarResId, isAi = false, team = "teamA"),
+            Player(id = "p4", name = rivalLeft.name, avatarResId = rivalLeft.avatarResId, isAi = true, team = "teamB"),
+            Player(id = "p3", name = partner.name, avatarResId = partner.avatarResId, isAi = true, team = "teamA"),
+            Player(id = "p2", name = rivalRight.name, avatarResId = rivalRight.avatarResId, isAi = true, team = "teamB")
+        )
+    }
 
     /**
      * Arranca una partida de prueba con manos forzadas (panel de debug).
@@ -112,6 +148,7 @@ class GameViewModel constructor(
         val players = defaultPlayers().map {
             it.copy(hand = scenario.hands[it.id] ?: emptyList())
         }
+        rebuildAiLogics(players)
         val dealtCards = scenario.hands.values.flatten().toSet()
         val remainingDeck = gameLogic.createDeck().filter { it !in dealtCards }
 
@@ -399,19 +436,40 @@ class GameViewModel constructor(
         _isDebugMode.value = !_isDebugMode.value
     }
 
+    // Motor SERIALIZADO de avance de turno/declaración (#27). Un único Job
+    // vivo a la vez: antes de lanzar el siguiente paso se cancela el anterior,
+    // de modo que un avance de lance mata cualquier handleAiTurn rezagado
+    // pendiente. Evita dos secuencias de declaración concurrentes escribiendo
+    // los anuncios en paralelo (causa confirmada del parpadeo/solape).
+    private var engineJob: Job? = null
+
     private fun handleAiTurn() {
-        viewModelScope.launch {
+        // Contexto esperado capturado ANTES del delay. Si al despertar la fase
+        // o el turno han cambiado (otra coroutine ya avanzó el lance), este
+        // turno quedó obsoleto → abortamos en vez de procesar a ciegas, que es
+        // lo que disparaba la 2ª secuencia de declaración sobre un snapshot
+        // viejo (anuncios que reviven y se pisan, #27).
+        val expectedPhase = _gameState.value.gamePhase
+        val expectedTurn = _gameState.value.currentTurnPlayerId
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             delay(AI_TURN_PACING_MS)
             awaitNotPaused()
             val currentState = _gameState.value
+            if (currentState.gamePhase != expectedPhase ||
+                currentState.currentTurnPlayerId != expectedTurn
+            ) return@launch
             val currentPlayer =
                 currentState.players.find { it.id == currentState.currentTurnPlayerId }
 
             if (currentPlayer != null && currentPlayer.isAi) {
                 Log.d("MusVistoDebug", "AI's turn detected for: ${currentPlayer.name}")
 
-                // Obtenemos la decisión completa de la IA (acción + cartas)
-                val aiDecision = aiLogic.makeDecision(currentState, currentPlayer)
+                // Obtenemos la decisión completa de la IA (acción + cartas) con
+                // el AILogic del perfil de ESTE jugador (#34). Fallback baseline
+                // por si el mapa no estuviese poblado (no debería ocurrir).
+                val ai = aiLogics[currentPlayer.id] ?: aiLogicFactory(AIProfile())
+                val aiDecision = ai.makeDecision(currentState, currentPlayer)
                 Log.d(
                     "MusVistoDebug",
                     "AI (${currentPlayer.name}) decided to: ${aiDecision.action.displayText}"
@@ -470,8 +528,11 @@ class GameViewModel constructor(
             return
         }
 
-        // Lanzamos una corrutina para gestionar la secuencia de forma ordenada
-        viewModelScope.launch {
+        // Lanzamos una corrutina para gestionar la secuencia de forma ordenada.
+        // Parte del motor serializado (#27): cancela la anterior antes de
+        // lanzar, para que el avance de lance mate cualquier paso rezagado.
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             // Frontera de lance. Durante este beat se mantienen visibles
             // TODAS las acciones del lance que acaba de cerrar (incl. la de
             // cierre) para que el jugador lea el lance resuelto sin perderse
@@ -507,7 +568,8 @@ class GameViewModel constructor(
         }
     }
     private fun handleDeclarationSequence(currentState: GameState) {
-        viewModelScope.launch {
+        engineJob?.cancel()
+        engineJob = viewModelScope.launch {
             var tempState = currentState
             val playersInOrder = gameLogic.getTurnOrderedPlayers(tempState.players, tempState.manoPlayerId)
 
@@ -556,6 +618,7 @@ class GameViewModel constructor(
         val settings = gameRepository.loadSettings()
 
         val players = _gameState.value.players.ifEmpty { defaultPlayers() }
+        rebuildAiLogics(players)
 
         val newManoId = if (lastManoPlayerId != null) {
             val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }
@@ -660,6 +723,14 @@ class GameViewModel constructor(
         // Si no se cumple ninguna de las condiciones anteriores, no hay seña que pasar.
         return null
     }
+
+    /**
+     * ¿Tiene [player] una seña que pasar con su mano actual? (#38) Reutiliza
+     * `determineGesture` para que la UI atenúe el botón de seña cuando el
+     * jugador tiene jugada pero no es señalizable (p. ej. par de caballos,
+     * juego ≠ 31): no hay seña que comunicar, el botón no debe parecer activo.
+     */
+    fun hasShowableGesture(player: Player): Boolean = determineGesture(player) != null
 
     /**
      * #20 (pieza C): cuánto dura visible en pantalla la seña de [signalerId].

@@ -376,6 +376,11 @@ class MusGameLogic constructor(private val random: Random){
             respondingPlayerId = orderedEligibleOpponents.first(),
             pointsIfRejected = pointsIfRejected
         )
+        // #16 R4.e: actualiza el envido MÁXIMO que este jugador ha lanzado en
+        // esta ronda. AILogic.decideResponse usa este histórico para endurecer
+        // el umbral de aceptación si el rival ha apostado FUERTE antes.
+        val newMaxBets = currentState.playerMaxBetThisRound +
+            (playerId to maxOf(currentState.playerMaxBetThisRound[playerId] ?: 0, amount))
 
         return currentState.copy(
             currentBet = newBet,
@@ -383,6 +388,7 @@ class MusGameLogic constructor(private val random: Random){
             betInitiatorTeam = bettingPlayer.team,
             playersPendingResponse = orderedEligibleOpponents,
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
+            playerMaxBetThisRound = newMaxBets,
             // Cuando alguien sube la apuesta, los que habían pasado ("Paso") pueden volver a hablar,
             // pero los que dijeron "No Quiero" no. Por eso, reiniciamos la lista de "pasos".
             playersWhoPassed = currentState.playersWhoPassed
@@ -555,12 +561,17 @@ class MusGameLogic constructor(private val random: Random){
             isOrdago = true, // Marcamos la apuesta como un órdago
             pointsIfRejected = pointsIfRejected
         )
+        // #16 R4.e: el órdago cuenta como la apuesta MÁXIMA posible (40) en
+        // playerMaxBetThisRound — un futuro órdago RIVAL al que respondamos
+        // se endurece sabiendo que este jugador es agresivo.
+        val newMaxBets = currentState.playerMaxBetThisRound + (playerId to 40)
 
         return currentState.copy(
             currentBet = newBet,
             currentTurnPlayerId = orderedEligibleOpponents.first(),
             betInitiatorTeam = bettingPlayer.team,
             playersPendingResponse = orderedEligibleOpponents,
+            playerMaxBetThisRound = newMaxBets,
             // Al órdago solo se puede responder con "Quiero" o "No Quiero".
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero),
             playersWhoPassed = emptySet()

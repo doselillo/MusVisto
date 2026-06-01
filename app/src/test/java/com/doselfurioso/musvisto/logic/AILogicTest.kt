@@ -685,9 +685,14 @@ class AILogicTest {
     }
 
     @Test
-    fun `proactive Órdago does NOT fire with balanced score even with strong hand`() {
-        // Ninguna de las 3 condiciones se cumple: marcador igualado y bajo.
-        // Debe ir por el envite normal, no por órdago.
+    fun `R5 endgame ajustado igualado dispara ordago con mano fuerte (timing del cobro)`() {
+        // 35-35 con 4 reyes a Grande (strength.grande=100): ambos en zona
+        // de cierre, diff=0 ≤ 2 → R5 timing aplica. Antes (modelo legacy):
+        // ninguna condición disparaba y la IA pasaba al envito normal.
+        // Ahora (modelo R1-R5 del 2026-05-28): la IA órdaga para CORTAR
+        // el recuento (un envido grande aceptado se cobra al final donde
+        // el rival puede pasarme con sus pares/medias/juego; el órdago
+        // aceptado decide la partida al instante con mi nuts).
         val hand = listOf(
             Card(Suit.OROS, Rank.REY),
             Card(Suit.COPAS, Rank.REY),
@@ -700,12 +705,14 @@ class AILogicTest {
             players = listOf(aiPlayer, opponentPlayer),
             gamePhase = GamePhase.GRANDE,
             score = score,
-            currentBet = null
+            currentBet = null,
+            manoPlayerId = aiPlayer.id,
+            currentTurnPlayerId = aiPlayer.id
         )
 
         val decision = aiLogic.makeDecision(gameState, aiPlayer)
 
-        assertFalse("Con marcador igualado no debe cantar órdago proactivo", decision.action is GameAction.Órdago)
+        assertTrue("R5: 35-35 con 4 reyes en Grande → órdago timing-driven", decision.action is GameAction.Órdago)
     }
 
     // --- TESTS DE RESPUESTA A ÓRDAGO: gate Hail-Mary (#33) ---
@@ -980,5 +987,440 @@ class AILogicTest {
         assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.duples_altos))
         assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
         assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ciega))
+    }
+
+    // --- TESTS ENDGAME ORDAGO (#16 + (a) + sinergia con seña) ---
+
+    @Test
+    fun `Q2 ultimo lance apostable con ventaja moderada dispara ordago`() {
+        // Modelo R1-R5 (2026-05-28): a 35-32 con mano fuerte en JUEGO (último
+        // lance apostable, no quedan lances posteriores), diff=3 NO entra en
+        // R5 pero SÍ en Q2 (último lance + mano ≥80 → órdago para cerrar y
+        // evitar que el rival sume al recuento). R-R-R-A = 31 mano (strength
+        // ~95).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 32, "teamB" to 35),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "Q2: último lance JUEGO con 31 mano a 35-32 → órdago para cerrar",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `Q2 NO dispara con ventaja moderada si quedan lances ahead con mano decente`() {
+        // 35-32 con 4 ases en CHICA: aunque tengo nuts en chica, hay PARES
+        // (duples!) y JUEGO ahead. Q2 NO aplica (hay mejor lance posterior).
+        // R5 NO aplica (diff=3 > 2). Modelo R2/R3: pedrea con envido pequeño.
+        // El test asegura que la rama (a) obsoleta NO sigue disparando.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.AS),
+            Card(Suit.COPAS, Rank.AS),
+            Card(Suit.ESPADAS, Rank.AS),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.CHICA,
+            score = mapOf("teamA" to 32, "teamB" to 35),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "A 35-32 con duples en pares ahead, NO órdago en chica (pedrea)",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (a) NO dispara con marcador fuera de zona`() {
+        // 4 Ases (chica=100) pero marcador 20-20 (sin zona de cierre): apertura
+        // normal por bandas (Envido), no órdago.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.AS),
+            Card(Suit.COPAS, Rank.AS),
+            Card(Suit.ESPADAS, Rank.AS),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.CHICA,
+            score = mapOf("teamA" to 20, "teamB" to 20),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "Fuera de zona de cierre (20-20) NO debe lanzar órdago (apertura normal)",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (a) NO dispara con mano media en zona de cierre`() {
+        // Mano media en chica (S S R 4 = chica débil), marcador 35-32: NO se
+        // lanza órdago (rama a exige strength >= 90 sin seña fuerte).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SOTA),
+            Card(Suit.COPAS, Rank.SOTA),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.CHICA,
+            score = mapOf("teamA" to 32, "teamB" to 35),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "Mano media en zona de cierre NO justifica órdago de cierre (rama a piso 90)",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (b) Hail-Mary con mano juego + proxy rival flojo (#16)`() {
+        // Caso #16 con piso R1.a 90 (calibración A/B 2026-05-28): mano de
+        // Juego mediocre (R-R-R-2 = juego 32, strength ~85) en JUEGO con
+        // marcador 0-33. Sin proxy, R1.a piso 90 NO dispara (85 < 90); el
+        // espíritu del #16 se cubre con R1.a' piso 70 cuando el proxy
+        // "rival flojo" se cumple (musRoundCount ≥1 + rival descartó ≥3).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.DOS)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 33, "teamB" to 0),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 1,
+            discardCounts = mapOf(opponentPlayer.id to 3) // proxy rival flojo
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "Juego decisivo con rival 33 + mano media + proxy debe disparar R1.a' (#16)",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (b) NO dispara con mano muerta`() {
+        // Marcador 0-33 rival al borde, pero mano sin juego claro y débil en
+        // todo. La rama (b) exige strength >= 55 — con mano muerta se conserva
+        // la varianza pasando.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.CINCO),
+            Card(Suit.COPAS, Rank.CUATRO),
+            Card(Suit.ESPADAS, Rank.CINCO),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 33, "teamB" to 0),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "Con mano muerta NO debe lanzar Hail-Mary aunque rival esté al borde",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (b) NO dispara si me queda un lance posterior con mano decente`() {
+        // En GRANDE con strength media (~55-65 grande de R S S 4) y JUEGO ahead
+        // con 31 fuerte (J=100). Marcador 0-33. NO quemar el órdago en grande:
+        // queda el juego con la nuts.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.SOTA),
+            Card(Suit.ESPADAS, Rank.SOTA),
+            Card(Suit.BASTOS, Rank.CUATRO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 33, "teamB" to 0),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "Si me queda Juego con 31 ahead, NO quemar el Hail-Mary en Grande",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `ordago response - partner signal of 31 lowers acceptThreshold (sinergia #16 c)`() {
+        // Mano del aceptante: 3 reyes a Grande (medias, strength ~84). Sin seña
+        // del compañero acceptThreshold base 84 → en el borde; el rng de la
+        // banda media puede plegar. Con seña fuerte (31 del compañero), el
+        // threshold baja 8 → 76. Una mano de 3 reyes claramente acepta.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.CINCO)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val partner = Player(id = "ai2", name = "Compa", team = "teamB", avatarResId = 0, isAi = true)
+        val opp2 = Player(id = "p2", name = "Humano2", team = "teamA", avatarResId = 0)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer, partner, opp2),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 25, "teamB" to 25),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id,
+            currentTurnPlayerId = ai.id,
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "Con seña 31 del compañero, el capitán con 3 reyes debe aceptar el órdago (#16 c)",
+            decision.action is GameAction.Quiero
+        )
+    }
+
+    @Test
+    fun `endgame ordago - rama (a) golden regression - no endgame ronda 0 no dispara`() {
+        // Marcador 0-0 (inicio de partida), mano fuerte (4 reyes): la apertura
+        // por bandas debe seguir su curso, NO debe meterse el módulo endgame.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.REY)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 0, "teamB" to 0),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "En ronda 0 (0-0) el endgame ordago NO debe disparar; apertura normal",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R1 a prima proxy rival flojo habilita Hail-Mary con mano media`() {
+        // Desventaja crítica (0-33) con mano media en JUEGO (R-R-R-S = juego
+        // 40, base 60 + riskFactor 15 = 75). El proxy "rival flojo" requiere
+        // musRoundCount >=1 (hubo Mus) Y rival descartó >=3 cartas. Sin él,
+        // R1.a directo exige ≥85 (75 no llega → no fuego). Con él, R1.a'
+        // exige ≥70 (75 sí llega → fuego).
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.SOTA)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val opp = opponentPlayer
+        val baseGameState = GameState(
+            players = listOf(ai, opp),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 33, "teamB" to 0),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 1, // hubo Mus
+            discardCounts = mapOf(opp.id to 3) // rival descartó 3 cartas
+        )
+        val decision = aiLogic.makeDecision(baseGameState, ai)
+        assertTrue(
+            "R1.a' (proxy rival flojo: Mus + 3 descartes rival) habilita Hail-Mary con mano media",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R1 a prima sin proxy rival flojo NO dispara Hail-Mary con mano media`() {
+        // Marcador 33-19 (diff=-14, en franja donde R1.a'' Desesperación
+        // catastrófica NO aplica — exige diff ≤ -15). R1.a directo exige
+        // ≥90; R-R-R-S (juego 40, strength ~75 con riskFactor) NO llega.
+        // R1.a' exige proxy (musRoundCount=0 → falla). Asegura que sin
+        // proxy ni mano excelente ni catástrofe no se lanza Hail-Mary.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.SOTA)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 33, "teamB" to 19),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 0
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertFalse(
+            "Sin proxy ni excelente ni catástrofe, mano media NO dispara Hail-Mary",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R1 a doble prima Desesperacion catastrofica dispara con mano decente`() {
+        // Caso del log 2026-05-29 (rival 17 vs humano 36, diff=-19): mano
+        // de Chica 75 (2 ases/doses + riskFactor), sin proxy ni mano
+        // excelente. R1.a'' debe lanzar Hail-Mary porque la partida ya
+        // está perdida (downside marginal vs upside flippear).
+        // Hand 7-3-2-A en CHICA: 2 ases/doses → strength.chica = 65 + 10
+        // riskFactor = 75. Score 36-17 → diff=-19 ≤ -15 ✓
+        val hand = listOf(
+            Card(Suit.OROS, Rank.SIETE),
+            Card(Suit.COPAS, Rank.TRES),
+            Card(Suit.ESPADAS, Rank.DOS),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand) // teamB
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.CHICA,
+            score = mapOf("teamA" to 36, "teamB" to 17),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id,
+            musRoundCount = 0
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "Catástrofe diff=-19 + Chica 75 → R1.a'' Desesperación dispara órdago",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R1 b cortar la jugada con envites pendientes proyectados perdidos`() {
+        // Marcador 32-35, JUEGO en curso. Hay un agreedBet de 5 en GRANDE
+        // donde mi mano grande es floja (R-CAB-SOTA-AS = ~31 strength.grande)
+        // → proyección: oppProj = 5 (rival gana grande) → 35+5=40 ≥ 40 ✓
+        // R-CAB-SOTA-AS suma 31 = juego (strength ~95) ≥80 ✓
+        // diff = -3 (NO entra en R1.a por gate AMPLE_DIFF=-5, v4 2026-05-29)
+        // → la rama que dispara es R1.b: rival cierra al recuento.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.CABALLO),
+            Card(Suit.ESPADAS, Rank.SOTA),
+            Card(Suit.BASTOS, Rank.AS)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.JUEGO,
+            score = mapOf("teamA" to 35, "teamB" to 32),
+            agreedBets = mapOf(GamePhase.GRANDE to 5),
+            manoPlayerId = ai.id,
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "R1.b: rival cierra al recuento (35+5=40) con mi grande floja → órdago para cortar",
+            decision.action is GameAction.Órdago
+        )
+    }
+
+    @Test
+    fun `R4 e rival envidó fuerte en lance previo endurece acceptThreshold`() {
+        // Mano de respuesta media (3 reyes a Grande ~84, en banda media).
+        // Sin R4.e (rival no envidó fuerte): aceptThreshold base ~84 → puede
+        // aceptar. Con R4.e (rival envidó 5 en CHICA previo): +5 → 89, mano
+        // no llega → No quiero. Test asegura que R4.e endurece correctamente.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.CINCO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 25, "teamB" to 25),
+            currentBet = bet,
+            manoPlayerId = opponentPlayer.id, // soy postre (gano desempates pierdo) → threshold +6 = 90
+            currentTurnPlayerId = ai.id,
+            // R4.e: rival ha envidado fuerte (5) en un lance previo
+            playerMaxBetThisRound = mapOf(opponentPlayer.id to 5)
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "R4.e: con rival que envidó 5 antes, endurecer threshold → No quiero con 3 reyes postre",
+            decision.action is GameAction.NoQuiero
+        )
+    }
+
+    @Test
+    fun `R4 f endgame ajustado relaja acceptThreshold en respuesta a órdago`() {
+        // 35-37 (ambos ≥33, diff=2): R4.f relaja -3. Mano 3 reyes mano (~78).
+        // Sin R4.f: threshold base 84 −6 (mano) = 78 → borderline. Con R4.f:
+        // -3 más → 75 → acepta. Test asegura R4.f favorece aceptar en endgame
+        // ajustado por timing del cobro.
+        val hand = listOf(
+            Card(Suit.OROS, Rank.REY),
+            Card(Suit.COPAS, Rank.REY),
+            Card(Suit.ESPADAS, Rank.REY),
+            Card(Suit.BASTOS, Rank.CINCO)
+        )
+        val ai = testPlayer.copy(hand = hand)
+        val bet = BetInfo(
+            amount = 2, bettingPlayerId = "p1", respondingPlayerId = "ai1",
+            isOrdago = true, pointsIfRejected = 1
+        )
+        val gameState = GameState(
+            players = listOf(ai, opponentPlayer),
+            gamePhase = GamePhase.GRANDE,
+            score = mapOf("teamA" to 37, "teamB" to 35),
+            currentBet = bet,
+            manoPlayerId = ai.id, // soy mano (gano desempates) → threshold -6
+            currentTurnPlayerId = ai.id
+        )
+        val decision = aiLogic.makeDecision(gameState, ai)
+        assertTrue(
+            "R4.f: endgame ajustado (35-37) con 3 reyes mano → acepta órdago (timing)",
+            decision.action is GameAction.Quiero
+        )
     }
 }

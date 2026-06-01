@@ -133,7 +133,7 @@ fun GameScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF006A4E))
+            .background(TableTheme.colorFor(gameState.settings.tableColor))
     ) {
         val screenWidth = maxWidth
         val screenHeight = maxHeight
@@ -365,14 +365,29 @@ fun GameScreen(
                         // En su lugar, un indicador del modo que explica por qué
                         // no hay botón de seña.
                         if (!gameState.musCorrido) {
+                            // #38: si la mano no da para seña (jugada no señalizable,
+                            // p. ej. par de caballos o juego ≠ 31), el botón se atenúa
+                            // y no responde — no hay seña que pasar.
+                            val canShowGesture = gameViewModel.hasShowableGesture(player)
                             Box(
                                 modifier = Modifier
                                     .size(58.dp * scaleFactor)
-                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                    .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                                    .background(
+                                        Color.Black.copy(alpha = if (canShowGesture) 0.5f else 0.25f),
+                                        RoundedCornerShape(14.dp)
+                                    )
+                                    .then(
+                                        if (canShowGesture) Modifier.clickable {
+                                            gameViewModel.onAction(GameAction.ShowGesture, player.id)
+                                        } else Modifier
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                                Text(
+                                    "Seña",
+                                    color = Color.White.copy(alpha = if (canShowGesture) 1f else 0.4f),
+                                    fontSize = dimens.fontSizeLarge
+                                )
                             }
                         } else {
                             Box(
@@ -1572,7 +1587,14 @@ fun LanceTracker(
                 // ahí el ganador y los tantos ya se conocen (#30).
                 var resultColor = Color.Gray
                 if (isCurrent && currentBet != null) {
-                    resultText = "En juego: ${currentBet.amount}"
+                    // Un órdago no es un envite de N puntos: es jugarse la
+                    // partida. Se refleja como tal en vez de "En juego: 40".
+                    if (currentBet.isOrdago) {
+                        resultText = "¡ÓRDAGO!"
+                        resultColor = Color(0xFFFFB300) // ámbar: lance especial
+                    } else {
+                        resultText = "En juego: ${currentBet.amount}"
+                    }
                 } else if (result != null && !wasSkipped) {
                     when (result.outcome) {
                         "Querido" -> resultText = "Vale ${result.amount}"
