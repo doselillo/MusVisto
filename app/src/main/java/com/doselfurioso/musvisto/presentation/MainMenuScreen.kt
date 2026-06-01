@@ -90,6 +90,20 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             StyledMenuButton(
+                text = "Partida rápida",
+                // Mesa al azar (caras + personalidades) y arranca directo, sin
+                // pasar por la pantalla de selección. Mismo arranque que "Comenzar".
+                onClick = {
+                    viewModel.randomizeTable()
+                    viewModel.commitSettings()
+                    viewModel.startNewGame()
+                    navController.navigate("game_screen")
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            StyledMenuButton(
                 text = "Señas",
                 onClick = { navController.navigate("gestures_screen") }
             )

@@ -133,7 +133,7 @@ fun GameScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF006A4E))
+            .background(TableTheme.colorFor(gameState.settings.tableColor))
     ) {
         val screenWidth = maxWidth
         val screenHeight = maxHeight

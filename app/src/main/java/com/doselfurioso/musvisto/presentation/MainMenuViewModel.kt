@@ -3,6 +3,7 @@ package com.doselfurioso.musvisto.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.model.GameSettings
 import kotlinx.coroutines.Job
@@ -18,6 +19,12 @@ enum class TableSlot { HUMAN, PARTNER, RIVAL_LEFT, RIVAL_RIGHT }
 // JSON + escribe a disco. Se actualiza en memoria al instante y se guarda con
 // debounce; commitSettings() fuerza el guardado al salir de la pantalla.
 private const val NAME_SAVE_DEBOUNCE_MS = 400L
+
+// Índices de asiento en la lista barajada de caras (partida rápida).
+private const val SEAT_HUMAN = 0
+private const val SEAT_PARTNER = 1
+private const val SEAT_RIVAL_LEFT = 2
+private const val SEAT_RIVAL_RIGHT = 3
 
 class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel() {
 
@@ -94,6 +101,58 @@ class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel(
                 partnerCharacterId = current.getValue(TableSlot.PARTNER),
                 rivalLeftCharacterId = current.getValue(TableSlot.RIVAL_LEFT),
                 rivalRightCharacterId = current.getValue(TableSlot.RIVAL_RIGHT)
+            )
+        }
+    }
+
+    /** Arquetipo (personalidad) actual de un asiento de IA. HUMAN no tiene → EQUILIBRADO. */
+    fun archetypeFor(slot: TableSlot): AIArchetype = with(_settings.value) {
+        when (slot) {
+            TableSlot.HUMAN -> AIArchetype.EQUILIBRADO
+            TableSlot.PARTNER -> AIArchetype.byName(partnerArchetype)
+            TableSlot.RIVAL_LEFT -> AIArchetype.byName(rivalLeftArchetype)
+            TableSlot.RIVAL_RIGHT -> AIArchetype.byName(rivalRightArchetype)
+        }
+    }
+
+    /**
+     * Rota la personalidad de un asiento de IA (flechas ‹ ›). El humano juega a
+     * mano, así que no tiene arquetipo → no-op. El efecto en el juego lo conecta
+     * la Fase C (hoy se persiste la elección; todas las IA juegan baseline).
+     */
+    fun rotateArchetype(slot: TableSlot, forward: Boolean) {
+        if (slot == TableSlot.HUMAN) return
+        val rotated = archetypeFor(slot).let { if (forward) it.next() else it.prev() }.name
+        update {
+            when (slot) {
+                TableSlot.PARTNER -> it.copy(partnerArchetype = rotated)
+                TableSlot.RIVAL_LEFT -> it.copy(rivalLeftArchetype = rotated)
+                TableSlot.RIVAL_RIGHT -> it.copy(rivalRightArchetype = rotated)
+                TableSlot.HUMAN -> it
+            }
+        }
+    }
+
+    /** Color del tapete de la mesa (#36); la clave la resuelve la UI (TableTheme). */
+    fun setTableColor(colorKey: String) = update { it.copy(tableColor = colorKey) }
+
+    /**
+     * Partida rápida: caras DISTINTAS al azar en los 4 asientos + personalidad al
+     * azar para los 3 rivales de IA. Conserva el nombre del humano. Persiste todo
+     * y deja la mesa lista para arrancar sin pasar por la pantalla de selección.
+     */
+    fun randomizeTable() {
+        val faces = CharacterRoster.all.map { it.id }.shuffled()
+        val styles = AIArchetype.values()
+        update {
+            it.copy(
+                humanCharacterId = faces[SEAT_HUMAN],
+                partnerCharacterId = faces[SEAT_PARTNER],
+                rivalLeftCharacterId = faces[SEAT_RIVAL_LEFT],
+                rivalRightCharacterId = faces[SEAT_RIVAL_RIGHT],
+                partnerArchetype = styles.random().name,
+                rivalLeftArchetype = styles.random().name,
+                rivalRightArchetype = styles.random().name
             )
         }
     }

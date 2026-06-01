@@ -38,37 +38,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.model.GameSettings
 
 private val GAME_GREEN = Color(0xFF006A4E)
 private val BUTTON_GREEN = Color(0xFF6A994E)
 private val CARD_DARK = Color.Black.copy(alpha = 0.30f)
 private const val ACTION_WIDTH_FRACTION = 0.8f
-private const val TRAIT_MAX = 100
 
 /**
- * Pantalla de selección de mesa (#34/#36): el usuario edita su nombre y asigna
- * personajes del [CharacterRoster] a los 4 asientos (Tú, Pareja, Rival Izq.,
- * Rival Der.). Un asiento queda "activo"; al tocar un personaje se asigna a ese
- * asiento (con intercambio para no repetir). "Comenzar" guarda y arranca partida.
+ * Pantalla de selección de mesa (#34/#36): el usuario edita su nombre, elige el
+ * color del tapete y configura los 4 asientos (Tú, Pareja, Rival Izq., Rival
+ * Der.). El asiento activo se muestra en grande; la rejilla elige su CARA y las
+ * flechas ‹ › su PERSONALIDAD ([AIArchetype]) — dos ejes independientes. El
+ * humano no tiene personalidad (juega a mano). "Comenzar" guarda y arranca.
  *
- * En Fase B el arquetipo de cada personaje es informativo (barras de rasgos); su
- * efecto en el juego llega en Fase C. Reutiliza el patrón visual de OptionsScreen.
+ * La personalidad se persiste ya, pero su efecto en el juego lo enciende la
+ * Fase C (hoy todas las IA juegan baseline). Reutiliza el estilo de OptionsScreen.
  */
 @Composable
 fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewModel) {
     val settings by viewModel.settings.collectAsState()
     var activeSlot by remember { mutableStateOf(TableSlot.PARTNER) }
     val activeCharId = characterIdFor(settings, activeSlot)
-    // Callbacks estables → la fila de asientos y la rejilla se saltan la
-    // recomposición cuando solo cambia el nombre tecleado.
+    val activeArchetype = archetypeFor(settings, activeSlot)
+    // Callbacks estables → la fila de asientos, el panel activo y la rejilla se
+    // saltan la recomposición cuando solo cambia el nombre tecleado.
     val onActivate: (TableSlot) -> Unit = remember { { activeSlot = it } }
     val onPickCharacter: (String) -> Unit =
         remember(activeSlot) { { id -> viewModel.assignCharacter(activeSlot, id) } }
+    val onRotate: (Boolean) -> Unit =
+        remember(activeSlot) { { forward -> viewModel.rotateArchetype(activeSlot, forward) } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxSize(), color = GAME_GREEN) {}
@@ -77,7 +82,7 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("Elige tu mesa", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -95,18 +100,19 @@ fun CharacterSetupScreen(navController: NavController, viewModel: MainMenuViewMo
                 onActivate = onActivate
             )
             Spacer(Modifier.height(16.dp))
-            Text(
-                "Toca un asiento y elige un personaje",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 14.sp
-            )
+
+            ActiveSeatPanel(activeSlot, activeCharId, activeArchetype, onRotate)
             Spacer(Modifier.height(12.dp))
 
-            RosterGrid(activeCharId, onPickCharacter)
-            Spacer(Modifier.height(8.dp))
+            Text(
+                "Elige la cara abajo; la personalidad con las flechas",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 13.sp
+            )
+            Spacer(Modifier.height(10.dp))
 
-            TraitPanel(activeSlot, CharacterRoster.byId(activeCharId))
-            Spacer(Modifier.height(24.dp))
+            RosterGrid(activeCharId, onPickCharacter)
+            Spacer(Modifier.height(20.dp))
 
             SetupActions(
                 onStart = {
@@ -128,6 +134,13 @@ private fun characterIdFor(settings: GameSettings, slot: TableSlot): String = wh
     TableSlot.PARTNER -> settings.partnerCharacterId
     TableSlot.RIVAL_LEFT -> settings.rivalLeftCharacterId
     TableSlot.RIVAL_RIGHT -> settings.rivalRightCharacterId
+}
+
+private fun archetypeFor(settings: GameSettings, slot: TableSlot): AIArchetype = when (slot) {
+    TableSlot.HUMAN -> AIArchetype.EQUILIBRADO
+    TableSlot.PARTNER -> AIArchetype.byName(settings.partnerArchetype)
+    TableSlot.RIVAL_LEFT -> AIArchetype.byName(settings.rivalLeftArchetype)
+    TableSlot.RIVAL_RIGHT -> AIArchetype.byName(settings.rivalRightArchetype)
 }
 
 @Composable
@@ -211,6 +224,105 @@ private fun SlotChip(
     }
 }
 
+/**
+ * Asiento activo en grande: avatar + nombre, y debajo el selector de personalidad
+ * (flechas + línea de estilo). En el asiento del humano no hay personalidad
+ * (juega a mano) → se muestra una nota en su lugar.
+ */
+@Composable
+private fun ActiveSeatPanel(
+    slot: TableSlot,
+    characterId: String,
+    archetype: AIArchetype,
+    onRotate: (Boolean) -> Unit
+) {
+    val character = CharacterRoster.byId(characterId)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CARD_DARK)
+            .padding(12.dp)
+    ) {
+        Image(
+            painter = painterResource(character.avatarResId),
+            contentDescription = character.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                character.name,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(6.dp))
+            if (slot == TableSlot.HUMAN) {
+                Text(
+                    "Es tu avatar: juegas a mano, sin personalidad de IA.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp
+                )
+            } else {
+                ArchetypeSelector(archetype, onRotate)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    archetype.description,
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 12.sp,
+                    maxLines = 2
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArchetypeSelector(archetype: AIArchetype, onRotate: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        ArrowButton("‹") { onRotate(false) }
+        // El nombre ocupa el espacio entre las flechas (weight) y va centrado →
+        // las flechas quedan fijas en los extremos y no saltan al rotar.
+        Text(
+            archetype.displayName,
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp)
+        )
+        ArrowButton("›") { onRotate(true) }
+    }
+}
+
+@Composable
+private fun ArrowButton(glyph: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(BUTTON_GREEN)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(glyph, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 @Composable
 private fun RosterGrid(activeCharId: String, onPick: (String) -> Unit) {
     CharacterRoster.all.chunked(3).forEach { rowChars ->
@@ -260,68 +372,6 @@ private fun CharacterCard(character: Character, selected: Boolean, onClick: () -
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Text(
-            character.archetype.displayName,
-            color = Color.White.copy(alpha = 0.7f),
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun TraitPanel(slot: TableSlot, character: Character) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(CARD_DARK)
-            .padding(16.dp)
-    ) {
-        Text(
-            "${character.name} · ${character.archetype.displayName}",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (slot == TableSlot.HUMAN) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Es tu avatar: juegas a mano, su estilo no se aplica.",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        CharacterRoster.TRAIT_AXES.forEachIndexed { i, axis ->
-            TraitBar(axis, character.traits.getOrElse(i) { 0 })
-            Spacer(Modifier.height(6.dp))
-        }
-    }
-}
-
-@Composable
-private fun TraitBar(label: String, value: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(label, color = Color.White, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(10.dp)
-                .clip(RoundedCornerShape(5.dp))
-                .background(Color.White.copy(alpha = 0.2f))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(value.coerceIn(0, TRAIT_MAX) / TRAIT_MAX.toFloat())
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(BUTTON_GREEN)
-            )
-        }
     }
 }
 
