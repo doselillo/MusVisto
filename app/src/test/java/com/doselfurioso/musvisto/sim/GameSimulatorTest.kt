@@ -2,7 +2,9 @@ package com.doselfurioso.musvisto.sim
 
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.logic.AIDecision
+import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
 import org.junit.Assume.assumeTrue
@@ -139,6 +141,12 @@ class GameSimulatorTest {
         // la IA principal (teamA), el punto ciego del modo simétrico (#28/#1). Sin
         // el flag, ambos equipos usan AILogic (comportamiento idéntico al de antes).
         val opponent = System.getProperty("musvisto.opponent")?.takeIf { it.isNotBlank() }
+        // #34 Fase C — PERFIL ASIMÉTRICO: teamA juega un arquetipo (AGRESIVO/
+        // CONSERVADOR/FAROLERO) y teamB el baseline. Red de seguridad para los
+        // arquetipos: ¿teamA se hunde en win-rate o abre basura (showdown↓)? Las
+        // métricas de calidad registradas son de teamA. La apertura es punto ciego
+        // del sim, así que esto detecta auto-destrucción, no valida el "feel".
+        val teamAProfile = System.getProperty("musvisto.profile")?.takeIf { it.isNotBlank() }
 
         // K lotes de `games` partidas con rangos de semilla DISJUNTOS (lote b →
         // [b*games, b*games+games)). Todo se acumula en un único Stats para el
@@ -149,12 +157,15 @@ class GameSimulatorTest {
         val snapshots = mutableListOf(snapshot(stats))
         for (b in 0 until batches) {
             val base = b.toLong() * games
-            repeat(games) { i -> playOneGame(seed = base + i, stats = stats, opponentProfile = opponent) }
+            repeat(games) { i ->
+                playOneGame(seed = base + i, stats = stats, opponentProfile = opponent, teamAProfileName = teamAProfile)
+            }
             snapshots += snapshot(stats)
         }
         val batchMetrics = (1..batches).map { batchMetricsBetween(snapshots[it - 1], snapshots[it], games) }
 
-        val report = buildReport(stats, games, opponent) +
+        val profileHeader = teamAProfile?.let { "PERFIL teamA = $it (vs teamB baseline)\n\n" } ?: ""
+        val report = profileHeader + buildReport(stats, games, opponent) +
             if (batches >= 2) "\n" + noiseSection(batchMetrics, batches, games) else ""
         println(report)
         writeReport(report)
@@ -169,10 +180,20 @@ class GameSimulatorTest {
         Player(id = "p2", name = "B2", avatarResId = 0, isAi = true, team = "teamB")
     )
 
-    private fun playOneGame(seed: Long, stats: Stats, opponentProfile: String? = null) {
+    private fun playOneGame(
+        seed: Long,
+        stats: Stats,
+        opponentProfile: String? = null,
+        teamAProfileName: String? = null
+    ) {
         val rng = Random(seed)
         val gameLogic = MusGameLogic(rng)
-        val aiLogic = AILogic(gameLogic, rng)
+        // Asimetría de PERFIL (#34 Fase C): teamA con el arquetipo bajo prueba,
+        // teamB baseline. Sin flag, ambos baseline → idéntico al de antes.
+        // Comparten rng (interleave determinista por turno, como en producción).
+        val teamAProfile = teamAProfileName?.let { AIArchetype.byName(it).profile } ?: AIProfile()
+        val aiLogicA = AILogic(gameLogic, rng, teamAProfile)
+        val aiLogicB = AILogic(gameLogic, rng, AIProfile())
         val roster = players()
         // Alternar mano inicial por partida (seed par → p1/teamA, impar → p4/teamB)
         // para eliminar el bias estructural de "siempre arranca teamA como mano".
@@ -248,8 +269,12 @@ class GameSimulatorTest {
                     val action: GameAction = if (useProfile) {
                         profileBet(opponentProfile!!, state, player, rng, stats)
                     } else {
-                        val decision = aiLogic.makeDecision(state, player)
-                        if (opponentProfile == null || player.team == "teamA") {
+                        val ai = if (player.team == "teamA") aiLogicA else aiLogicB
+                        val decision = ai.makeDecision(state, player)
+                        // Calidad solo del lado bajo prueba: con asimetría (perfil
+                        // u oponente) solo teamA; en simétrico, todos.
+                        val symmetric = opponentProfile == null && teamAProfileName == null
+                        if (symmetric || player.team == "teamA") {
                             recordDecision(stats, state, player, decision, gameLogic)
                         }
                         if (decision.action is GameAction.ConfirmDiscard) {
