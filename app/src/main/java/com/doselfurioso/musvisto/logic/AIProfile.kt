@@ -153,19 +153,21 @@ data class AIProfile(
         // playtest. Mantenerlos como copias explícitas deja el sitio listo y
         // documenta la intención sin cambiar el comportamiento todavía.
         /**
-         * Osadía↑, corta-mus↑ (#34 Fase C, v1). Abre con mano algo menos premium
-         * (openStrongValue 78→72), banda media de apertura más ancha
-         * (openMidBandFloor 55→50) y musea menos (musCut* −5). Deltas CAPADOS: no
-         * toca el lado RESPUESTA (no reabrir la timidez #1) ni los pisos de órdago
-         * (#16/#33). Validación: sim como red de seguridad (no se hunde ni abre
-         * basura) + mus-strategy-reviewer + playtest (árbitro del feel; la apertura
-         * es punto ciego del sim).
+         * Osadía↑, corta-mus↑ (#34 Fase C, v2 SUTIL). Deltas DELIBERADAMENTE
+         * pequeños (decisión del usuario 2026-06-01): la prioridad es NO romper la
+         * IA —que ya juega bien— sobre una diferenciación marcada; un humano nota
+         * "un toque", no otro motor. openStrongValue 78→75, openMidBandFloor 55→53
+         * (solo −2: el reviewer avisó que la banda media ya se percibe agresiva,
+         * #11), musea menos (musCut* −3). NO toca el lado RESPUESTA (no reabrir la
+         * timidez #1) ni los pisos de órdago (#16/#33). Validación: sim como red de
+         * seguridad + mus-strategy-reviewer + playtest (árbitro del feel; la
+         * apertura es punto ciego del sim).
          */
         val AGRESIVO = AIProfile(
-            openStrongValue = 72,
-            openMidBandFloor = 50,
-            musCutParesJuego = 70,
-            musCutGrandeChica = 80
+            openStrongValue = 75,
+            openMidBandFloor = 53,
+            musCutParesJuego = 72,
+            musCutGrandeChica = 82
         )
         /** Osadía↓, musea más; SIN sobre-plegarse al farol (cap, no reabrir #1). */
         val CONSERVADOR = AIProfile()
