@@ -152,8 +152,21 @@ data class AIProfile(
         // deltas reales se calibran en Fase C con el simulador + reviewers +
         // playtest. Mantenerlos como copias explícitas deja el sitio listo y
         // documenta la intención sin cambiar el comportamiento todavía.
-        /** Osadía↑, Corta-mus↑ (deltas en Fase C). */
-        val AGRESIVO = AIProfile()
+        /**
+         * Osadía↑, corta-mus↑ (#34 Fase C, v1). Abre con mano algo menos premium
+         * (openStrongValue 78→72), banda media de apertura más ancha
+         * (openMidBandFloor 55→50) y musea menos (musCut* −5). Deltas CAPADOS: no
+         * toca el lado RESPUESTA (no reabrir la timidez #1) ni los pisos de órdago
+         * (#16/#33). Validación: sim como red de seguridad (no se hunde ni abre
+         * basura) + mus-strategy-reviewer + playtest (árbitro del feel; la apertura
+         * es punto ciego del sim).
+         */
+        val AGRESIVO = AIProfile(
+            openStrongValue = 72,
+            openMidBandFloor = 50,
+            musCutParesJuego = 70,
+            musCutGrandeChica = 80
+        )
         /** Osadía↓, musea más; SIN sobre-plegarse al farol (cap, no reabrir #1). */
         val CONSERVADOR = AIProfile()
         /** Faroleo↑, banda media más ancha (deltas en Fase C). */
