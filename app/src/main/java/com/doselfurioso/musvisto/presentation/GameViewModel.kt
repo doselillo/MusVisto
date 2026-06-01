@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.debug.DebugFeatures
+import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
@@ -38,6 +39,14 @@ private const val GESTURE_VISIBLE_OTHER_MS = 300L
 private const val PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
 private const val PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
 
+// Ids de asiento (orden fijo de defaultPlayers): humano p1 + pareja p3 en teamA;
+// rivales p4 (izq.) / p2 (der.) en teamB. Mapean cada asiento de IA a su
+// arquetipo en GameSettings (profileFor, #34 Fase C).
+private const val PLAYER_HUMAN = "p1"
+private const val PLAYER_RIVAL_RIGHT = "p2"
+private const val PLAYER_PARTNER = "p3"
+private const val PLAYER_RIVAL_LEFT = "p4"
+
 // #27: ritmo de turno de la IA, UNIFICADO entre fases de apuesta y de
 // declaración (PARES_CHECK/JUEGO_CHECK). Antes la apuesta usaba 1000ms y la
 // declaración 750: la declaración se sentía más rápida y, al apretar el anuncio
@@ -65,18 +74,27 @@ class GameViewModel constructor(
     // asignación de arquetipos por personaje llega en Fase B/C (ver profileFor).
     private var aiLogics: Map<String, AILogic> = emptyMap()
 
-    private fun rebuildAiLogics(players: List<Player>) {
+    private fun rebuildAiLogics(players: List<Player>, settings: GameSettings) {
         aiLogics = players.filter { it.isAi }
-            .associate { player -> player.id to aiLogicFactory(profileFor(player)) }
+            .associate { player -> player.id to aiLogicFactory(profileFor(player, settings)) }
     }
 
     /**
-     * Perfil de personalidad de un jugador de IA. Fase A: todos baseline
-     * (`EQUILIBRADO`). Fase C: resolver el arquetipo del personaje asignado
-     * (de ahí el parámetro `player`, aún sin usar).
+     * Perfil de personalidad de un jugador de IA (#34, Fase C): mapea el asiento
+     * (id fijo de defaultPlayers) al arquetipo elegido en GameSettings. El humano
+     * y cualquier id desconocido caen a EQUILIBRADO. Mientras los presets de
+     * AIProfile sigan == baseline, esto es no-op (todos los arquetipos resuelven
+     * al mismo perfil); los deltas por arquetipo se calibran después.
      */
-    @Suppress("UnusedParameter")
-    private fun profileFor(player: Player): AIProfile = AIProfile.EQUILIBRADO
+    private fun profileFor(player: Player, settings: GameSettings): AIProfile {
+        val archetypeName = when (player.id) {
+            PLAYER_PARTNER -> settings.partnerArchetype
+            PLAYER_RIVAL_LEFT -> settings.rivalLeftArchetype
+            PLAYER_RIVAL_RIGHT -> settings.rivalRightArchetype
+            else -> return AIProfile.EQUILIBRADO
+        }
+        return AIArchetype.byName(archetypeName).profile
+    }
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -126,10 +144,22 @@ class GameViewModel constructor(
         val rivalLeft = CharacterRoster.byId(settings.rivalLeftCharacterId)
         val rivalRight = CharacterRoster.byId(settings.rivalRightCharacterId)
         return listOf(
-            Player(id = "p1", name = settings.humanName, avatarResId = human.avatarResId, isAi = false, team = "teamA"),
-            Player(id = "p4", name = rivalLeft.name, avatarResId = rivalLeft.avatarResId, isAi = true, team = "teamB"),
-            Player(id = "p3", name = partner.name, avatarResId = partner.avatarResId, isAi = true, team = "teamA"),
-            Player(id = "p2", name = rivalRight.name, avatarResId = rivalRight.avatarResId, isAi = true, team = "teamB")
+            Player(
+                id = PLAYER_HUMAN, name = settings.humanName,
+                avatarResId = human.avatarResId, isAi = false, team = "teamA"
+            ),
+            Player(
+                id = PLAYER_RIVAL_LEFT, name = rivalLeft.name,
+                avatarResId = rivalLeft.avatarResId, isAi = true, team = "teamB"
+            ),
+            Player(
+                id = PLAYER_PARTNER, name = partner.name,
+                avatarResId = partner.avatarResId, isAi = true, team = "teamA"
+            ),
+            Player(
+                id = PLAYER_RIVAL_RIGHT, name = rivalRight.name,
+                avatarResId = rivalRight.avatarResId, isAi = true, team = "teamB"
+            )
         )
     }
 
@@ -148,7 +178,8 @@ class GameViewModel constructor(
         val players = defaultPlayers().map {
             it.copy(hand = scenario.hands[it.id] ?: emptyList())
         }
-        rebuildAiLogics(players)
+        val settings = gameRepository.loadSettings()
+        rebuildAiLogics(players, settings)
         val dealtCards = scenario.hands.values.flatten().toSet()
         val remainingDeck = gameLogic.createDeck().filter { it !in dealtCards }
 
@@ -157,7 +188,7 @@ class GameViewModel constructor(
             deck = remainingDeck,
             score = score,
             chicosWon = mapOf("teamA" to scenario.chicosWonA, "teamB" to scenario.chicosWonB),
-            settings = gameRepository.loadSettings(),
+            settings = settings,
             manoPlayerId = scenario.manoId,
             currentTurnPlayerId = scenario.manoId,
             gamePhase = GamePhase.MUS,
@@ -618,7 +649,7 @@ class GameViewModel constructor(
         val settings = gameRepository.loadSettings()
 
         val players = _gameState.value.players.ifEmpty { defaultPlayers() }
-        rebuildAiLogics(players)
+        rebuildAiLogics(players, settings)
 
         val newManoId = if (lastManoPlayerId != null) {
             val lastManoIndex = players.indexOfFirst { it.id == lastManoPlayerId }
