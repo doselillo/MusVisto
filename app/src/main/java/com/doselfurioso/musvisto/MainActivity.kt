@@ -14,8 +14,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.doselfurioso.musvisto.logic.AILogic
+import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.MusGameLogic
+import com.doselfurioso.musvisto.presentation.CharacterSetupScreen
 import com.doselfurioso.musvisto.presentation.GameScreen
 import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
@@ -47,11 +49,15 @@ class MainActivity : ComponentActivity() {
                 if (modelClass.isAssignableFrom(GameViewModel::class.java)) {
                     val random = Random(System.currentTimeMillis())
                     val gameLogic = MusGameLogic(random)
-                    val aiLogic = AILogic(gameLogic, random)
+                    // #34: factory de AILogic por perfil. Todas las IA comparten
+                    // el mismo `random` (interleave determinista por orden de turno).
+                    val aiLogicFactory: (AIProfile) -> AILogic = { profile ->
+                        AILogic(gameLogic, random, profile)
+                    }
                     val gameRepository = GameRepository(applicationContext)
 
                     @Suppress("UNCHECKED_CAST")
-                    return GameViewModel(gameLogic, aiLogic, gameRepository) as T
+                    return GameViewModel(gameLogic, aiLogicFactory, gameRepository) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }
@@ -83,6 +89,12 @@ fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewMode
             // Esta línea ahora funcionará porque las dependencias de 'viewModel' están en el proyecto
             GameScreen(gameViewModel = viewModel(factory = factory),
                 navController = navController,
+            )
+        }
+        composable("character_setup_screen") {
+            CharacterSetupScreen(
+                navController = navController,
+                viewModel = viewModel(factory = mainMenuFactory)
             )
         }
         composable("gestures_screen") {
