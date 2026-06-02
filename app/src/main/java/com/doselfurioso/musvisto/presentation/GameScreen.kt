@@ -133,7 +133,7 @@ fun GameScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF006A4E))
+            .background(TableTheme.colorFor(gameState.settings.tableColor))
     ) {
         val screenWidth = maxWidth
         val screenHeight = maxHeight
@@ -365,14 +365,29 @@ fun GameScreen(
                         // En su lugar, un indicador del modo que explica por qué
                         // no hay botón de seña.
                         if (!gameState.musCorrido) {
+                            // #38: si la mano no da para seña (jugada no señalizable,
+                            // p. ej. par de caballos o juego ≠ 31), el botón se atenúa
+                            // y no responde — no hay seña que pasar.
+                            val canShowGesture = gameViewModel.hasShowableGesture(player)
                             Box(
                                 modifier = Modifier
                                     .size(58.dp * scaleFactor)
-                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                    .clickable { gameViewModel.onAction(GameAction.ShowGesture, player.id) },
+                                    .background(
+                                        Color.Black.copy(alpha = if (canShowGesture) 0.5f else 0.25f),
+                                        RoundedCornerShape(14.dp)
+                                    )
+                                    .then(
+                                        if (canShowGesture) Modifier.clickable {
+                                            gameViewModel.onAction(GameAction.ShowGesture, player.id)
+                                        } else Modifier
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Seña", color = Color.White, fontSize = dimens.fontSizeLarge)
+                                Text(
+                                    "Seña",
+                                    color = Color.White.copy(alpha = if (canShowGesture) 1f else 0.4f),
+                                    fontSize = dimens.fontSizeLarge
+                                )
                             }
                         } else {
                             Box(
@@ -465,7 +480,7 @@ private fun GameOverlays(
                     gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
                 },
                 onCancel = {
-                    gameViewModel.onAction(GameAction.Paso, gameViewModel.humanPlayerId)
+                    gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.humanPlayerId)
                 },
                 isRaise = gameState.currentBet != null
             )
@@ -658,7 +673,10 @@ fun ActionButtons(
                 // Columna Izquierda: Respuestas
                 Row(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    // #35: el gap entre columnas escala como el resto de la
+                    // botonera (antes 20.dp fijo); alivia el reflow al haber
+                    // crecido la columna derecha con el botón "+".
+                    horizontalArrangement = Arrangement.spacedBy(20.dp * dimens.scaleFactor),
                     verticalAlignment = Alignment.Bottom
 
                 ) {
@@ -693,20 +711,64 @@ fun ActionButtons(
                             isEnabled = isEnabled && availableActionsMap.containsKey(pasoAction::class),
                             dimens = dimens
                         )
-                        val envidoAction = GameAction.ToggleBetSelector
-                        GameActionButton(
-                            action = envidoAction,
-                            onClick = {
-                                onActionClick(
-                                    envidoAction,
-                                    currentPlayerId
+                        // #35: en la APERTURA (sin envite), envido rápido de 2
+                        // (envite directo) + botón "+" para otra cantidad. En la
+                        // SUBIDA (ya hay envite) NO hay importe por defecto —se elige
+                        // cuánto subir— así que un único botón "Subir" abre el selector.
+                        val betEnabled = isEnabled &&
+                            availableActionsMap.containsKey(GameAction.Envido::class)
+                        if (isRaise) {
+                            GameActionButton(
+                                action = GameAction.ToggleBetSelector,
+                                onClick = {
+                                    onActionClick(GameAction.ToggleBetSelector, currentPlayerId)
+                                },
+                                isEnabled = betEnabled,
+                                dimens = dimens,
+                                labelOverride = "Subir"
+                            )
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp * dimens.scaleFactor),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val quickBet = GameAction.Envido(2)
+                                GameActionButton(
+                                    action = quickBet,
+                                    onClick = { onActionClick(quickBet, currentPlayerId) },
+                                    isEnabled = betEnabled,
+                                    dimens = dimens,
+                                    labelOverride = "Envido 2"
                                 )
-                            }, // Ahora envía la acción de mostrar el selector
-                            isEnabled = isEnabled && availableActionsMap.containsKey(GameAction.Envido::class),
-                            dimens = dimens,
-                            // Si ya hay envite en juego, este botón sube, no abre (#18).
-                            labelOverride = if (isRaise) "Subir" else null
-                        )
+                                // El "+" abre el selector para elegir otra cantidad.
+                                // Botón cuadrado y compacto: sin contentPadding y con
+                                // size fijo para no heredar el min-width de Material
+                                // (~58.dp) que ensancharía esta columna en pantallas
+                                // estrechas.
+                                Button(
+                                    onClick = {
+                                        onActionClick(GameAction.ToggleBetSelector, currentPlayerId)
+                                    },
+                                    enabled = betEnabled,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFEB3B)
+                                    ),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.size(48.dp * dimens.scaleFactor)
+                                ) {
+                                    Text(
+                                        text = "+",
+                                        // Negro solo habilitado; deshabilitado hereda
+                                        // el gris de Material (igual que el texto BET
+                                        // de GameActionButton).
+                                        color = if (betEnabled) Color.Black else Color.Unspecified,
+                                        fontSize = dimens.fontSizeLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                         val ordagoAction = GameAction.Órdago
                         GameActionButton(
                             action = ordagoAction,
@@ -946,25 +1008,34 @@ fun ActionAnnouncement(
     // carrera viejo↔nuevo (#27). El mínimo visible y el desvanecido al quedar
     // null los gestiona el LaunchedEffect de abajo, en local.
     val targetAction: LastActionInfo? = gameState.currentLanceActions[player.id]
+    // Clave de CONTENIDO del anuncio, ignorando `seq` (único por instancia, solo
+    // para la limpieza del ViewModel). Si la animación reaccionara al objeto
+    // entero, una re-emisión del MISMO "Tengo"/"Paso" con seq nuevo dispararía un
+    // cross-fade del mismo texto = parpadeo tenue (#27, sobre todo en declaración).
+    // La animación solo debe reaccionar al contenido (action + amount).
+    val targetKey: Pair<GameAction, Int?>? = targetAction?.let { it.action to it.amount }
 
     var displayedAction by remember { mutableStateOf<LastActionInfo?>(null) }
+    var displayedKey by remember { mutableStateOf<Pair<GameAction, Int?>?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(targetAction) {
+    LaunchedEffect(targetKey) {
         val now = System.currentTimeMillis()
         when {
-            targetAction != null && targetAction != displayedAction -> {
-                if (displayedAction != null) {
+            targetKey != null && targetKey != displayedKey -> {
+                if (displayedKey != null) {
                     val remaining = ANNOUNCEMENT_MIN_BEFORE_REPLACE_MS - (now - shownAt)
                     if (remaining > 0) delay(remaining)
                 }
                 displayedAction = targetAction
+                displayedKey = targetKey
                 shownAt = System.currentTimeMillis()
             }
-            targetAction == null && displayedAction != null -> {
+            targetKey == null && displayedKey != null -> {
                 val remaining = ANNOUNCEMENT_MIN_VISIBLE_MS - (now - shownAt)
                 if (remaining > 0) delay(remaining)
                 displayedAction = null
+                displayedKey = null
             }
         }
     }
@@ -1516,7 +1587,14 @@ fun LanceTracker(
                 // ahí el ganador y los tantos ya se conocen (#30).
                 var resultColor = Color.Gray
                 if (isCurrent && currentBet != null) {
-                    resultText = "En juego: ${currentBet.amount}"
+                    // Un órdago no es un envite de N puntos: es jugarse la
+                    // partida. Se refleja como tal en vez de "En juego: 40".
+                    if (currentBet.isOrdago) {
+                        resultText = "¡ÓRDAGO!"
+                        resultColor = Color(0xFFFFB300) // ámbar: lance especial
+                    } else {
+                        resultText = "En juego: ${currentBet.amount}"
+                    }
                 } else if (result != null && !wasSkipped) {
                     when (result.outcome) {
                         "Querido" -> resultText = "Vale ${result.amount}"

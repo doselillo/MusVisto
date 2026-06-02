@@ -13,65 +13,16 @@ import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import kotlin.math.max
 
-// Apertura de envite del primero: solo abro yo cuando tengo mano ultra-premium
-// (>90: 4R/31 mano/duples reyes mano). Con cualquier otra mano apoyo y dejo
-// que el capitán decida con su mano + mi seña. Más bajo dejaba al primero
-// abrir manos medias-altas y la pareja se "pisaba"; más alto silencia incluso
-// los value-bets evidentes de la nuts.
-private const val SUPPORT_OWN_FLOOR = 90
+// Las palancas de comportamiento de la IA viven ahora en [AIProfile] (cada
+// instancia de AILogic recibe un perfil → los rivales dejan de ser clones, #34).
+// Dentro de la clase se exponen como `val` de instancia con los MISMOS nombres
+// que las antiguas constantes, así que los cuerpos de los métodos no cambian.
+// La documentación/rationale de cada palanca está junto a su campo en AIProfile.
 
-// Probabilidad de que un rival INTERCEPTE una seña del equipo contrario.
-// Baja: en el Mus real solo se cazan algunas, de vez en cuando. Antes era
-// 100% (omnisciencia) -> usar señas era perjudicial. (Backlog #7)
-private const val OPPONENT_SIGN_INTERCEPT_PROB = 0.20
-
-// #23: strength efectivo de Grande para duples-de-reyes propio siendo mano.
-// >78 ("valor fuerte") pero <90 (no es el value-bet 4-5 más leíble); el
-// mus-strategy-reviewer lo fijó en 82.
-private const val DUPLES_REY_MANO_GRANDE_STRENGTH = 82
-
-// 1c: umbrales de decisión nombrados (mismos valores que los literales
-// previos). Las tablas-`when` de fuerza por jugada se dejan como están: ya
-// son auto-documentadas como tabla.
-// Corte de Mus: fuerza mínima para NoMus (ajustada por riskFactor y bias).
-private const val MUS_CUT_PARES_JUEGO = 75
-private const val MUS_CUT_GRANDE_CHICA = 85
-// Si el COMPAÑERO es mano, sube el listón de corte (no quitarle la mano).
-// Bajado de 10 a 6 en playtest: el sesgo seguía siendo claro pero pedía Mus
-// con manos que ya merecían cortarse (compañero mano no debe convertirse en
-// "no cortar nunca"; sigue siendo señal, no veto).
-private const val PARTNER_MANO_MUS_BIAS = 6
-// #20 Capitanía delegada de Mus: si actúo ANTES que mi compañero HUMANO y
-// VOY A SEÑALIZAR (pendingGestures), delego el corte. Si no señalizo, el
-// humano no tendría info → corto por mi mano normal (sin delegar). 5% de
-// "break" para no ser absoluto: humano-like, a veces corto aunque toque
-// delegar. Solo con compañero humano: el simulador probó que delegar IA→IA
-// sangra tantos sin beneficio. Con compañero IA #20 es no-op.
-private const val MUS_DELEGATION_BREAK_PCT = 5
-// Apertura de envite por bandas: > fuerte = valor seguro; [piso..fuerte] =
-// banda media probabilística; < piso = solo farol de robo.
-private const val OPEN_STRONG_VALUE = 78
-private const val OPEN_MID_BAND_FLOOR = 55
-
-// Penalización al strength del capitán cuando responde a un envite del rival
-// y SU compañero (primero del equipo) ya pasó en este lance. Con #20 el
-// primero apoya/pasa con manos no ultra-premium → el equipo queda apostando
-// SOLO con la mano del capitán; sin esta penalización el capitán acepta como
-// si su compañero aportara, y sangra (sim slice: aceptar gana 42% vs 53%
-// baseline, neto -738 vs -162). Validado con simulador (200 partidas):
-// la magnitud 15 deja aceptar 54.6% wins / -83 tantos netos (incluso mejor
-// que baseline). 10 y 12 compensan menos (-225, -142). 15 saca las manos
-// strength 75-85 de la banda Quiero — eran las que sangraban.
-private const val CAPTAIN_ALONE_RESPONSE_PENALTY = 15
-
-// Umbral de fuerza por DEBAJO del cual, al evaluar el gate del Hail-Mary de
-// respuesta a órdago (#33 follow-up), se asume que un envite YA QUERIDO pendiente
-// de showdown en OTRO lance lo gana el rival (y por tanto suma a su marcador
-// efectivo). Sesgo SEGURO: bajo a propósito (solo cuento lances donde voy
-// claramente perdido) para NO inflar el marcador del rival con lances que en
-// realidad gano → evita aceptar órdagos perdidos teniendo ganancias pendientes.
-// Usa mi fuerza ya ajustada por señas del compañero; nunca mira cartas del rival.
-private const val PENDING_LANCE_LOSS_THRESHOLD = 50
+// Probabilidad de que mi juego AGUANTE frente a UN rival por delante (modelo de
+// showdown de juego: 1 - 0.90^nRivales = prob. de que al menos uno me gane). No
+// es palanca de personalidad: es una constante del modelo de fuerza, no del perfil.
+private const val JUEGO_HOLD_PROB_PER_RIVAL = 0.90
 
 data class AIDecision(
     val action: GameAction,
@@ -99,13 +50,61 @@ private class DecisionLog {
  *  - MusGameLogic con getHandPares(hand) y getHandJuegoValue(hand)
  *  - GameState, Player, Card, GameAction, GamePhase, ParesPlay definidos en tu proyecto
  */
+// Las palancas de personalidad se exponen como `val` de instancia conservando los
+// nombres UPPER_SNAKE de las antiguas constantes (traza 1:1 con AIProfile y los
+// métodos no cambian). Son constantes de configuración por instancia → se silencia
+// VariableNaming a nivel de clase.
+@Suppress("VariableNaming")
 class AILogic constructor(
     private val gameLogic: MusGameLogic,
     /** Inyectable para tests; por defecto Random.Default */
-    private val rng: kotlin.random.Random
+    private val rng: kotlin.random.Random,
+    /**
+     * Personalidad de esta IA (#34). Por defecto = baseline ya validado, así que
+     * `AILogic(gameLogic, rng)` reproduce la IA de producción bit a bit. Cada
+     * rival recibe el suyo (ver GameViewModel) para dejar de ser clones.
+     */
+    private val profile: AIProfile = AIProfile()
 ) {
 
     private val TAG = "AILogicDebug"
+
+    // Palancas de personalidad resueltas del perfil. Conservan los nombres de
+    // las antiguas constantes a nivel de fichero → los métodos no se tocan.
+    // Rationale de cada una: junto a su campo en AIProfile.
+    private val SUPPORT_OWN_FLOOR = profile.supportOwnFloor
+    private val OPPONENT_SIGN_INTERCEPT_PROB = profile.opponentSignInterceptProb
+    private val DUPLES_REY_MANO_GRANDE_STRENGTH = profile.duplesReyManoGrandeStrength
+    private val MUS_CUT_PARES_JUEGO = profile.musCutParesJuego
+    private val MUS_CUT_GRANDE_CHICA = profile.musCutGrandeChica
+    private val PARTNER_MANO_MUS_BIAS = profile.partnerManoMusBias
+    private val MUS_FATIGUE_STEP = profile.musFatigueStep
+    private val MUS_DELEGATION_BREAK_PCT = profile.musDelegationBreakPct
+    private val OPEN_STRONG_VALUE = profile.openStrongValue
+    private val OPEN_MID_BAND_FLOOR = profile.openMidBandFloor
+    private val CAPTAIN_ALONE_RESPONSE_PENALTY = profile.captainAloneResponsePenalty
+    private val PENDING_LANCE_LOSS_THRESHOLD = profile.pendingLanceLossThreshold
+    private val ENDGAME_ORDAGO_TIGHT_FLOOR = profile.endgameOrdagoTightFloor
+    private val ENDGAME_ORDAGO_LAST_LANCE_FLOOR = profile.endgameOrdagoLastLanceFloor
+    private val Q2_MAX_DIFF = profile.q2MaxDiff
+    private val ENDGAME_ORDAGO_HAILMARY_FLOOR = profile.endgameOrdagoHailmaryFloor
+    private val R1A_AMPLE_DIFF = profile.r1aAmpleDiff
+    private val ENDGAME_ORDAGO_HAILMARY_LOOSE_FLOOR = profile.endgameOrdagoHailmaryLooseFloor
+    private val ENDGAME_CATASTROPHE_DIFF = profile.endgameCatastropheDiff
+    private val ENDGAME_ORDAGO_CATASTROPHE_FLOOR = profile.endgameOrdagoCatastropheFloor
+    private val OPPONENT_LOOSE_DISCARD_MIN = profile.opponentLooseDiscardMin
+    private val ENDGAME_ORDAGO_PAIR_HINT_BONUS = profile.endgameOrdagoPairHintBonus
+    private val ENDGAME_BORDER_SCORE = profile.endgameBorderScore
+    private val ENDGAME_TIGHT_DIFF = profile.endgameTightDiff
+    private val ENDGAME_STANDARD_CLOSE_BET = profile.endgameStandardCloseBet
+    private val ENDGAME_REMAINING_LANCE_FLOOR = profile.endgameRemainingLanceFloor
+    private val R1B_OPPONENT_WIN_THRESHOLD = profile.r1bOpponentWinThreshold
+    private val R1B_MY_HAND_FLOOR = profile.r1bMyHandFloor
+    private val ORDAGO_RESPONSE_PARTNER_HINT_BONUS = profile.ordagoResponsePartnerHintBonus
+    private val ORDAGO_RESPONSE_OPP_STRONG_BET_PENALTY = profile.ordagoResponseOppStrongBetPenalty
+    private val STRONG_BET_THRESHOLD = profile.strongBetThreshold
+    // (ordagoResponseTightEndgameBonus quedó muerto al retirar R4.f — sigue en
+    //  AIProfile documentado por si R4.f vuelve, pero no se expone aquí.)
 
     private data class HandStrength(
         val grande: Int,
@@ -230,21 +229,20 @@ class AILogic constructor(
             GamePhase.JUEGO -> finalStrength.juego
             else -> 0
         }
-        val rawResponse = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
+        val (rawResponse, responseReason) = decideResponse(strengthForLance, finalStrength, gameState, aiPlayer)
         // En apoyo no escalo: una subida (Envido/Órdago) se rebaja a Quiero
         // para mantener el bote del equipo sin pisar al capitán.
         val responseAction = if (playSupport &&
             (rawResponse is GameAction.Envido || rawResponse is GameAction.Órdago)
         ) GameAction.Quiero else rawResponse
-        val threshold = 70 // Umbral para "Quiero"
-        val actionLog = when {
-            playSupport && responseAction !== rawResponse ->
-                ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} para no pisar al capitán)"
-            responseAction is GameAction.Quiero ->
-                ">>> FINAL ACTION: Quiero (Reason: Strength $strengthForLance >= threshold $threshold)"
-            else ->
-                ">>> FINAL ACTION: ${responseAction.displayText} (Reason: Strength $strengthForLance < threshold $threshold)"
-        }
+        // El umbral de aceptación es CONTEXTUAL (órdago vs envite, posición,
+        // marcador, foldChance…). decideResponse devuelve la razón real para
+        // que el log no afirme un umbral fijo inexistente.
+        val actionLog = if (playSupport && responseAction !== rawResponse)
+            ">>> FINAL ACTION: Quiero (Apoyo: rebajado desde ${rawResponse.displayText} " +
+                "para no pisar al capitán; base: $responseReason)"
+        else
+            ">>> FINAL ACTION: ${responseAction.displayText} (Reason: $responseReason)"
         return AIDecision(responseAction) to actionLog
     }
 
@@ -277,7 +275,7 @@ class AILogic constructor(
                     GamePhase.PARES -> finalStrength.pares
                     else -> finalStrength.juego
                 }
-                val betResult = decideInitialBet(strengthForLance, aiPlayer, gameState)
+                val betResult = decideInitialBet(strengthForLance, finalStrength, aiPlayer, gameState)
                 // En apoyo no abro: dejo hablar a rivales y al capitán.
                 val betAction = if (playSupport &&
                     (betResult.first is GameAction.Envido || betResult.first is GameAction.Órdago)
@@ -332,12 +330,15 @@ class AILogic constructor(
             .joinToString(" ") { cardToShortString(it) }
 
     // ---------------- Responder a apuestas activas ----------------
+    // Complejidad pre-existente de un método de decisión central; reducirla es una
+    // tarea aparte con validación de simulador (el comportamiento lo fija el snapshot).
+    @Suppress("CyclomaticComplexMethod")
     private fun decideResponse(
         adjustedStrength: Int,
         finalStrength: HandStrength,
         gameState: GameState,
         aiPlayer: Player
-    ): GameAction {
+    ): Pair<GameAction, String> {
         val currentBetAmount = gameState.currentBet?.amount ?: 0
         // Compensación #20: si mi compañero (primero del equipo) ya pasó en
         // este lance, el equipo está apostando SOLO con mi mano. Bajo el
@@ -387,7 +388,9 @@ class AILogic constructor(
                 }
                 if (lance != gameState.gamePhase && myStrength < PENDING_LANCE_LOSS_THRESHOLD) amount else 0
             }
-            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero
+            if (opponentScore + pointsIfRejected + pendingRivalPoints >= 40) return GameAction.Quiero to
+                "Órdago: Quiero forzado — rechazar entrega la partida (opp $opponentScore + " +
+                    "noQuerida $pointsIfRejected + pendientes $pendingRivalPoints >= 40)"
 
             val order = gameLogic.getTurnOrderedPlayers(gameState.players, gameState.manoPlayerId)
             val pos = order.indexOfFirst { it.id == aiPlayer.id }
@@ -401,16 +404,45 @@ class AILogic constructor(
             if (isMano) acceptThreshold -= 6
             if (isPostre) acceptThreshold += 6
             if (myScore >= 35) acceptThreshold -= 4 // ganarlo cierra: vale el riesgo
+            // (R4.d sinergia con seña) Seña FUERTE del compañero (duples,
+            // reyes 3/2, 31, 30 de juego). El órdago all-in compara TODOS los
+            // lances al showdown, no sólo el actual. `finalStrength` ya
+            // incluye un boost por la seña, pero SÓLO sobre el lance concreto
+            // de la seña (mergePartnerGestures). En lances distintos, esta
+            // rebaja explícita captura que la pareja gana al menos un lance
+            // garantizado y eleva la probabilidad de supervivencia conjunta.
+            if (partnerHasStrongSignal(gameState, aiPlayer)) {
+                acceptThreshold -= ORDAGO_RESPONSE_PARTNER_HINT_BONUS
+            }
+            // (R4.e — lectura del patrón del rival, 2026-05-28) Si algún
+            // rival ha lanzado un envido FUERTE (>= STRONG_BET_THRESHOLD) o
+            // un órdago en un LANCE PREVIO de esta ronda, su mano es
+            // consistentemente alta → este órdago es real, no farol →
+            // endurecer el umbral (+5). NO incluye el envido del lance
+            // actual (ese es el órdago al que respondo).
+            if (opponentBetStrongInPriorLance(gameState, aiPlayer)) {
+                acceptThreshold += ORDAGO_RESPONSE_OPP_STRONG_BET_PENALTY
+            }
+            // (R4.f eliminada 2026-05-28) El bonus -3 en endgame ajustado
+            // contribuía al sangrado del aceptar-net en sim simétrico
+            // (-61990 vs baseline -18005): la IA aceptaba demasiados órdagos
+            // basura confiando en el timing del cobro. Si el playtest pide
+            // más agresividad al aceptar en endgame, restaurar con
+            // calibración fina (instrumentar accept-net por zona de score).
 
             val deadFloor = 75 // por debajo NO se acepta (no regalar el chico, #25)
 
             return when {
-                effectiveStrength >= acceptThreshold -> GameAction.Quiero
-                effectiveStrength < deadFloor -> GameAction.NoQuiero
+                effectiveStrength >= acceptThreshold ->
+                    GameAction.Quiero to "Órdago: Quiero (effStrength $effectiveStrength >= umbral $acceptThreshold)"
+                effectiveStrength < deadFloor ->
+                    GameAction.NoQuiero to "Órdago: NoQuiero (effStrength $effectiveStrength < piso $deadFloor)"
                 // Banda media [deadFloor, umbral): llamada probabilística para
                 // que spamear órdago con mano floja no sea gratis.
-                rng.nextInt(100) < 30 -> GameAction.Quiero
-                else -> GameAction.NoQuiero
+                rng.nextInt(100) < 30 ->
+                    GameAction.Quiero to "Órdago: Quiero (banda media [$deadFloor,$acceptThreshold), llamada 30%)"
+                else ->
+                    GameAction.NoQuiero to "Órdago: NoQuiero (banda media [$deadFloor,$acceptThreshold), sin llamada)"
             }
         }
 
@@ -419,14 +451,18 @@ class AILogic constructor(
         val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
         val opponentScore = gameState.score[opponentTeam] ?: 0
 
-        val action = when {
+        val (action, reason) = when {
             // REGLA 1: Solo se plantea un órdago si la ventaja es casi total Y
             // la apuesta ya es alta (más de 10 puntos) O el rival está a punto de ganar.
-            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) -> GameAction.Órdago
+            advantage > 95 && (currentBetAmount > 10 || opponentScore > 30) ->
+                GameAction.Órdago to "REGLA1: Órdago (ventaja $advantage > 95, " +
+                    "envite $currentBetAmount / opp $opponentScore)"
 
             // REGLA 2: Si la ventaja es muy grande (>85), sube la apuesta — cantidad aleatoria 2-4
             // para que la IA sea menos predecible.
-            advantage > 85 -> GameAction.Envido(betAmount(effectiveStrength, isRaise = true))
+            advantage > 85 ->
+                GameAction.Envido(betAmount(effectiveStrength, isRaise = true)) to
+                    "REGLA2: subo el envite (ventaja $advantage > 85)"
 
             // REGLA 3: ventaja buena -> casi siempre Quiero, pero NO 100%
             // explotable: cuanto mayor el envite (y la ventaja no aplastante,
@@ -469,8 +505,10 @@ class AILogic constructor(
                 val baseFold = (((currentBetAmount - 2).coerceAtLeast(0)) * 6)
                     .coerceAtMost(80)
                 val foldChance = juego31LossOverride(gameState, aiPlayer) ?: baseFold
-                if (rng.nextInt(100) < foldChance) GameAction.NoQuiero
-                else GameAction.Quiero
+                if (rng.nextInt(100) < foldChance)
+                    GameAction.NoQuiero to "REGLA3: NoQuiero (ventaja $advantage > 60, foldChance $foldChance%)"
+                else
+                    GameAction.Quiero to "REGLA3: Quiero (ventaja $advantage > 60, foldChance $foldChance%)"
             }
 
             // REGLA 4: "pagar por ver" con mano media-floja. 5% -> 10%
@@ -488,13 +526,14 @@ class AILogic constructor(
             // que la IA dispute más lances. Si vuelve a sentirse tímida, la
             // siguiente palanca NO es esta (retorno disminuyente) sino la
             // agresividad de APERTURA del capitán (ver backlog #20/#11).
-            advantage > 50 && rng.nextInt(100) < 10 -> GameAction.Quiero
+            advantage > 50 && rng.nextInt(100) < 10 ->
+                GameAction.Quiero to "REGLA4: Quiero pagar-por-ver (ventaja $advantage > 50, 10%)"
 
-            else -> GameAction.NoQuiero
+            else -> GameAction.NoQuiero to "Sin ventaja suficiente: NoQuiero (ventaja $advantage)"
         }
         // --- FIN DE LA LÓGICA MEJORADA ---
 
-        return action
+        return action to reason
     }
 
     // ---------------- Mus / NoMus ----------------
@@ -626,19 +665,29 @@ class AILogic constructor(
         val partnerIsMano = partner != null && gameState.manoPlayerId == partner.id
         val manoBias = if (partnerIsMano) PARTNER_MANO_MUS_BIAS else 0
 
-        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias // Umbral para cortar por pares
-        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias
-        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
-        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias
+        // #37 Fatiga de Mus: baja el umbral de corte con cada ciclo Mus+descarte
+        // ya jugado en esta ronda (0 en la 1ª decisión). Garantiza que el bucle
+        // de Mus de la IA termina; ramp suave para no matar el Mus legítimo.
+        val fatigue = gameState.musRoundCount * MUS_FATIGUE_STEP
+
+        val paresCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias - fatigue // Umbral para cortar por pares
+        val juegoCutThreshold = MUS_CUT_PARES_JUEGO - riskFactor + manoBias - fatigue
+        val grandeCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias - fatigue
+        val chicaCutThreshold = MUS_CUT_GRANDE_CHICA - riskFactor + manoBias - fatigue
 
         // ¿Mi mano MERECE cortarse por sí sola? (razón, o null si no supera ningún
         // umbral). Se calcula ANTES de la delegación para gatear el break: el
         // primero solo corta por iniciativa con una mano cortable, nunca al azar.
+        val biasInfo = "manoBias $manoBias, fatiga $fatigue (mus #${gameState.musRoundCount})"
         val cutReason = when {
-            strength.pares >= paresCutThreshold -> "Pares strength ${strength.pares} >= threshold $paresCutThreshold (manoBias $manoBias)"
-            strength.juego >= juegoCutThreshold -> "Juego strength ${strength.juego} >= threshold $juegoCutThreshold (manoBias $manoBias)"
-            strength.grande >= grandeCutThreshold -> "Grande strength ${strength.grande} >= threshold $grandeCutThreshold (manoBias $manoBias)"
-            strength.chica >= chicaCutThreshold -> "Chica strength ${strength.chica} >= threshold $chicaCutThreshold (manoBias $manoBias)"
+            strength.pares >= paresCutThreshold ->
+                "Pares strength ${strength.pares} >= threshold $paresCutThreshold ($biasInfo)"
+            strength.juego >= juegoCutThreshold ->
+                "Juego strength ${strength.juego} >= threshold $juegoCutThreshold ($biasInfo)"
+            strength.grande >= grandeCutThreshold ->
+                "Grande strength ${strength.grande} >= threshold $grandeCutThreshold ($biasInfo)"
+            strength.chica >= chicaCutThreshold ->
+                "Chica strength ${strength.chica} >= threshold $chicaCutThreshold ($biasInfo)"
             else -> null
         }
 
@@ -711,7 +760,8 @@ class AILogic constructor(
         if (!iActBeforePartner) return null
         if (aiPlayer.id !in gameState.pendingGestures) return null
         if (handWouldCut && rng.nextInt(100) < MUS_DELEGATION_BREAK_PCT) {
-            return GameAction.NoMus to "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
+            return GameAction.NoMus to
+                "Reason: #20 break ($MUS_DELEGATION_BREAK_PCT%); corto mi buena mano por iniciativa"
         }
         return GameAction.Mus to "Reason: #20 delego el corte al capitán (humano o IA)"
     }
@@ -732,8 +782,290 @@ class AILogic constructor(
         }
     }
 
+    /**
+     * El COMPAÑERO ha señalizado una mano FUERTE conocida: duples, medias o
+     * pares de reyes, o 31 de juego. La pareja gana el showdown del all-in
+     * con más frecuencia con esa mano, así que en endgame órdago (lanzar o
+     * aceptar) se relajan los pisos. Esto es por encima del boost ya bakeado
+     * en `finalStrength` por `mergePartnerGestures` (que sólo lifta el lance
+     * concreto de la seña); el all-in compara todos los lances al showdown.
+     */
+    private fun partnerHasStrongSignal(gameState: GameState, aiPlayer: Player): Boolean {
+        val partner = gameState.players.firstOrNull {
+            it.team == aiPlayer.team && it.id != aiPlayer.id
+        } ?: return false
+        val gesture = gameState.knownGestures[partner.id] ?: return false
+        return when (val m = getGestureMeaning(gesture.gestureResId)) {
+            is GestureMeaning.Pares -> when (val play = m.play) {
+                is ParesPlay.Duples -> true
+                is ParesPlay.Medias -> play.rank == Rank.REY
+                is ParesPlay.Pares -> play.rank == Rank.REY
+                else -> false
+            }
+            // 31 y 30 son los dos juegos que ganan al resto del campo; ambos
+            // marcan al equipo como ganador casi seguro del lance JUEGO al
+            // showdown del all-in (#16 c strategy-reviewer ampliación).
+            is GestureMeaning.Juego -> m.value == 31 || m.value == 30
+            else -> false
+        }
+    }
+
+    /**
+     * Endgame ordago — módulo de órdago OFENSIVO según el modelo R1-R5
+     * (ver `docs/context/ORDAGO_STRATEGY.md`). Evalúa en orden de prioridad:
+     *
+     *  1) **R1.b "Cortar la jugada"** — proyección del recuento final indica
+     *     que el rival cierra al cobro de la ronda y yo no, AUNQUE el
+     *     marcador actual sea ajustado: órdago para cortar el cobro al final.
+     *  2) **R1.a Hail-Mary** (desventaja crítica `my < opp && opp >= 33`):
+     *     mano excelente (`>=85`) directo, o mano media (`>=70`) si el
+     *     proxy de "rival flojo" (Q3: rival pidió Mus + descartó ≥3) lo
+     *     confirma.
+     *  3) **R5 Endgame ajustado** (ambos `>=33` && |diff| `<=2`): mano fuerte
+     *     `>=85` → órdago para cortar el recuento del lance (timing).
+     *  4) **Q2 Último lance apostable** (en endgame con ventaja `>=3` pero
+     *     siendo este lance el último apostable con mi mano decente):
+     *     órdago para no dejar al rival sumar al recuento.
+     *
+     * Si nada aplica → null y la apertura por bandas normal sigue. El wrapper
+     * de `decideByPhase` ya descarta el órdago si soy apoyo (`playSupport`):
+     * este módulo SOLO dispara para capitán del lance (#20).
+     */
+    // Complejidad/returns/condiciones pre-existentes del módulo de órdago endgame
+    // (#16); reducirlos es tarea aparte con validación de simulador (comportamiento
+    // fijado por el snapshot).
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
+    private fun decideEndgameOrdago(
+        strength: Int,
+        finalStrength: HandStrength,
+        aiPlayer: Player,
+        gameState: GameState
+    ): Pair<GameAction, String>? {
+        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
+        val myScore = gameState.score[aiPlayer.team] ?: 0
+        val opponentScore = gameState.score[opponentTeam] ?: 0
+        val diff = myScore - opponentScore
+
+        val partnerStrong = partnerHasStrongSignal(gameState, aiPlayer)
+        val pairBonus = if (partnerStrong) ENDGAME_ORDAGO_PAIR_HINT_BONUS else 0
+
+        // 1) R1.b "Cortar la jugada" — si el rival va a cerrar la partida al
+        //    recuento (envites pendientes que probablemente pierdo), aunque
+        //    el marcador actual no sea endgame ajustado. Modelo simple:
+        //    suma agreedBets que el rival se llevará si gana el showdown
+        //    (mi finalStrength_lance < umbral). NO suma bonos de jugada
+        //    (pares/juego declarados) — modelo rico queda como follow-up
+        //    si playtest pide más cobertura.
+        val oppProjectedPoints = projectOpponentPointsAtRoundEnd(gameState, finalStrength)
+        val myProjectedPoints = projectMyPointsAtRoundEnd(gameState, finalStrength)
+        if (opponentScore + oppProjectedPoints >= 40 &&
+            myScore + myProjectedPoints < 40 &&
+            strength >= R1B_MY_HAND_FLOOR - pairBonus
+        ) {
+            val why = "R1.b cortar la jugada (oppProj +$oppProjectedPoints → ${opponentScore + oppProjectedPoints}, " +
+                "myProj +$myProjectedPoints → ${myScore + myProjectedPoints}, strength $strength)"
+            return Pair(GameAction.Órdago, "Reason: $why")
+        }
+
+        // 2) R1.a / R1.a' Hail-Mary en desventaja crítica.
+        //    Aplica cuando voy DETRÁS y se cumple UNA de:
+        //    - rival está en zona de cierre (opp ≥ 33), OR
+        //    - rival está cerca (opp ≥ 30) Y yo MUY por detrás (diff ≤ -10).
+        //    La segunda rama sustituye a las legacy "Desperation" y "Block win"
+        //    (eliminadas tras A/B sim 2026-05-28: disparaban 36% del spam).
+        if (myScore < opponentScore &&
+            opponentScore >= 30 &&
+            (opponentScore >= ENDGAME_BORDER_SCORE || diff <= -10)
+        ) {
+            // R1.a: mano excelente directa (≥90 calibrado A/B 2026-05-28).
+            // NO pasa por hasBetterLanceAhead — con la nuts y rival cerca de
+            // cerrar, la urgencia del Hail-Mary manda: lanzar YA en cualquier
+            // lance es +EV vs esperar (rival puede cerrarte en su siguiente
+            // turno). Sí mantiene el gate "ganar este lance normal me cierra".
+            // Gate AMPLE_DIFF (A/B 2026-05-29): R1 del usuario exige
+            // "diferencia muy amplia"; con diff ∈ [-1,-4] (32-33, 33-35) un
+            // envite normal rinde más con mano excelente.
+            if (strength >= ENDGAME_ORDAGO_HAILMARY_FLOOR - pairBonus &&
+                diff <= R1A_AMPLE_DIFF
+            ) {
+                if (myScore + ENDGAME_STANDARD_CLOSE_BET >= 40) return null
+                val why = "R1.a Hail-Mary mano excelente (oppScore $opponentScore, " +
+                    "myScore $myScore, strength $strength, partnerStrong=$partnerStrong)"
+                return Pair(GameAction.Órdago, "Reason: $why")
+            }
+            // R1.a': mano media (≥70) + proxy "rival flojo" (Q3). Aplica solo
+            // en la zona estricta de R1.a (opp ≥ 33). Con mano MEDIA sí
+            // pasa por hailMaryGatesPass: no quemar el órdago si hay lance
+            // posterior con mano decente (caso típico del backlog #16).
+            if (opponentScore >= ENDGAME_BORDER_SCORE &&
+                strength >= ENDGAME_ORDAGO_HAILMARY_LOOSE_FLOOR - pairBonus &&
+                opponentLooseSignal(gameState, aiPlayer)
+            ) {
+                if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
+                val why = "R1.a' Hail-Mary + proxy rival flojo (oppScore $opponentScore, " +
+                    "myScore $myScore, strength $strength)"
+                return Pair(GameAction.Órdago, "Reason: $why")
+            }
+            // R1.a'' "Desesperación catastrófica": diff ≤ -15 + opp ≥ 33 +
+            // mano remotamente jugable (≥60). Cubre el caso del log
+            // 2026-05-29: rival 17 vs humano 36, max strength 75 (Chica 2
+            // ases), sin proxy → R1.a/R1.a' no disparan → IA se "rinde".
+            // El downside del Hail-Mary es marginal (perderías igual en
+            // 2-3 manos); el upside es flippear con fold-equity del rival.
+            if (opponentScore >= ENDGAME_BORDER_SCORE &&
+                diff <= ENDGAME_CATASTROPHE_DIFF &&
+                strength >= ENDGAME_ORDAGO_CATASTROPHE_FLOOR - pairBonus
+            ) {
+                if (!hailMaryGatesPass(gameState, finalStrength, myScore)) return null
+                val why = "R1.a'' Desesperación catastrófica (oppScore $opponentScore, " +
+                    "myScore $myScore, diff $diff, strength $strength)"
+                return Pair(GameAction.Órdago, "Reason: $why")
+            }
+        }
+
+        // 3) R5 Endgame ajustado — ambos en zona de cierre con diff mínima.
+        //    Órdago timing-driven con mano fuerte (≥85).
+        if (myScore >= ENDGAME_BORDER_SCORE &&
+            opponentScore >= ENDGAME_BORDER_SCORE &&
+            kotlin.math.abs(diff) <= ENDGAME_TIGHT_DIFF &&
+            strength >= ENDGAME_ORDAGO_TIGHT_FLOOR - pairBonus
+        ) {
+            val why = "R5 endgame ajustado (myScore $myScore, oppScore $opponentScore, " +
+                "diff $diff, strength $strength)"
+            return Pair(GameAction.Órdago, "Reason: $why")
+        }
+
+        // 4) Q2 último lance apostable con mano fuerte en endgame con ventaja
+        //    MODERADA (diff ∈ [3, Q2_MAX_DIFF=5]). Calibración A/B 2026-05-28:
+        //    sin tope superior en diff, Q2 disparaba 25% del total de órdagos
+        //    en sim simétrico (3190/10000 partidas, ventajas brutales con
+        //    cualquier mano ≥80). Restringido a ventaja contenida + piso 85.
+        if (myScore >= ENDGAME_BORDER_SCORE &&
+            diff in 3..Q2_MAX_DIFF &&
+            strength >= ENDGAME_ORDAGO_LAST_LANCE_FLOOR - pairBonus
+        ) {
+            val remainingLances = remainingLancesAfter(gameState.gamePhase)
+            val hasBetterLanceAhead = remainingLances.any { phase ->
+                strengthFor(phase, finalStrength) >= ENDGAME_REMAINING_LANCE_FLOOR
+            }
+            if (!hasBetterLanceAhead) {
+                val why = "Q2 último lance apostable (myScore $myScore, " +
+                    "diff $diff, strength $strength)"
+                return Pair(GameAction.Órdago, "Reason: $why")
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Gate común para R1.a / R1.a' (Hail-Mary): no lanzar si:
+     *  - Ganar el lance NORMAL ya me cierra a mí (basta Envido grande).
+     *  - Me queda un lance posterior con mano decente (no quemar aquí).
+     */
+    private fun hailMaryGatesPass(
+        gameState: GameState,
+        finalStrength: HandStrength,
+        myScore: Int
+    ): Boolean {
+        if (myScore + ENDGAME_STANDARD_CLOSE_BET >= 40) return false
+        val remainingLances = remainingLancesAfter(gameState.gamePhase)
+        val hasBetterLanceAhead = remainingLances.any { phase ->
+            strengthFor(phase, finalStrength) >= ENDGAME_REMAINING_LANCE_FLOOR
+        }
+        return !hasBetterLanceAhead
+    }
+
+    /**
+     * R4.e — Lectura del patrón del rival: true si CUALQUIER jugador del
+     * equipo rival ha lanzado un envido FUERTE (`amount >= STRONG_BET_THRESHOLD`)
+     * o un órdago (representado como 40 en `playerMaxBetThisRound`) en algún
+     * LANCE PREVIO de esta ronda. Su mano es consistentemente alta → este
+     * órdago al que respondo es real, no farol → endurecer acceptThreshold.
+     */
+    private fun opponentBetStrongInPriorLance(gameState: GameState, aiPlayer: Player): Boolean {
+        return gameState.players.any { p ->
+            p.team != aiPlayer.team &&
+                (gameState.playerMaxBetThisRound[p.id] ?: 0) >= STRONG_BET_THRESHOLD
+        }
+    }
+
+    /**
+     * R1.a' proxy "rival flojo" (Q3 minimal): el rival pidió Mus en esta
+     * ronda (`musRoundCount >= 1` ⇒ hubo Mus colectivo) Y al menos un
+     * jugador del equipo rival descartó ≥3 cartas en el último ciclo de
+     * descarte (`discardCounts`). Heurística simple, falible (slow-play del
+     * rival la engaña), pero suficiente para habilitar Hail-Mary con manos
+     * medias en desventaja crítica sin abrir spam.
+     */
+    private fun opponentLooseSignal(gameState: GameState, aiPlayer: Player): Boolean {
+        if (gameState.musRoundCount < 1) return false
+        return gameState.players.any { p ->
+            p.team != aiPlayer.team &&
+                (gameState.discardCounts[p.id] ?: 0) >= OPPONENT_LOOSE_DISCARD_MIN
+        }
+    }
+
+    /**
+     * Proyección de puntos del rival al recuento final (modelo simple, Q4 v1).
+     * Suma agreedBets de lances donde mi `finalStrength_lance` es baja (rival
+     * probablemente gana el showdown). NO suma bonos por jugada declarada —
+     * modelo rico queda como follow-up. Sesgo CONSERVADOR a sobreestimar al
+     * rival (umbral 55 deja más lances en el saco del rival que el modelo
+     * #33 follow-up que usaba 50 con sesgo opuesto: subcontar).
+     */
+    private fun projectOpponentPointsAtRoundEnd(
+        gameState: GameState,
+        finalStrength: HandStrength
+    ): Int {
+        return gameState.agreedBets.entries.sumOf { (lance, amount) ->
+            if (lance == gameState.gamePhase) 0
+            else {
+                val myStrength = strengthFor(lance, finalStrength)
+                if (myStrength < R1B_OPPONENT_WIN_THRESHOLD) amount else 0
+            }
+        }
+    }
+
+    /**
+     * Proyección de mis puntos al recuento final (espejo del anterior). Sumo
+     * agreedBets donde mi `finalStrength_lance >= 55` (probablemente gano).
+     * Mismo modelo simple sin bonos de jugada.
+     */
+    private fun projectMyPointsAtRoundEnd(
+        gameState: GameState,
+        finalStrength: HandStrength
+    ): Int {
+        return gameState.agreedBets.entries.sumOf { (lance, amount) ->
+            if (lance == gameState.gamePhase) 0
+            else {
+                val myStrength = strengthFor(lance, finalStrength)
+                if (myStrength >= R1B_OPPONENT_WIN_THRESHOLD) amount else 0
+            }
+        }
+    }
+
+    private fun remainingLancesAfter(phase: GamePhase): List<GamePhase> = when (phase) {
+        GamePhase.GRANDE -> listOf(GamePhase.CHICA, GamePhase.PARES, GamePhase.JUEGO)
+        GamePhase.CHICA -> listOf(GamePhase.PARES, GamePhase.JUEGO)
+        GamePhase.PARES -> listOf(GamePhase.JUEGO)
+        else -> emptyList()
+    }
+
+    private fun strengthFor(phase: GamePhase, hs: HandStrength): Int = when (phase) {
+        GamePhase.GRANDE -> hs.grande
+        GamePhase.CHICA -> hs.chica
+        GamePhase.PARES -> hs.pares
+        GamePhase.JUEGO -> hs.juego
+        else -> 0
+    }
+
+    // Complejidad pre-existente de la apertura por bandas; reducirla es tarea aparte
+    // con validación de simulador (el comportamiento lo fija el snapshot).
+    @Suppress("CyclomaticComplexMethod")
     private fun decideInitialBet(
         strength: Int,
+        finalStrength: HandStrength,
         aiPlayer: Player,
         gameState: GameState
     ): Pair<GameAction, String> {
@@ -742,15 +1074,13 @@ class AILogic constructor(
         val opponentScore = gameState.score[opponentTeam] ?: 0
         val scoreDifference = myTeamScore - opponentScore
 
-        // Órdago proactivo en escenarios marcados:
-        // 1) Desesperación: vamos perdiendo y el rival está cerca de cantar 40. Mano buena.
-        if (strength > 75 && scoreDifference < -15 && opponentScore > 25) {
-            return Pair(GameAction.Órdago, "Reason: Desperation (diff $scoreDifference, opp $opponentScore, strength $strength)")
-        }
-        // 2) Bloquear victoria rival: el rival está a un envite de ganar y tenemos mano muy fuerte.
-        if (opponentScore >= 30 && strength > 80 && scoreDifference < -10) {
-            return Pair(GameAction.Órdago, "Reason: Block opponent win (opp $opponentScore, diff $scoreDifference, strength $strength)")
-        }
+        // Módulo R1-R5 endgame ordago (#16). Cubre TODOS los casos de órdago
+        // proactivo: R1.b cortar la jugada, R1.a/R1.a' Hail-Mary desventaja
+        // crítica (con la rama ampliada a opp ∈ [30, 32] que sustituyó a las
+        // legacy Desperation + Block win tras A/B sim 2026-05-28), R5 endgame
+        // ajustado timing, Q2 último lance apostable. Devuelve null si no
+        // aplica → apertura por bandas normal sigue.
+        decideEndgameOrdago(strength, finalStrength, aiPlayer, gameState)?.let { return it }
         // (Antes había una condición 3 "cerrar partida" con strength > 50:
         // regalaba el chico yendo por delante con mano floja —ordagar 36-29 sin
         // nada— porque jugando valor normal se cierra igual sin downside
@@ -819,10 +1149,9 @@ class AILogic constructor(
         }
         if (effStrength < OPEN_MID_BAND_FLOOR && stealSpot && !scoreRisky) {
             val bluffP = when (rivalsBehind) {
-                0 -> 0.20    // postre / sin rivales detrás: robo pleno
-                1 -> 0.08    // un rival aún por hablar: prudente (puede cazarme)
-                else -> 0.05 // ≥2 detrás: muy raro, pero NO absoluto (usuario
-                             // 2026-05-22: nada de "nunca" categórico; humano)
+                0 -> profile.bluffProbPostre      // postre / sin rivales detrás: robo pleno
+                1 -> profile.bluffProbPenultimate // un rival aún por hablar: prudente (puede cazarme)
+                else -> profile.bluffProbEarly    // ≥2 detrás: muy raro, pero NO absoluto
             }
             // OJO: el rng.nextDouble() se consume SIEMPRE que se entra al bloque
             // (igual que la versión previa), aunque bluffP sea 0 — si no, se
@@ -845,9 +1174,9 @@ class AILogic constructor(
 
     private val figureRanks = setOf(Rank.REY, Rank.TRES, Rank.CABALLO, Rank.SOTA)
     private val deadRange = setOf(Rank.CUATRO, Rank.CINCO, Rank.SEIS, Rank.SIETE)
-    private val discardThreshold = 25
-    private val duplesBonus = 30
-    private val deadPenalty = 25
+    private val discardThreshold = profile.discardThreshold
+    private val duplesBonus = profile.duplesBonus
+    private val deadPenalty = profile.deadPenalty
 
     fun decideDiscard(aiPlayer: Player): AIDecision {
         val hand = aiPlayer.hand
@@ -867,9 +1196,17 @@ class AILogic constructor(
             return AIDecision(GameAction.ConfirmDiscard, setOf(cardToDiscard))
         }
 
-        // Regla dura: 3 figuras + 1 no-figura → tira la no-figura buscando el 31.
+        // Regla dura: 3 figuras + 1 no-figura.
+        // (#39) Solo se persigue el 31 manteniendo las 3 figuras si entre
+        // ellas hay AL MENOS UN REY (Rey/Tres): ahí hay respaldo de Grande y
+        // la caza del 31 es legítima. Con 3 figuras flojas (caballo/sota, sin
+        // rey) NO se persigue el 31 a ciegas — se cae al scoring, que descarta
+        // las figuras sueltas y roba buscando reyes (siempre conserva el par,
+        // pues 3 figuras no-rey implican Caballo/Sota emparejadas). Evita el
+        // "quedarse demasiadas figuras a por el 31 y regalar reyes al resto".
         val figures = hand.filter { it.rank in figureRanks }
-        if (figures.size == 3) {
+        val hasKingFigure = figures.any { it.rank == Rank.REY || it.rank == Rank.TRES }
+        if (figures.size == 3 && hasKingFigure) {
             val nonFigureCard = hand.first { it !in figures }
             return AIDecision(GameAction.ConfirmDiscard, setOf(nonFigureCard))
         }
@@ -1175,7 +1512,9 @@ class AILogic constructor(
             if (juegoValue in 32..40 && rivalsAhead > 0) {
                 val posPenalty = rivalsAhead * 10
                 juegoStrength -= posPenalty
-                explanation.appendLine("     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts")
+                explanation.appendLine(
+                    "     - Penalización por $rivalsAhead rival(es) delante con juego no-31 -> -$posPenalty pts"
+                )
             }
         } else {
             // --- NUEVA LÓGICA PARA PUNTO ---
@@ -1377,7 +1716,7 @@ class AILogic constructor(
                             val gPos = gesturerOrder.indexOfFirst { it.id == gesturer.id }
                             val gRivalsAhead =
                                 if (gPos > 0) gesturerOrder.take(gPos).count { it.team != gesturer.team } else 0
-                            val pLose = 1.0 - Math.pow(0.90, gRivalsAhead.toDouble())
+                            val pLose = 1.0 - Math.pow(JUEGO_HOLD_PROB_PER_RIVAL, gRivalsAhead.toDouble())
                             (100 - (pLose * 100).toInt()).coerceIn(0, 100)
                         }
                         teamStrength = teamStrength.copy(juego = max(teamStrength.juego, juegoStrength))
