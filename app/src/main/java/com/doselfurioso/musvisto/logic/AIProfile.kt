@@ -169,8 +169,23 @@ data class AIProfile(
             musCutParesJuego = 72,
             musCutGrandeChica = 82
         )
-        /** Osadía↓, musea más; SIN sobre-plegarse al farol (cap, no reabrir #1). */
-        val CONSERVADOR = AIProfile()
+        /**
+         * Osadía↓, musea más (#34 Fase C, v1 SUTIL — espejo de [AGRESIVO]). Deltas
+         * pequeños por la misma razón (decisión del usuario 2026-06-01): no romper la
+         * IA, que un humano note "un toque" prudente sin que parezca otro motor.
+         * Abre más tarde (openStrongValue 78→81, openMidBandFloor 55→57: solo +2, la
+         * banda media es sensible, #11) y musea más (musCut* +3). **NO toca el lado
+         * RESPUESTA** (captainAloneResponsePenalty / acceptThreshold) NI los pisos de
+         * órdago: ahí vive el sobre-plegado #1 y un Conservador que se pliega al farol
+         * "parece tonto" (principio del #34). Validación: sim (este lado SÍ es medible)
+         * + reviewers; confirmación de feel = testers en la beta.
+         */
+        val CONSERVADOR = AIProfile(
+            openStrongValue = 81,
+            openMidBandFloor = 57,
+            musCutParesJuego = 78,
+            musCutGrandeChica = 88
+        )
         /** Faroleo↑, banda media más ancha (deltas en Fase C). */
         val FAROLERO = AIProfile()
     }
