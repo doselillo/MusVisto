@@ -177,7 +177,7 @@ fun GameScreen(
             val partner    = players[2]
             val rivalRight = players[3]
 
-            val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.humanPlayerId
+            val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.localSeatId
             // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
             // ActionButtons usa `gameState.availableActions` directamente.)
 
@@ -342,7 +342,7 @@ fun GameScreen(
                         onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
                         selectedCardCount = gameState.selectedCardsForDiscard.size,
                         isEnabled = isMyTurn,
-                        currentPlayerId = gameViewModel.humanPlayerId,
+                        currentPlayerId = gameViewModel.localSeatId,
                         isRaise = gameState.currentBet != null,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -456,7 +456,7 @@ private fun GameOverlays(
         PauseMenuOverlay(
             navController = navController,
             onAction = gameViewModel::onAction,
-            humanPlayerId = gameViewModel.humanPlayerId,
+            localSeatId = gameViewModel.localSeatId,
             dimensions = dimens,
             gameViewModel = gameViewModel
         )
@@ -477,10 +477,10 @@ private fun GameOverlays(
         ) {
             BetSelector(
                 onBet = { amount ->
-                    gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.humanPlayerId)
+                    gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.localSeatId)
                 },
                 onCancel = {
-                    gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.humanPlayerId)
+                    gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.localSeatId)
                 },
                 isRaise = gameState.currentBet != null
             )
@@ -500,10 +500,10 @@ private fun GameOverlays(
             players = players,
             bottomPadding = screenHeight * 0.28f,
             onNewGameClick = {
-                gameViewModel.onAction(GameAction.NewGame, gameViewModel.humanPlayerId)
+                gameViewModel.onAction(GameAction.NewGame, gameViewModel.localSeatId)
             },
             onContinueClick = {
-                gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
+                gameViewModel.onAction(GameAction.Continue, gameViewModel.localSeatId)
             }
         )
     }
@@ -522,7 +522,7 @@ private fun GameOverlays(
                 chicosWon = gameState.chicosWon,
                 chicosToWin = gameState.settings.chicosToWinVaca,
                 onContinueClick = {
-                    gameViewModel.onAction(GameAction.Continue, gameViewModel.humanPlayerId)
+                    gameViewModel.onAction(GameAction.Continue, gameViewModel.localSeatId)
                 },
                 dimens = dimens
             )
@@ -1715,7 +1715,7 @@ fun BetSelector(
 fun PauseMenuOverlay(
     navController: NavController,
     onAction: (GameAction, String) -> Unit,
-    humanPlayerId: String,
+    localSeatId: String,
     dimensions: ResponsiveDimens,
     gameViewModel: GameViewModel
 ) {
@@ -1742,12 +1742,12 @@ fun PauseMenuOverlay(
                     color = Color.White
                 )
                 // Botón para reanudar el juego
-                Button(onClick = { onAction(GameAction.TogglePauseMenu, humanPlayerId) }) {
+                Button(onClick = { onAction(GameAction.TogglePauseMenu, localSeatId) }) {
                     Text("Reanudar", fontSize = dimensions.fontSizeMedium)
                 }
                 // Botón para empezar una nueva partida
                 Button(
-                    onClick = { onAction(GameAction.NewGame, humanPlayerId) },
+                    onClick = { onAction(GameAction.NewGame, localSeatId) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
                 ) {
                     Text("Nueva Partida", fontSize = dimensions.fontSizeMedium)

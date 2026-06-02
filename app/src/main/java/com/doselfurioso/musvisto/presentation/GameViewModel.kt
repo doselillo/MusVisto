@@ -105,7 +105,14 @@ class GameViewModel constructor(
     private val _aiDebugLogs = MutableStateFlow<List<String>>(emptyList())
     val aiDebugLogs: StateFlow<List<String>> = _aiDebugLogs.asStateFlow()
 
-    val humanPlayerId = "p1"
+    /**
+     * Asiento que controla ESTE dispositivo (multijugador Fase 0.2). En un solo
+     * jugador es el humano local (`p1`); el motor de turnos ya despacha IA-vs-humano
+     * por `Player.isAi`, no por este id, así que admitir varios humanos es, sobre
+     * todo, dejar de asumir que "el humano" es siempre p1. En multijugador el host
+     * inyectaría aquí el asiento de cada cliente.
+     */
+    val localSeatId = PLAYER_HUMAN
 
     private fun setGameState(newState: GameState) {
         _gameState.value = newState.copy(isPaused = _gameState.value.isPaused)
@@ -316,10 +323,10 @@ class GameViewModel constructor(
             }
         }
 
-        val actionToProcess = if (currentState.currentTurnPlayerId == humanPlayerId) {
+        val actionToProcess = if (currentState.currentTurnPlayerId == localSeatId) {
             when (currentState.gamePhase) {
-                GamePhase.PARES_CHECK -> if (gameLogic.getHandPares(currentState.players.find { it.id == humanPlayerId }!!.hand).strength > 0) GameAction.Tengo else GameAction.NoTengo
-                GamePhase.JUEGO_CHECK -> if (gameLogic.getHandJuegoValue(currentState.players.find { it.id == humanPlayerId }!!.hand) >= 31) GameAction.Tengo else GameAction.NoTengo
+                GamePhase.PARES_CHECK -> if (gameLogic.getHandPares(currentState.players.find { it.id == localSeatId }!!.hand).strength > 0) GameAction.Tengo else GameAction.NoTengo
+                GamePhase.JUEGO_CHECK -> if (gameLogic.getHandJuegoValue(currentState.players.find { it.id == localSeatId }!!.hand) >= 31) GameAction.Tengo else GameAction.NoTengo
                 else -> action
             }
         } else {
@@ -452,7 +459,7 @@ class GameViewModel constructor(
     fun onCardSelected(card: Card) {
         // --- LA CORRECCIÓN CLAVE ---
         // If it's not the human player's turn, do nothing.
-        if (_gameState.value.currentTurnPlayerId != humanPlayerId) return
+        if (_gameState.value.currentTurnPlayerId != localSeatId) return
 
         val currentSelection = _gameState.value.selectedCardsForDiscard
         val newSelection = if (card in currentSelection) {
@@ -692,7 +699,7 @@ class GameViewModel constructor(
         // Creamos la acción de envido con la cantidad seleccionada
         val envidoAction = GameAction.Envido(amount)
         // Procesamos la acción como si el jugador hubiera pulsado un botón con ese valor
-        val newState = gameLogic.processAction(currentState, envidoAction, humanPlayerId)
+        val newState = gameLogic.processAction(currentState, envidoAction, localSeatId)
         // Ocultamos el selector y actualizamos el estado del juego
         updateStateAndCheckAiTurn(newState.copy(isSelectingBet = false))
     }
@@ -771,10 +778,10 @@ class GameViewModel constructor(
      */
     private fun gestureVisibleMs(signalerId: String): Long {
         val players = _gameState.value.players
-        val humanTeam = players.find { it.id == humanPlayerId }?.team
+        val humanTeam = players.find { it.id == localSeatId }?.team
         val signaler = players.find { it.id == signalerId }
         val isHumanPartner = humanTeam != null && signaler != null &&
-            signaler.id != humanPlayerId && signaler.team == humanTeam
+            signaler.id != localSeatId && signaler.team == humanTeam
         return if (isHumanPartner) GESTURE_VISIBLE_PARTNER_MS else GESTURE_VISIBLE_OTHER_MS
     }
 
@@ -794,7 +801,7 @@ class GameViewModel constructor(
         // tampoco se dispara (su gate exige id en pendingGestures): cada uno
         // corta por su propia mano, como exige el modo.
         if (state.musCorrido) return state
-        val humanTeam = state.players.find { it.id == humanPlayerId }?.team
+        val humanTeam = state.players.find { it.id == localSeatId }?.team
         val pending = state.players.filter { ai ->
             ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }
         }.mapNotNull { ai ->
