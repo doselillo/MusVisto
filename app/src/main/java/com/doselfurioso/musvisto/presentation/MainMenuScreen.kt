@@ -104,6 +104,13 @@ fun MainMenuScreen(navController: NavController, viewModel: MainMenuViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             StyledMenuButton(
+                text = "Jugar online",
+                onClick = { navController.navigate("online_lobby") }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            StyledMenuButton(
                 text = "Señas",
                 onClick = { navController.navigate("gestures_screen") }
             )

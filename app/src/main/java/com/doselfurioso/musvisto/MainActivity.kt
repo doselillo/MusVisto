@@ -17,6 +17,8 @@ import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.AndroidGameLogger
 import com.doselfurioso.musvisto.logic.GameRepository
+import com.doselfurioso.musvisto.logic.FirebaseAuthGateway
+import com.doselfurioso.musvisto.logic.LobbyService
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.presentation.CharacterSetupScreen
 import com.doselfurioso.musvisto.presentation.GameScreen
@@ -24,6 +26,8 @@ import com.doselfurioso.musvisto.presentation.GameViewModel
 import com.doselfurioso.musvisto.presentation.GesturesScreen
 import com.doselfurioso.musvisto.presentation.MainMenuScreen
 import com.doselfurioso.musvisto.presentation.MainMenuViewModel
+import com.doselfurioso.musvisto.presentation.LobbyViewModel
+import com.doselfurioso.musvisto.presentation.OnlineLobbyScreen
 import com.doselfurioso.musvisto.presentation.OptionsScreen
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
 import kotlin.random.Random
@@ -65,25 +69,48 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val lobbyViewModelFactory by lazy {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(LobbyViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return LobbyViewModel(FirebaseAuthGateway(), LobbyService(), gameRepository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MusVistoTheme {
                 AppNavigation(factory = gameViewModelFactory,
-                    mainMenuFactory = mainMenuViewModelFactory)
+                    mainMenuFactory = mainMenuViewModelFactory,
+                    lobbyFactory = lobbyViewModelFactory)
             }
         }
     }
 }
 
 @Composable
-fun AppNavigation(factory: ViewModelProvider.Factory,  mainMenuFactory: ViewModelProvider.Factory) {
+fun AppNavigation(
+    factory: ViewModelProvider.Factory,
+    mainMenuFactory: ViewModelProvider.Factory,
+    lobbyFactory: ViewModelProvider.Factory
+) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "main_menu") {
         composable("main_menu") {
             MainMenuScreen(
                 navController = navController,
                 viewModel = viewModel(factory = mainMenuFactory)
+            )
+        }
+        composable("online_lobby") {
+            OnlineLobbyScreen(
+                navController = navController,
+                viewModel = viewModel(factory = lobbyFactory)
             )
         }
         composable("game_screen") {

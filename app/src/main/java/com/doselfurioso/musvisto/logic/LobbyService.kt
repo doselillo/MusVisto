@@ -157,6 +157,49 @@ class LobbyService(
         roomsRef.child(roomId).removeEventListener(listener)
     }
 
+    // ---- Configuración del host (lobby) ----
+
+    /** El host convierte un asiento en IA con [archetype] (clave de `AIArchetype`). */
+    fun setSeatAi(roomId: String, seatId: String, archetype: String) {
+        seatRef(roomId, seatId).updateChildren(
+            mapOf(
+                "isAi" to true,
+                "uid" to null,
+                "displayName" to "IA",
+                "archetype" to archetype,
+                "connected" to true,
+                "ready" to true // una IA siempre está lista
+            )
+        )
+    }
+
+    /** El host vacía un asiento (quita IA o expulsa). */
+    fun clearSeat(roomId: String, seatId: String) {
+        seatRef(roomId, seatId).updateChildren(
+            mapOf(
+                "isAi" to false,
+                "uid" to null,
+                "displayName" to "",
+                "archetype" to null,
+                "connected" to false,
+                "ready" to false
+            )
+        )
+    }
+
+    /** Marca/desmarca "listo" de un asiento humano. */
+    fun setReady(roomId: String, seatId: String, ready: Boolean) {
+        seatRef(roomId, seatId).child("ready").setValue(ready)
+    }
+
+    /** El host cambia el estado de la sala (lobby → playing → finished). */
+    fun setStatus(roomId: String, status: String) {
+        roomsRef.child(roomId).child("meta").child("status").setValue(status)
+    }
+
+    private fun seatRef(roomId: String, seatId: String): DatabaseReference =
+        roomsRef.child(roomId).child("seats").child(seatId)
+
     private fun parseRoom(roomId: String, snapshot: DataSnapshot): RoomSnapshot? {
         if (!snapshot.exists()) return null
         val meta = snapshot.child("meta")
