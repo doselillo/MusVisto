@@ -90,6 +90,22 @@ class MatchHostTest {
     )
 
     @Test
+    fun `el descarte autonomo inyecta sus cartas y el host lo aplica`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        // Los 4 piden Mus en orden de turno → fase DISCARD (mano al descarte).
+        repeat(4) { host.submitCommand(host.authoritativeState.currentTurnPlayerId!!, GameCommand.Mus) }
+        assertEquals(GamePhase.DISCARD, host.authoritativeState.gamePhase)
+
+        // El comando de descarte LLEVA sus cartas (autónomo): el host las inyecta en
+        // selectedCardsForDiscard antes de reducir; sin eso el reducer lo ignora.
+        val mano = host.authoritativeState.currentTurnPlayerId!!
+        val toDiscard = host.authoritativeState.players.first { it.id == mano }.hand.take(2)
+        host.submitCommand(mano, GameCommand.Discard(toDiscard))
+
+        assertEquals(2, host.authoritativeState.discardCounts[mano])
+    }
+
+    @Test
     fun `tras aplicar un comando, la vista del rival sigue redactada`() {
         val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
         host.submitCommand("p1", GameCommand.Mus)
