@@ -8,7 +8,7 @@ import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
-import com.doselfurioso.musvisto.logic.GameRepository
+import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.model.*
 import kotlinx.coroutines.Job
@@ -64,7 +64,7 @@ class GameViewModel constructor(
      * jugador de IA según su personalidad → los rivales dejan de ser clones.
      */
     private val aiLogicFactory: (AIProfile) -> AILogic,
-    private val gameRepository: GameRepository
+    private val gameRepository: GameStore
 ) : ViewModel() {
 
     private val TAG = "GameViewModelDebug"

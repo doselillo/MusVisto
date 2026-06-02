@@ -14,12 +14,17 @@ private const val KEY_SAVE_STATE = "save_state"
 private const val KEY_SETTINGS = "game_settings"
 
 
+/**
+ * Implementación local de [GameStore]: persiste en `SharedPreferences` (JSON).
+ * Es el backend de almacenamiento on-device; en multijugador un host autoritativo
+ * podría usar otra implementación de [GameStore] sin tocar los ViewModels.
+ */
 class GameRepository  constructor(
     private val context: Context
-) {
+) : GameStore {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun saveState(saveState: SaveState) {
+    override fun saveState(saveState: SaveState) {
         try {
             val jsonState = Json.encodeToString(saveState)
             prefs.edit().putString(KEY_SAVE_STATE, jsonState).apply()
@@ -28,7 +33,7 @@ class GameRepository  constructor(
         }
     }
 
-    fun loadState(): SaveState? {
+    override fun loadState(): SaveState? {
         return try {
             val jsonState = prefs.getString(KEY_SAVE_STATE, null) ?: return null
             Json.decodeFromString<SaveState>(jsonState)
@@ -38,13 +43,11 @@ class GameRepository  constructor(
         }
     }
 
-    fun deleteState() {
+    override fun deleteState() {
         prefs.edit().remove(KEY_SAVE_STATE).apply()
     }
 
-    /** Ajustes de reglas globales (#29). La pantalla de Opciones (Fase 2) los
-     *  escribe; una partida nueva los lee al arrancar. */
-    fun saveSettings(settings: GameSettings) {
+    override fun saveSettings(settings: GameSettings) {
         try {
             prefs.edit().putString(KEY_SETTINGS, Json.encodeToString(settings)).apply()
         } catch (e: Exception) {
@@ -52,7 +55,7 @@ class GameRepository  constructor(
         }
     }
 
-    fun loadSettings(): GameSettings {
+    override fun loadSettings(): GameSettings {
         return try {
             val json = prefs.getString(KEY_SETTINGS, null) ?: return GameSettings()
             Json.decodeFromString<GameSettings>(json)

@@ -4,7 +4,7 @@ package com.doselfurioso.musvisto.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.logic.AIArchetype
-import com.doselfurioso.musvisto.logic.GameRepository
+import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.model.GameSettings
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -26,7 +26,7 @@ private const val SEAT_PARTNER = 1
 private const val SEAT_RIVAL_LEFT = 2
 private const val SEAT_RIVAL_RIGHT = 3
 
-class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel() {
+class MainMenuViewModel(private val gameRepository: GameStore) : ViewModel() {
 
     private val _hasSavedGame = MutableStateFlow(false)
     val hasSavedGame = _hasSavedGame.asStateFlow()
