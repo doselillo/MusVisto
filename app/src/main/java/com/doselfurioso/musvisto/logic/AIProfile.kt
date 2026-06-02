@@ -187,21 +187,21 @@ data class AIProfile(
             musCutGrandeChica = 88
         )
         /**
-         * Faroleo↑, banda media más ancha (#34 Fase C, v1 SUTIL). Deltas pequeños
-         * (decisión del usuario 2026-06-01): el humano nota "un farolero", no otro
-         * motor. Su firma es el FAROL de robo (bluffProbPostre 0.20→0.25,
-         * bluffProbPenultimate 0.08→0.10; bluffProbEarly NO se toca — farolear hacia
-         * ≥2 rivales por hablar es regalar fichas) + banda media un pelo más ancha
-         * (openMidBandFloor 55→53, abre más manos medias). NO toca openStrongValue
-         * (eso es la agresión de VALOR de [AGRESIVO]) ni el lado RESPUESTA ni los
-         * pisos de órdago. ⚠️ El sim es CIEGO al farol (premia farolear porque el
-         * rival baseline pliega = pickup gratis artefacto) → aquí el sim es solo red
-         * de seguridad anti-autodestrucción; el feel del farol lo arbitran los testers.
+         * Faroleo↑ (#34 Fase C, v1 SUTIL). Deltas pequeños (decisión del usuario
+         * 2026-06-01): el humano nota "un farolero", no otro motor. Su firma PURA es
+         * el FAROL de robo (bluffProbPostre 0.20→0.25, bluffProbPenultimate 0.08→0.10;
+         * bluffProbEarly NO se toca — farolear hacia ≥2 rivales por hablar es regalar
+         * fichas). NO toca openMidBandFloor: el mus-strategy-reviewer avisó (2026-06-02)
+         * de que bajarlo CANIBALIZA el propio farol (el farol barato solo dispara con
+         * effStrength < openMidBandFloor, AILogic.kt:1150) y encima lo igualaría a
+         * [AGRESIVO] (banda media = eje de VALOR, no de farol). NO toca openStrongValue
+         * ni el lado RESPUESTA ni los pisos de órdago. ⚠️ El sim es CIEGO al farol
+         * (premia farolear porque el rival baseline pliega = pickup gratis artefacto)
+         * → aquí el sim es solo red de seguridad; el feel del farol lo arbitran testers.
          */
         val FAROLERO = AIProfile(
             bluffProbPostre = 0.25,
-            bluffProbPenultimate = 0.10,
-            openMidBandFloor = 53
+            bluffProbPenultimate = 0.10
         )
     }
 }
