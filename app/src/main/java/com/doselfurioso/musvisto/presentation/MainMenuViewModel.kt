@@ -80,7 +80,7 @@ class MainMenuViewModel(private val gameRepository: GameRepository) : ViewModel(
      * Asigna [characterId] al [slot]. Para mantener los 4 asientos con personajes
      * DISTINTOS, si ese personaje ya ocupaba otro asiento se INTERCAMBIAN (el que
      * estaba en [slot] pasa al asiento que liberó). Como los defaults son distintos
-     * y el roster tiene más personajes que asientos, nunca quedan duplicados.
+     * y el roster tiene al menos tantos personajes como asientos, nunca hay duplicados.
      */
     fun assignCharacter(slot: TableSlot, characterId: String) {
         val s = _settings.value

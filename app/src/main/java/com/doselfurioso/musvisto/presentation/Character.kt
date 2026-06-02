@@ -16,9 +16,11 @@ data class Character(
 )
 
 /**
- * Catálogo de personajes. 4 avatares reales + 2 placeholders (círculos de color)
- * — el sistema crece añadiendo entradas con su avatar cuando haya más arte. Los
- * ids son estables (se persisten en `GameSettings`).
+ * Catálogo de personajes. 4 avatares reales (uno por asiento de la mesa) — el
+ * sistema crece añadiendo entradas con su avatar cuando haya más arte. Los
+ * placeholders de "Invitado" se quitaron hasta tener personajes nuevos; los
+ * drawables `avatar_placeholder_1/2` siguen disponibles para reusar. Los ids son
+ * estables (se persisten en `GameSettings`).
  */
 object CharacterRoster {
 
@@ -26,9 +28,7 @@ object CharacterRoster {
         Character(id = "castilla", name = "Onésimo", avatarResId = R.drawable.avatar_castilla),
         Character(id = "aragon", name = "Fernando", avatarResId = R.drawable.avatar_aragon),
         Character(id = "navarra", name = "Sancho", avatarResId = R.drawable.avatar_navarra),
-        Character(id = "granada", name = "Miramamolín", avatarResId = R.drawable.avatar_granada),
-        Character(id = "placeholder_1", name = "Invitado 1", avatarResId = R.drawable.avatar_placeholder_1),
-        Character(id = "placeholder_2", name = "Invitado 2", avatarResId = R.drawable.avatar_placeholder_2)
+        Character(id = "granada", name = "Miramamolín", avatarResId = R.drawable.avatar_granada)
     )
 
     private val byId = all.associateBy { it.id }
