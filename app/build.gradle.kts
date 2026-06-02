@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.google.services)
 }
 
 detekt {
@@ -79,5 +80,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+
+    // Firebase (multijugador): la BoM gobierna versiones. RTDB = estado en vivo
+    // del bucle host↔clientes; Auth anónimo = identidad por asiento (reglas).
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.database)
+    implementation(libs.firebase.auth)
 
 }

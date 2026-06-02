@@ -16,3 +16,6 @@ local.properties
 .kotlin/errors/errors-1755673598095.log
 app/release/app-release.aab
 docs
+
+# Firebase: claves del proyecto. No se commitea (se baja de la consola por dev/maquina).
+app/google-services.json
