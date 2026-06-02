@@ -1,11 +1,13 @@
 package com.doselfurioso.musvisto.logic
 
-import android.util.Log
 import com.doselfurioso.musvisto.model.*
 import kotlin.random.Random
 
 
-class MusGameLogic constructor(private val random: Random){
+class MusGameLogic constructor(
+    private val random: Random,
+    private val logger: GameLogger = GameLogger.NoOp
+) {
 
 
     // Creates a standard 40-card Spanish deck.
@@ -434,7 +436,7 @@ class MusGameLogic constructor(private val random: Random){
             val reason = "${currentState.gamePhase.name} No Querida"
             val scoreEvent = ScoreEventInfo(bettingPlayer.team, ScoreDetail(reason, pointsWon))
 
-            Log.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")
+            logger.d("MusVistoTest", "APUESTA RECHAZADA. El equipo ${bettingPlayer.team} gana $pointsWon punto(s) al instante.")
 
             // Preparamos el estado para pasar al siguiente lance
             val resolvedState = currentState.copy(
@@ -579,7 +581,7 @@ class MusGameLogic constructor(private val random: Random){
     }
 
     private fun resolveOrdagoShowdown(currentState: GameState): GameState {
-        Log.d("MusVistoTest", "¡ÓRDAGO ACEPTADO! Resolviendo la partida...")
+        logger.d("MusVistoTest", "¡ÓRDAGO ACEPTADO! Resolviendo la partida...")
 
         val lanceWinner: Player? = when (currentState.gamePhase) {
             GamePhase.GRANDE -> getGrandeWinner(currentState)
@@ -698,7 +700,7 @@ class MusGameLogic constructor(private val random: Random){
         var event: GameEvent? = null
 
         if (currentState.gamePhase == GamePhase.DISCARD && currentState.selectedCardsForDiscard.isEmpty()) {
-            Log.e("MusGameLogic", "Error: Intento de descarte vacío en fase de Mus por el jugador $playerId.")
+            logger.e("MusGameLogic", "Error: Intento de descarte vacío en fase de Mus por el jugador $playerId.")
             return currentState // Devuelve el estado sin cambios.
         }
 
@@ -708,7 +710,7 @@ class MusGameLogic constructor(private val random: Random){
         var newCards: List<Card>
 
         if (deck.size < cardsNeeded) {
-            Log.d("MusVistoTest", "Deck empty! Shuffling discard pile of ${discardPile.size} cards.")
+            logger.d("MusVistoTest", "Deck empty! Shuffling discard pile of ${discardPile.size} cards.")
             event = GameEvent.DISCARD_PILE_SHUFFLED
             val fromOldDeck = deck
             deck = discardPile.shuffled(random)
@@ -984,7 +986,7 @@ class MusGameLogic constructor(private val random: Random){
 
     /** CASO 1: JUEGO_CHECK sin nadie con Juego -> ronda de Punto (todos hablan). */
     private fun resolveAsPunto(currentState: GameState): GameState {
-        Log.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
+        logger.d("MusVistoTest", "JUEGO: Nadie tiene. Pasando a la ronda de PUNTO.")
         return currentState.copy(
             gamePhase = GamePhase.JUEGO, // La fase de apuestas sigue siendo "JUEGO"
             isPuntoPhase = true, // <-- PERO activamos la bandera de "Punto"
@@ -1002,7 +1004,7 @@ class MusGameLogic constructor(private val random: Random){
         teamsWithPlay: List<String>
     ): GameState {
         val lancePhase = if (currentCheckPhase == GamePhase.PARES_CHECK) GamePhase.PARES else GamePhase.JUEGO
-        Log.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
+        logger.d("MusVistoTest", "${lancePhase.name}: Ronda de apuestas saltada (equipos con jugada: ${teamsWithPlay.size}).")
 
         val historyResult = LanceResult(lance = lancePhase, outcome = "Skipped")
         val stateWithHistory = currentState.copy(roundHistory = currentState.roundHistory + historyResult)
