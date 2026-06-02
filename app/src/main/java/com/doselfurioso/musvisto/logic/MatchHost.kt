@@ -1,6 +1,7 @@
 package com.doselfurioso.musvisto.logic
 
 import com.doselfurioso.musvisto.model.GameCommand
+import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.toAction
 
@@ -46,6 +47,23 @@ class MatchHost(
         }
         authoritativeState = gameLogic.processAction(stateForAction, command.toAction(), seatId)
         return authoritativeState
+    }
+
+    /**
+     * Resuelve host-side una fase de SISTEMA que no requiere acción de jugador: la
+     * declaración de PARES_CHECK/JUEGO_CHECK, forzada por las manos (cada uno tiene
+     * jugada o no, sin elección). El ViewModel local la resuelve igual vía
+     * `resolveDeclaration` tras los anuncios visuales; host-side no hay UI, así que
+     * se resuelve directa. Devuelve true si resolvió algo (el bucle debe re-evaluar).
+     */
+    fun resolveSystemPhaseIfAny(): Boolean {
+        return when (authoritativeState.gamePhase) {
+            GamePhase.PARES_CHECK, GamePhase.JUEGO_CHECK -> {
+                authoritativeState = gameLogic.resolveDeclaration(authoritativeState)
+                true
+            }
+            else -> false
+        }
     }
 
     /** Vista redactada (fog of war) para un asiento: lo que el host enviaría a ese cliente. */

@@ -109,6 +109,34 @@ class MatchHostServiceTest {
         assertTrue(transport.lastView.getValue("p3").currentTurnPlayerId != "p1")
     }
 
+    @Test
+    fun `con AiSeatDriver una mesa de solo IA auto-juega la ronda hasta resolverla`() {
+        val gameLogic = MusGameLogic(Random(0))
+        val allAi = players().map { it.copy(isAi = true) }
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, rest) = gameLogic.dealCards(allAi, deck, "p1")
+        val state = GameState(
+            players = dealt, deck = rest, gamePhase = GamePhase.MUS,
+            currentTurnPlayerId = "p1", manoPlayerId = "p1",
+            playersInLance = seatIds.toSet(),
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        )
+        val host = MatchHost(gameLogic, state)
+        // Un AILogic por asiento, compartiendo rng (interleave determinista, como en producción).
+        val rng = Random(0)
+        val aiLogics = seatIds.associateWith { AILogic(gameLogic, rng, AIProfile()) }
+        val transport = FakeMatchTransport()
+
+        MatchHostService(host, transport, seatIds, AiSeatDriver(aiLogics)).start()
+
+        // La IA jugó sola la ronda entera (Mus → lances → resolución) por el bucle del host.
+        val phase = host.authoritativeState.gamePhase
+        assertTrue(
+            "Una mesa de solo IA debe auto-resolver la ronda; quedó en $phase",
+            phase == GamePhase.ROUND_OVER || phase == GamePhase.GAME_OVER
+        )
+    }
+
     /** Suscribe un observador y devuelve un getter de la última vista recibida. */
     private fun capture(transport: FakeMatchTransport, seatId: String): () -> GameState {
         var latest: GameState? = null
