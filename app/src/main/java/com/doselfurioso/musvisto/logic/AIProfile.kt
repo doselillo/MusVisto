@@ -186,7 +186,22 @@ data class AIProfile(
             musCutParesJuego = 78,
             musCutGrandeChica = 88
         )
-        /** Faroleo↑, banda media más ancha (deltas en Fase C). */
-        val FAROLERO = AIProfile()
+        /**
+         * Faroleo↑, banda media más ancha (#34 Fase C, v1 SUTIL). Deltas pequeños
+         * (decisión del usuario 2026-06-01): el humano nota "un farolero", no otro
+         * motor. Su firma es el FAROL de robo (bluffProbPostre 0.20→0.25,
+         * bluffProbPenultimate 0.08→0.10; bluffProbEarly NO se toca — farolear hacia
+         * ≥2 rivales por hablar es regalar fichas) + banda media un pelo más ancha
+         * (openMidBandFloor 55→53, abre más manos medias). NO toca openStrongValue
+         * (eso es la agresión de VALOR de [AGRESIVO]) ni el lado RESPUESTA ni los
+         * pisos de órdago. ⚠️ El sim es CIEGO al farol (premia farolear porque el
+         * rival baseline pliega = pickup gratis artefacto) → aquí el sim es solo red
+         * de seguridad anti-autodestrucción; el feel del farol lo arbitran los testers.
+         */
+        val FAROLERO = AIProfile(
+            bluffProbPostre = 0.25,
+            bluffProbPenultimate = 0.10,
+            openMidBandFloor = 53
+        )
     }
 }
