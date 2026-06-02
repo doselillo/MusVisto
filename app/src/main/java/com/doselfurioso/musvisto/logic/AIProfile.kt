@@ -152,11 +152,56 @@ data class AIProfile(
         // deltas reales se calibran en Fase C con el simulador + reviewers +
         // playtest. Mantenerlos como copias explícitas deja el sitio listo y
         // documenta la intención sin cambiar el comportamiento todavía.
-        /** Osadía↑, Corta-mus↑ (deltas en Fase C). */
-        val AGRESIVO = AIProfile()
-        /** Osadía↓, musea más; SIN sobre-plegarse al farol (cap, no reabrir #1). */
-        val CONSERVADOR = AIProfile()
-        /** Faroleo↑, banda media más ancha (deltas en Fase C). */
-        val FAROLERO = AIProfile()
+        /**
+         * Osadía↑, corta-mus↑ (#34 Fase C, v2 SUTIL). Deltas DELIBERADAMENTE
+         * pequeños (decisión del usuario 2026-06-01): la prioridad es NO romper la
+         * IA —que ya juega bien— sobre una diferenciación marcada; un humano nota
+         * "un toque", no otro motor. openStrongValue 78→75, openMidBandFloor 55→53
+         * (solo −2: el reviewer avisó que la banda media ya se percibe agresiva,
+         * #11), musea menos (musCut* −3). NO toca el lado RESPUESTA (no reabrir la
+         * timidez #1) ni los pisos de órdago (#16/#33). Validación: sim como red de
+         * seguridad + mus-strategy-reviewer + playtest (árbitro del feel; la
+         * apertura es punto ciego del sim).
+         */
+        val AGRESIVO = AIProfile(
+            openStrongValue = 75,
+            openMidBandFloor = 53,
+            musCutParesJuego = 72,
+            musCutGrandeChica = 82
+        )
+        /**
+         * Osadía↓, musea más (#34 Fase C, v1 SUTIL — espejo de [AGRESIVO]). Deltas
+         * pequeños por la misma razón (decisión del usuario 2026-06-01): no romper la
+         * IA, que un humano note "un toque" prudente sin que parezca otro motor.
+         * Abre más tarde (openStrongValue 78→81, openMidBandFloor 55→57: solo +2, la
+         * banda media es sensible, #11) y musea más (musCut* +3). **NO toca el lado
+         * RESPUESTA** (captainAloneResponsePenalty / acceptThreshold) NI los pisos de
+         * órdago: ahí vive el sobre-plegado #1 y un Conservador que se pliega al farol
+         * "parece tonto" (principio del #34). Validación: sim (este lado SÍ es medible)
+         * + reviewers; confirmación de feel = testers en la beta.
+         */
+        val CONSERVADOR = AIProfile(
+            openStrongValue = 81,
+            openMidBandFloor = 57,
+            musCutParesJuego = 78,
+            musCutGrandeChica = 88
+        )
+        /**
+         * Faroleo↑ (#34 Fase C, v1 SUTIL). Deltas pequeños (decisión del usuario
+         * 2026-06-01): el humano nota "un farolero", no otro motor. Su firma PURA es
+         * el FAROL de robo (bluffProbPostre 0.20→0.25, bluffProbPenultimate 0.08→0.10;
+         * bluffProbEarly NO se toca — farolear hacia ≥2 rivales por hablar es regalar
+         * fichas). NO toca openMidBandFloor: el mus-strategy-reviewer avisó (2026-06-02)
+         * de que bajarlo CANIBALIZA el propio farol (el farol barato solo dispara con
+         * effStrength < openMidBandFloor, AILogic.kt:1150) y encima lo igualaría a
+         * [AGRESIVO] (banda media = eje de VALOR, no de farol). NO toca openStrongValue
+         * ni el lado RESPUESTA ni los pisos de órdago. ⚠️ El sim es CIEGO al farol
+         * (premia farolear porque el rival baseline pliega = pickup gratis artefacto)
+         * → aquí el sim es solo red de seguridad; el feel del farol lo arbitran testers.
+         */
+        val FAROLERO = AIProfile(
+            bluffProbPostre = 0.25,
+            bluffProbPenultimate = 0.10
+        )
     }
 }
