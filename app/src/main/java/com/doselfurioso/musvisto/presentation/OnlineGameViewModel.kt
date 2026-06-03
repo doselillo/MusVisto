@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.logic.FirebaseMatchTransport
@@ -72,9 +73,13 @@ class OnlineGameViewModel(
             // Settings del dispositivo host = con las que creó la sala. Paso 3c:
             // leerlas de `meta/settingsJson` para robustez si el host las edita
             // entre crear y empezar.
-            host = OnlineMatchHost(gameLogic, transport, viewModelScope).also {
+            host = OnlineMatchHost(gameLogic, transport, viewModelScope, log = { Log.w(MP_TAG, it) }).also {
                 it.start(room.seats, store.loadSettings())
             }
         }
+    }
+
+    private companion object {
+        const val MP_TAG = "MusVistoMP"
     }
 }

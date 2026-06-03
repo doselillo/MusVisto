@@ -29,6 +29,7 @@ class OnlineMatchHost(
     private val transport: MatchTransport,
     private val scope: CoroutineScope,
     private val pacingMs: Long = DEFAULT_PACING_MS,
+    private val log: (String) -> Unit = {},
     private val rng: Random = Random(System.currentTimeMillis())
 ) {
     private var service: MatchHostService? = null
@@ -62,7 +63,8 @@ class OnlineMatchHost(
             seatIds = seatIds,
             aiDriver = AiSeatDriver(aiLogics),
             scope = scope,
-            pacingMs = pacingMs
+            pacingMs = pacingMs,
+            log = log
         ).also { it.start() }
     }
 
