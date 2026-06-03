@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,19 @@ private val TeamBColor = Color(0xFFD08770)
 @Composable
 fun OnlineLobbyScreen(navController: NavController, viewModel: LobbyViewModel) {
     val state by viewModel.state.collectAsState()
+
+    // Cuando el host marca la sala como "playing", TODOS los clientes (host
+    // incluido) lo ven por el observador en vivo y navegan a la partida. Se saca
+    // el lobby de la pila (popUpTo inclusive) para no re-disparar al recomponer.
+    val playing = state.room?.status == Rooms.STATUS_PLAYING
+    val handle = state.myHandle
+    LaunchedEffect(playing, handle?.roomId, handle?.seatId) {
+        if (playing && handle != null) {
+            navController.navigate("online_game/${handle.roomId}/${handle.seatId}/${state.isHost}") {
+                popUpTo("online_lobby") { inclusive = true }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -134,16 +148,6 @@ private fun RoomContent(state: LobbyUiState, viewModel: LobbyViewModel, onLeave:
         Text("Código de sala", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
         Text(room.code, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
-
-        if (room.status == Rooms.STATUS_PLAYING) {
-            Text(
-                "¡Partida iniciada! (el render en vivo llega en el siguiente sub-paso)",
-                color = Color(0xFFFFE9A8),
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(12.dp))
-        }
 
         room.seats.forEach { seat ->
             SeatRow(

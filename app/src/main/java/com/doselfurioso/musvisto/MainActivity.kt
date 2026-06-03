@@ -10,9 +10,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.AndroidGameLogger
@@ -27,6 +29,8 @@ import com.doselfurioso.musvisto.presentation.GesturesScreen
 import com.doselfurioso.musvisto.presentation.MainMenuScreen
 import com.doselfurioso.musvisto.presentation.MainMenuViewModel
 import com.doselfurioso.musvisto.presentation.LobbyViewModel
+import com.doselfurioso.musvisto.presentation.OnlineGameScreen
+import com.doselfurioso.musvisto.presentation.OnlineGameViewModel
 import com.doselfurioso.musvisto.presentation.OnlineLobbyScreen
 import com.doselfurioso.musvisto.presentation.OptionsScreen
 import com.doselfurioso.musvisto.ui.theme.MusVistoTheme
@@ -81,13 +85,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // La partida online depende de los args de navegación (sala, asiento, host),
+    // así que su factory se construye por destino (no es un singleton perezoso).
+    private fun onlineGameViewModelFactory(roomId: String, seatId: String, isHost: Boolean) =
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(OnlineGameViewModel::class.java)) {
+                    val random = Random(System.currentTimeMillis())
+                    val gameLogic = MusGameLogic(random, AndroidGameLogger)
+                    @Suppress("UNCHECKED_CAST")
+                    return OnlineGameViewModel(
+                        roomId = roomId,
+                        mySeatId = seatId,
+                        isHost = isHost,
+                        gameLogic = gameLogic,
+                        lobby = LobbyService(),
+                        store = gameRepository
+                    ) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MusVistoTheme {
                 AppNavigation(factory = gameViewModelFactory,
                     mainMenuFactory = mainMenuViewModelFactory,
-                    lobbyFactory = lobbyViewModelFactory)
+                    lobbyFactory = lobbyViewModelFactory,
+                    onlineGameFactory = ::onlineGameViewModelFactory)
             }
         }
     }
@@ -97,7 +124,8 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(
     factory: ViewModelProvider.Factory,
     mainMenuFactory: ViewModelProvider.Factory,
-    lobbyFactory: ViewModelProvider.Factory
+    lobbyFactory: ViewModelProvider.Factory,
+    onlineGameFactory: (String, String, Boolean) -> ViewModelProvider.Factory
 ) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "main_menu") {
@@ -111,6 +139,26 @@ fun AppNavigation(
             OnlineLobbyScreen(
                 navController = navController,
                 viewModel = viewModel(factory = lobbyFactory)
+            )
+        }
+        composable(
+            route = "online_game/{roomId}/{seatId}/{isHost}",
+            arguments = listOf(
+                navArgument("roomId") { type = NavType.StringType },
+                navArgument("seatId") { type = NavType.StringType },
+                navArgument("isHost") { type = NavType.BoolType }
+            )
+        ) { backStackEntry ->
+            val args = backStackEntry.arguments
+            OnlineGameScreen(
+                navController = navController,
+                viewModel = viewModel(
+                    factory = onlineGameFactory(
+                        args?.getString("roomId").orEmpty(),
+                        args?.getString("seatId").orEmpty(),
+                        args?.getBoolean("isHost") ?: false
+                    )
+                )
             )
         }
         composable("game_screen") {
