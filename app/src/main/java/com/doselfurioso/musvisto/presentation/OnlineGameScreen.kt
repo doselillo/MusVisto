@@ -106,16 +106,21 @@ private fun GameContent(
         )
         Spacer(Modifier.height(16.dp))
 
-        ScoreBoard(view)
+        val myTeam = view.players.firstOrNull { it.id == mySeatId }?.team
+        ScoreBoard(view, myTeam)
         Spacer(Modifier.height(12.dp))
 
-        val turnName = view.players.firstOrNull { it.id == view.currentTurnPlayerId }?.name
-        Text(
-            "${phaseLabel(view.gamePhase)} · Turno: ${turnName ?: "—"}",
-            color = TurnGold,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
-        )
+        if (view.gamePhase == GamePhase.ROUND_OVER || view.gamePhase == GamePhase.GAME_OVER) {
+            RoundResultBanner(view, myTeam, onSend)
+        } else {
+            val turnName = view.players.firstOrNull { it.id == view.currentTurnPlayerId }?.name
+            Text(
+                "${phaseLabel(view.gamePhase)} · Turno: ${turnName ?: "—"}",
+                color = TurnGold,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
         Spacer(Modifier.height(12.dp))
         ActionAnnouncement(view)
 
@@ -149,19 +154,62 @@ private fun GameContent(
 }
 
 @Composable
-private fun ScoreBoard(view: GameState) {
+private fun ScoreBoard(view: GameState, myTeam: String?) {
+    // Perspectiva del que mira: "Nosotros" = su equipo (el asiento puede ser de
+    // teamA o teamB según lo reparta el lobby), no siempre teamA.
+    val mine = myTeam ?: "teamA"
+    val theirs = if (mine == "teamA") "teamB" else "teamA"
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        TeamScore("Nosotros", view.score["teamA"] ?: 0, TeamAColor, Modifier.weight(1f))
-        TeamScore("Ellos", view.score["teamB"] ?: 0, TeamBColor, Modifier.weight(1f))
+        TeamScore("Nosotros", view.score[mine] ?: 0, teamColor(mine), Modifier.weight(1f))
+        TeamScore("Ellos", view.score[theirs] ?: 0, teamColor(theirs), Modifier.weight(1f))
     }
-    val chicosA = view.chicosWon["teamA"] ?: 0
-    val chicosB = view.chicosWon["teamB"] ?: 0
-    if (chicosA > 0 || chicosB > 0) {
+    val chicosMine = view.chicosWon[mine] ?: 0
+    val chicosTheirs = view.chicosWon[theirs] ?: 0
+    if (chicosMine > 0 || chicosTheirs > 0) {
         Spacer(Modifier.height(6.dp))
-        Text("Chicos: $chicosA – $chicosB", color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+        Text("Chicos: $chicosMine – $chicosTheirs", color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+    }
+}
+
+private fun teamColor(team: String): Color = if (team == "teamA") TeamAColor else TeamBColor
+
+/**
+ * Banner de transición de ronda (Fase 3c): al cerrarse una ronda el host la puntúa y
+ * publica `ROUND_OVER` (el marcador ya salta en el [ScoreBoard]); cualquier humano
+ * pulsa **Continuar** para repartir la siguiente. Al ganarse el chico publica
+ * `GAME_OVER` (sin botón, fin de partida).
+ */
+@Composable
+private fun RoundResultBanner(view: GameState, myTeam: String?, onSend: (GameCommand) -> Unit) {
+    val mine = myTeam ?: "teamA"
+    val isGameOver = view.gamePhase == GamePhase.GAME_OVER
+    val title = when {
+        !isGameOver -> "Fin de ronda"
+        view.winningTeam == null -> "Fin de partida"
+        view.winningTeam == mine -> "¡Habéis ganado!"
+        else -> "Han ganado"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PanelGreen, RoundedCornerShape(12.dp))
+            .padding(vertical = 12.dp, horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(title, color = TurnGold, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        if (!isGameOver) {
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { onSend(GameCommand.Continue) },
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color.White)
+            ) {
+                Text("Continuar", fontSize = 15.sp)
+            }
+        }
     }
 }
 

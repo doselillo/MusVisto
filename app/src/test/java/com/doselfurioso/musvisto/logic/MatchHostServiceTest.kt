@@ -202,6 +202,95 @@ class MatchHostServiceTest {
         }
     }
 
+    @Test
+    fun `transicion de ronda - mesa de solo IA encadena rondas hasta ganar el chico`() {
+        val gameLogic = MusGameLogic(Random(0))
+        val allAi = players().map { it.copy(isAi = true) }
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, rest) = gameLogic.dealCards(allAi, deck, "p1")
+        val state = GameState(
+            players = dealt, deck = rest, gamePhase = GamePhase.MUS,
+            currentTurnPlayerId = "p1", manoPlayerId = "p1",
+            playersInLance = seatIds.toSet(),
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        )
+        val host = MatchHost(gameLogic, state)
+        val rng = Random(0)
+        val aiLogics = seatIds.associateWith { AILogic(gameLogic, rng, AIProfile()) }
+        val transport = FakeMatchTransport()
+
+        // MatchPacing por defecto (turnMs=0, roundOverMs=0) → la mesa juega la PARTIDA
+        // ENTERA (varias rondas) de forma síncrona dentro de start().
+        MatchHostService(
+            host, transport, seatIds, AiSeatDriver(aiLogics),
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        val finalState = host.authoritativeState
+        val scoreToWin = finalState.settings.pointsPerChico
+        // Alcanzar pointsPerChico (40) exige ENCADENAR muchas rondas (cada una da
+        // pocos tantos) → demuestra que la transición ROUND_OVER→reparto se repitió.
+        assertEquals("La partida debe terminar al ganar el chico", GamePhase.GAME_OVER, finalState.gamePhase)
+        assertNotNull("Debe registrarse el ganador del chico", finalState.winningTeam)
+        val topScore = (finalState.score["teamA"] ?: 0).coerceAtLeast(finalState.score["teamB"] ?: 0)
+        assertTrue("El ganador debe haber alcanzado el chico ($topScore >= $scoreToWin)", topScore >= scoreToWin)
+        // Y el último estado publicado a cada cliente debe reflejar el fin de partida.
+        assertEquals(GamePhase.GAME_OVER, transport.lastView.getValue("p1").gamePhase)
+    }
+
+    @Test
+    fun `con humano en mesa, el host espera Continuar para repartir la siguiente ronda`() {
+        val gameLogic = MusGameLogic(Random(0))
+        // p1 HUMANO, resto IA. Conducimos una ronda completa (en el test, a p1 también
+        // lo mueve un cerebro) hasta un ROUND_OVER realista, SIN el servicio.
+        val table = listOf(
+            Player(id = "p1", name = "H", avatarResId = 0, team = "teamA"),
+            Player(id = "p2", name = "A1", avatarResId = 0, isAi = true, team = "teamB"),
+            Player(id = "p3", name = "A2", avatarResId = 0, isAi = true, team = "teamA"),
+            Player(id = "p4", name = "A3", avatarResId = 0, isAi = true, team = "teamB")
+        )
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, rest) = gameLogic.dealCards(table, deck, "p1")
+        val host = MatchHost(
+            gameLogic,
+            GameState(
+                players = dealt, deck = rest, gamePhase = GamePhase.MUS,
+                currentTurnPlayerId = "p1", manoPlayerId = "p1",
+                playersInLance = seatIds.toSet(),
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            )
+        )
+        val brains = seatIds.associateWith { AILogic(gameLogic, Random(0), AIProfile()) }
+        var guard = 0
+        while (host.authoritativeState.gamePhase != GamePhase.ROUND_OVER &&
+            host.authoritativeState.gamePhase != GamePhase.GAME_OVER && guard++ < 500
+        ) {
+            if (host.resolveSystemPhaseIfAny()) continue
+            val s = host.authoritativeState
+            val turn = s.currentTurnPlayerId!!
+            val d = brains.getValue(turn).makeDecision(s, s.players.first { it.id == turn })
+            host.submitCommand(turn, d.action.toCommand(d.cardsToDiscard)!!)
+        }
+        assertEquals("el warmup debe acabar en fin de ronda", GamePhase.ROUND_OVER, host.authoritativeState.gamePhase)
+
+        val transport = FakeMatchTransport()
+        val aiDriver = AiSeatDriver(brains.filterKeys { it != "p1" })
+        MatchHostService(
+            host, transport, seatIds, aiDriver,
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        // Con un humano (p1) en mesa, el host PUNTÚA pero NO reparte: espera "Continuar".
+        assertEquals(GamePhase.ROUND_OVER, host.authoritativeState.gamePhase)
+        assertNotNull("la ronda debe quedar puntuada (desglose)", host.authoritativeState.scoreBreakdown)
+
+        // El humano pulsa Continuar → el host reparte la siguiente (mano rota p1→p4).
+        transport.sendCommand("p1", GameCommand.Continue)
+        val after = host.authoritativeState
+        assertTrue("ya no está en fin de ronda tras Continuar", after.gamePhase != GamePhase.ROUND_OVER)
+        assertEquals("la mano rota al siguiente jugador", "p4", after.manoPlayerId)
+    }
+
     /** Suscribe un observador y devuelve un getter de la última vista recibida. */
     private fun capture(transport: FakeMatchTransport, seatId: String): () -> GameState {
         var latest: GameState? = null

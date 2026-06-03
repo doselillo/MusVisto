@@ -1,5 +1,6 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
@@ -67,6 +68,97 @@ class MatchHost(
             }
             else -> false
         }
+    }
+
+    /**
+     * Transición de ronda (Fase 3c), parte 1: **PUNTUAR**. Cuando el reducer llega
+     * a `ROUND_OVER` (tras el último lance), replica host-side la contabilidad que
+     * en local hace `GameViewModel.processEndOfRound`: aplica `scoreRound`
+     * (desglose), suma el delta al marcador EXCLUYENDO los eventos instantáneos (la
+     * "no querida" ya se sumó durante la ronda → evita el doble conteo, #24/#30) y
+     * decide si un equipo ha ganado el CHICO (`>= settings.pointsPerChico`).
+     *
+     * Deja el estado autoritativo en su forma "fin de ronda mostrable": desglose +
+     * marcador al día + manos reveladas, **sin acciones de juego** (el "Continuar" lo
+     * ofrece la UI de fin de ronda, no el reducer; ver [MatchHostService]). Devuelve
+     * `true` si la PARTIDA ha terminado (alguien llegó al chico) → el orquestador para;
+     * `false` si hay que repartir otra ronda ([dealNextRound]).
+     *
+     * **Alcance MVP online (rebanada 3c.1):** un solo chico. Vacas/multi-chico y el
+     * camino órdago→GAME_OVER→chico nuevo (que en local hace `applyChicoWin`) son
+     * follow-up; aquí llegar al chico = fin de partida.
+     */
+    fun scoreRoundOver(): Boolean {
+        val roundEndState = authoritativeState
+        val stateWithBreakdown = gameLogic.scoreRound(roundEndState)
+        val breakdown = stateWithBreakdown.scoreBreakdown
+            // scoreRound siempre lo rellena; si faltara, terminamos en seguro (sin spin).
+            ?: run {
+                authoritativeState = roundEndState.copy(
+                    gamePhase = GamePhase.GAME_OVER,
+                    availableActions = emptyList(),
+                    revealAllHands = true
+                )
+                return true
+            }
+
+        val instantA = roundEndState.scoreEvents.filter { it.teamId == "teamA" }.sumOf { it.detail.points }
+        val instantB = roundEndState.scoreEvents.filter { it.teamId == "teamB" }.sumOf { it.detail.points }
+        val pointsTeamA = breakdown.teamAScoreDetails.sumOf { it.points } - instantA
+        val pointsTeamB = breakdown.teamBScoreDetails.sumOf { it.points } - instantB
+        val newScore = mapOf(
+            "teamA" to (roundEndState.score["teamA"] ?: 0) + pointsTeamA,
+            "teamB" to (roundEndState.score["teamB"] ?: 0) + pointsTeamB
+        )
+
+        val scoreToWin = roundEndState.settings.pointsPerChico
+        val winner = when {
+            (newScore["teamA"] ?: 0) >= scoreToWin -> "teamA"
+            (newScore["teamB"] ?: 0) >= scoreToWin -> "teamB"
+            else -> null
+        }
+
+        authoritativeState = stateWithBreakdown.copy(
+            score = newScore,
+            gamePhase = if (winner != null) GamePhase.GAME_OVER else GamePhase.ROUND_OVER,
+            winningTeam = winner,
+            availableActions = emptyList(),
+            revealAllHands = true
+        )
+        return winner != null
+    }
+
+    /**
+     * Transición de ronda (Fase 3c), parte 2: **REPARTIR** la siguiente. Replica el
+     * reparto de `GameViewModel.startNewGame` (rota la mano un puesto en el orden de
+     * turno, baraja y da 4 cartas) pero en **MUS PLANO sin señas** —coherente con
+     * [OnlineMatchHost.start] y el resto del online; las señas son Fase 4. Arrastra
+     * marcador y chicos.
+     *
+     * Construye un `GameState` NUEVO (no `copy`) → los acumuladores de ronda
+     * (scoreEvents, roundHistory, agreedBets, breakdown, revealAllHands…) vuelven a
+     * sus defaults vacíos, igual que un reparto inicial.
+     */
+    fun dealNextRound() {
+        val players = authoritativeState.players
+        val lastManoIndex = players.indexOfFirst { it.id == authoritativeState.manoPlayerId }
+        val nextManoId = players[(lastManoIndex - 1 + players.size) % players.size].id
+
+        val shuffled = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, remaining) = gameLogic.dealCards(players, shuffled, nextManoId)
+
+        authoritativeState = GameState(
+            players = dealt,
+            deck = remaining,
+            settings = authoritativeState.settings,
+            score = authoritativeState.score,
+            chicosWon = authoritativeState.chicosWon,
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = nextManoId,
+            currentTurnPlayerId = nextManoId,
+            playersInLance = players.map { it.id }.toSet(),
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        )
     }
 
     /**

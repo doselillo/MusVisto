@@ -20,15 +20,18 @@ import kotlin.random.Random
  * los ASIENTOS de la sala (no desde `GameSettings`), y (b) publica vistas
  * redactadas por el transporte en vez de un único `_gameState` local.
  *
- * NO cubierto aún (Fase 3 follow-up / Fase 4): señas (`onEnterMusPhase` no se
- * aplica → sin delegación de corte de Mus online), transiciones de ronda
- * (ROUND_OVER → siguiente reparto) y pacing/turn timers.
+ * Cubierto desde Fase 3c: **transiciones de ronda** (al llegar a ROUND_OVER el host
+ * puntúa, muestra el resultado y reparte la siguiente cuando un humano pulsa "Continuar";
+ * ver [MatchHostService]). NO cubierto aún (Fase 4 / 5): señas (`onEnterMusPhase` no se
+ * aplica → sin delegación de corte de Mus online), turn timers/AFK y vacas/multi-chico
+ * (llegar al chico = fin de partida).
  */
 class OnlineMatchHost(
     private val gameLogic: MusGameLogic,
     private val transport: MatchTransport,
     private val scope: CoroutineScope,
     private val pacingMs: Long = DEFAULT_PACING_MS,
+    private val roundOverPacingMs: Long = DEFAULT_ROUND_OVER_PACING_MS,
     private val log: (String) -> Unit = {},
     private val rng: Random = Random(System.currentTimeMillis())
 ) {
@@ -63,7 +66,7 @@ class OnlineMatchHost(
             seatIds = seatIds,
             aiDriver = AiSeatDriver(aiLogics),
             scope = scope,
-            pacingMs = pacingMs,
+            pacing = MatchPacing(turnMs = pacingMs, roundOverMs = roundOverPacingMs),
             log = log
         ).also { it.start() }
     }
@@ -79,5 +82,7 @@ class OnlineMatchHost(
     private companion object {
         /** Ritmo (ms) de las acciones de IA host-side para que el cliente las vea. */
         const val DEFAULT_PACING_MS = 800L
+        /** Pausa (ms) del "fin de ronda" visible antes de repartir la siguiente. */
+        const val DEFAULT_ROUND_OVER_PACING_MS = 3000L
     }
 }
