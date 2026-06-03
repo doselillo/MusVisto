@@ -56,4 +56,19 @@ class GameStateCodecTest {
         val restored = GameStateCodec.decode(GameStateCodec.encode(dealtState()))
         assertTrue(restored.availableActions.isEmpty())
     }
+
+    @Test
+    fun `la vista con availableCommands y lastActionView sobrevive el round-trip`() {
+        // Estos campos llevan GameCommand (jerarquía sellada) ANIDADO en GameState:
+        // hay que asegurar que la serialización polimórfica funciona dentro del
+        // GameStateCodec (no solo en GameCommandCodec top-level). Si encode lanzara,
+        // FirebaseMatchTransport.publishView petaría en el callback host → cuelgue.
+        val original = dealtState().copy(
+            availableCommands = listOf(GameCommand.Pass, GameCommand.Bet(2), GameCommand.Ordago),
+            lastActionView = LastActionView("p1", GameCommand.Bet(2))
+        )
+        val restored = GameStateCodec.decode(GameStateCodec.encode(original))
+        assertEquals(original.availableCommands, restored.availableCommands)
+        assertEquals(original.lastActionView, restored.lastActionView)
+    }
 }

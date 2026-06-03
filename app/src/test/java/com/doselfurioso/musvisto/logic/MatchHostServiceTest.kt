@@ -6,6 +6,7 @@ import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
+import com.doselfurioso.musvisto.model.toCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -137,6 +138,68 @@ class MatchHostServiceTest {
             "Una mesa de solo IA debe auto-resolver la ronda; quedó en $phase",
             phase == GamePhase.ROUND_OVER || phase == GamePhase.GAME_OVER
         )
+    }
+
+    @Test
+    fun `mesa mixta (humanos via transporte + IA host) recorre manos sin congelarse`() {
+        // Reproduce el reporte de playtest (el turno de la IA se "congela"). Los
+        // asientos "humanos" (p1,p2) DECIDEN como la IA —para explorar TODO el
+        // espacio: envido, órdago, quiero, descarte— y mandan su comando por el
+        // transporte, justo como un cliente de red. Las IA (p3,p4) las conduce el
+        // host. Si tras el burst seguimos en un asiento de IA, está atascado → falla
+        // con el diagnóstico (fase, acciones legales, decisión de la IA y su command).
+        for (seed in 0 until 300) {
+            val gameLogic = MusGameLogic(Random(seed.toLong()))
+            val tablePlayers = listOf(
+                Player(id = "p1", name = "H1", avatarResId = 0, team = "teamA"),
+                Player(id = "p2", name = "H2", avatarResId = 0, team = "teamB"),
+                Player(id = "p3", name = "A1", avatarResId = 0, isAi = true, team = "teamA"),
+                Player(id = "p4", name = "A2", avatarResId = 0, isAi = true, team = "teamB")
+            )
+            val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+            val (dealt, rest) = gameLogic.dealCards(tablePlayers, deck, "p1")
+            val state = GameState(
+                players = dealt, deck = rest, gamePhase = GamePhase.MUS,
+                currentTurnPlayerId = "p1", manoPlayerId = "p1",
+                playersInLance = seatIds.toSet(),
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            )
+            val host = MatchHost(gameLogic, state)
+            // Un cerebro por asiento con arquetipos REALES rotados (como asigna el
+            // lobby online), rng propio = determinista por semilla.
+            val profiles = listOf(AIProfile.EQUILIBRADO, AIProfile.AGRESIVO, AIProfile.CONSERVADOR, AIProfile.FAROLERO)
+            val brains = seatIds.mapIndexed { i, id ->
+                id to AILogic(gameLogic, Random(seed * 10L + i), profiles[(seed + i) % profiles.size])
+            }.toMap()
+            val aiDriver = AiSeatDriver(brains.filterKeys { it == "p3" || it == "p4" })
+            val transport = FakeMatchTransport()
+            MatchHostService(host, transport, seatIds, aiDriver, scope = CoroutineScope(Dispatchers.Unconfined)).start()
+
+            var steps = 0
+            while (steps++ < 500) {
+                val s = host.authoritativeState
+                if (s.gamePhase == GamePhase.ROUND_OVER || s.gamePhase == GamePhase.GAME_OVER) break
+                val turn = s.currentTurnPlayerId!!
+                val player = s.players.first { it.id == turn }
+                val decision = brains.getValue(turn).makeDecision(s, player)
+                if (turn == "p3" || turn == "p4") {
+                    throw AssertionError(
+                        "CONGELADO en IA $turn (seed=$seed): fase=${s.gamePhase}, " +
+                            "acciones=${s.availableActions.map { it::class.simpleName }}, " +
+                            "decisión=${decision.action}, command=${decision.action.toCommand(decision.cardsToDiscard)}, " +
+                            "currentBet=${s.currentBet}"
+                    )
+                }
+                val command = decision.action.toCommand(decision.cardsToDiscard) ?: throw AssertionError(
+                    "Humano $turn: decisión ${decision.action} no mapea a comando (seed=$seed, fase=${s.gamePhase})"
+                )
+                transport.sendCommand(turn, command)
+            }
+            assertTrue(
+                "Mano sin resolver (¿atasco?) seed=$seed: fase=${host.authoritativeState.gamePhase}, turno=${host.authoritativeState.currentTurnPlayerId}",
+                host.authoritativeState.gamePhase == GamePhase.ROUND_OVER || host.authoritativeState.gamePhase == GamePhase.GAME_OVER
+            )
+        }
     }
 
     /** Suscribe un observador y devuelve un getter de la última vista recibida. */
