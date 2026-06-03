@@ -6,6 +6,7 @@ import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.logic.LobbyService
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.logic.OnlineMatchHost
+import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameState
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,14 @@ class OnlineGameViewModel(
         transport.observeView(mySeatId) { state -> _view.value = state }
         if (isHost) startHost()
     }
+
+    /**
+     * El humano de este asiento envía su comando al host, que lo consume por
+     * `actions/{miAsiento}` y re-publica las vistas. Solo procede en el turno
+     * propio: el host solo rellena `availableCommands` del asiento de turno, así
+     * que la UI solo ofrece botones cuando toca.
+     */
+    fun send(command: GameCommand) = transport.sendCommand(mySeatId, command)
 
     private fun startHost() {
         lobby.fetchRoom(roomId) { room ->

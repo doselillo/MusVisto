@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.doselfurioso.musvisto.model.Card
+import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
@@ -36,6 +39,7 @@ import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
 
 private val BackgroundGreen = Color(0xFF006A4E)
+private val AccentGreen = Color(0xFF6A994E)
 private val PanelGreen = Color(0xFF0A7A5C)
 private val TeamAColor = Color(0xFF5B8FD6)
 private val TeamBColor = Color(0xFFD08770)
@@ -70,6 +74,7 @@ fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewMode
                 view = current,
                 mySeatId = viewModel.mySeatId,
                 isHost = viewModel.isHost,
+                onSend = viewModel::send,
                 onLeave = { navController.popBackStack() }
             )
         }
@@ -77,7 +82,13 @@ fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewMode
 }
 
 @Composable
-private fun GameContent(view: GameState, mySeatId: String, isHost: Boolean, onLeave: () -> Unit) {
+private fun GameContent(
+    view: GameState,
+    mySeatId: String,
+    isHost: Boolean,
+    onSend: (GameCommand) -> Unit,
+    onLeave: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -119,6 +130,13 @@ private fun GameContent(view: GameState, mySeatId: String, isHost: Boolean, onLe
         Text("Tu mano ($mySeatId)", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
         Spacer(Modifier.height(6.dp))
         HandRow(view.players.firstOrNull { it.id == mySeatId }?.hand.orEmpty())
+
+        Spacer(Modifier.height(20.dp))
+        ActionBar(
+            commands = view.availableCommands,
+            isMyTurn = view.currentTurnPlayerId == mySeatId,
+            onSend = onSend
+        )
 
         Spacer(Modifier.weight(1f))
         TextButton(onClick = onLeave) {
@@ -218,6 +236,49 @@ private fun CardChip(card: Card) {
     }
 }
 
+@Composable
+private fun ActionBar(commands: List<GameCommand>, isMyTurn: Boolean, onSend: (GameCommand) -> Unit) {
+    if (!isMyTurn) {
+        Text("Esperando al rival…", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+        return
+    }
+    // Paso 2: solo acciones de UN TOQUE. El descarte (multi-selección) y la
+    // cantidad de envite a medida (BetSelector) llegan en el 2b.
+    val supported = commands.filter { it !is GameCommand.Discard }
+    if (supported.isEmpty()) {
+        if (commands.any { it is GameCommand.Discard }) {
+            Text(
+                "Descarte: en el siguiente paso. Corta el Mus para jugar la mano.",
+                color = TurnGold,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        supported.chunked(2).forEach { rowCommands ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowCommands.forEach { command -> ActionButton(command, onSend) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(command: GameCommand, onSend: (GameCommand) -> Unit) {
+    Button(
+        onClick = { onSend(command) },
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color.White)
+    ) {
+        Text(commandLabel(command), fontSize = 15.sp)
+    }
+}
+
 private fun phaseLabel(phase: GamePhase): String = when (phase) {
     GamePhase.PRE_GAME -> "Preparando"
     GamePhase.MUS -> "Mus"
@@ -248,4 +309,19 @@ private fun suitLabel(suit: Suit): String = when (suit) {
     Suit.COPAS -> "Copas"
     Suit.ESPADAS -> "Espadas"
     Suit.BASTOS -> "Bastos"
+}
+
+private fun commandLabel(command: GameCommand): String = when (command) {
+    GameCommand.Mus -> "Mus"
+    GameCommand.NoMus -> "No hay mus"
+    GameCommand.Pass -> "Paso"
+    GameCommand.Accept -> "Quiero"
+    GameCommand.Decline -> "No quiero"
+    GameCommand.Ordago -> "¡Órdago!"
+    GameCommand.Continue -> "Continuar"
+    GameCommand.NewGame -> "Nueva partida"
+    GameCommand.Tengo -> "Tengo"
+    GameCommand.NoTengo -> "No tengo"
+    is GameCommand.Bet -> "Envido ${command.amount}"
+    is GameCommand.Discard -> "Descartar"
 }

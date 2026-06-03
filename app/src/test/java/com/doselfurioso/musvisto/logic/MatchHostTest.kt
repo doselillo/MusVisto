@@ -58,6 +58,20 @@ class MatchHostTest {
     }
 
     @Test
+    fun `viewFor entrega los comandos legales solo al asiento de turno`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+
+        // En MUS el turno es de p1 con [Mus, NoMus] → su vista los lleva como GameCommand
+        // (espejo serializable de availableActions, que es @Transient y no viaja).
+        assertEquals(
+            listOf(GameCommand.Mus, GameCommand.NoMus),
+            host.viewFor("p1").availableCommands
+        )
+        // Un asiento que NO es de turno no recibe comandos (no puede actuar).
+        assertTrue(host.viewFor("p2").availableCommands.isEmpty())
+    }
+
+    @Test
     fun `submitCommand aplica el comando al estado autoritativo`() {
         val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
         val before = host.authoritativeState

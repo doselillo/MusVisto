@@ -74,7 +74,14 @@ data class GameState(
     // lance previo de la ronda (su mano es consistentemente alta → su órdago
     // es real, no farol). Reset por reparto (GameState nuevo, emptyMap por
     // defecto). NO transient: parte del estado autoritativo de la ronda.
-    val playerMaxBetThisRound: Map<String, Int> = emptyMap()
+    val playerMaxBetThisRound: Map<String, Int> = emptyMap(),
+    // Multijugador (host-autoritativo): espejo SERIALIZABLE de [availableActions]
+    // para la VISTA que el host publica por asiento. `availableActions` es
+    // @Transient (carga texto/iconos R.drawable de UI) → no viaja por la red; el
+    // host la proyecta a [GameCommand] y rellena este campo SOLO para el asiento
+    // de turno (los demás, lista vacía). Vacío en el juego local, que usa
+    // `availableActions` directamente. Ver logic/MatchHost.viewFor.
+    val availableCommands: List<GameCommand> = emptyList()
 )
 
 @Serializable

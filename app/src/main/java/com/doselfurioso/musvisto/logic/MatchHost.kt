@@ -4,6 +4,7 @@ import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.toAction
+import com.doselfurioso.musvisto.model.toCommand
 
 /**
  * Núcleo **host-autoritativo** del multijugador (prep, sin red).
@@ -66,6 +67,20 @@ class MatchHost(
         }
     }
 
-    /** Vista redactada (fog of war) para un asiento: lo que el host enviaría a ese cliente. */
-    fun viewFor(seatId: String): GameState = StateRedactor.redactFor(seatId, authoritativeState)
+    /**
+     * Vista redactada (fog of war) para un asiento + sus comandos legales. Los
+     * comandos son el espejo serializable de `availableActions` (`@Transient` → no
+     * viaja por la red, el cliente NO los puede recalcular): el host los proyecta a
+     * [GameCommand] por asiento. Solo el asiento de TURNO recibe comandos; los
+     * demás, lista vacía (mismo gating que el juego local, `currentTurnPlayerId`).
+     */
+    fun viewFor(seatId: String): GameState {
+        val redacted = StateRedactor.redactFor(seatId, authoritativeState)
+        val commands = if (seatId == authoritativeState.currentTurnPlayerId) {
+            authoritativeState.availableActions.mapNotNull { it.toCommand() }
+        } else {
+            emptyList()
+        }
+        return redacted.copy(availableCommands = commands)
+    }
 }
