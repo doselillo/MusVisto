@@ -172,8 +172,9 @@ fun GameScreen(
  * (envite, fin de ronda / partida) se pintan aquí desde el estado + [onAction].
  */
 // La mesa es un layout cohesivo (4 áreas de jugador + botonera + overlays); se extrae
-// como UNA unidad reusable local/online. Trocearla más fragmentaría el layout sin valor.
-@Suppress("LongMethod")
+// como UNA unidad reusable local/online. Trocearla más fragmentaría el layout sin valor;
+// y como composable de mesa lleva inherentemente estado + varios callbacks + flags.
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun GameTable(
     gameState: GameState,
@@ -182,6 +183,9 @@ fun GameTable(
     onAction: (GameAction, String) -> Unit,
     onCardSelected: (CardData) -> Unit,
     hasShowableGesture: (Player) -> Boolean,
+    // Botones seña/pausa de la esquina: true offline; online los oculta (sin señas
+    // —Fase 4— ni pausa; el "Salir" lo pone OnlineGameScreen).
+    showSeatActions: Boolean = true,
     vmOverlays: @Composable (ResponsiveDimens) -> Unit = {}
 ) {
     val players = rotatePlayersForSeat(gameState.players, localSeatId)
@@ -408,7 +412,9 @@ fun GameTable(
                         dimens = dimens
                     )
 
-                    // Botones Seña y Pausa — esquina inferior izquierda
+                    // Botones Seña y Pausa — esquina inferior izquierda (online los
+                    // oculta: sin señas ni pausa; el "Salir" lo pone OnlineGameScreen).
+                    if (showSeatActions) {
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -476,6 +482,7 @@ fun GameTable(
                             )
                         }
                     }
+                    } // fin if (showSeatActions)
                 }
             }
 
