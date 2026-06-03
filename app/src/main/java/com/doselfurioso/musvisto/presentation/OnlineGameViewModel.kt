@@ -14,6 +14,7 @@ import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.ScoreBreakdown
 import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.model.toAction
 import com.doselfurioso.musvisto.model.toCommand
@@ -146,14 +147,44 @@ internal fun adaptOnlineView(
     val lanceActions = view.lastActionView?.let { last ->
         mapOf(last.seatId to LastActionInfo(playerId = last.seatId, action = last.command.toAction()))
     }.orEmpty()
-    return view.copy(
+    val display = view.copy(
         players = players,
         availableActions = view.availableCommands.map { it.toAction() },
         selectedCardsForDiscard = selectedCards,
         isSelectingBet = isSelectingBet,
         currentLanceActions = lanceActions
     )
+    // Perspectiva de EQUIPO: la mesa (componentes del modo local) asume teamA = NOSOTROS
+    // (verde) / teamB = ELLOS (rojo). Si MI asiento es teamB, intercambio los campos que se
+    // pintan por equipo para que MI equipo salga como "NOSOTROS" en todos los clientes (no
+    // solo en el host). Es solo display: lo que mando al host no depende del equipo.
+    val myTeam = view.players.firstOrNull { it.id == mySeatId }?.team
+    return if (myTeam == TEAM_B) display.swapTeamsForDisplay() else display
 }
+
+private const val TEAM_A = "teamA"
+private const val TEAM_B = "teamB"
+
+private fun otherTeam(team: String?): String? = when (team) {
+    TEAM_A -> TEAM_B
+    TEAM_B -> TEAM_A
+    else -> team
+}
+
+private fun Map<String, Int>.swappedTeams(): Map<String, Int> =
+    mapOf(TEAM_A to (this[TEAM_B] ?: 0), TEAM_B to (this[TEAM_A] ?: 0))
+
+/** Intercambia teamA↔teamB en los campos que la mesa pinta por equipo (solo para mostrar). */
+private fun GameState.swapTeamsForDisplay(): GameState = copy(
+    score = score.swappedTeams(),
+    chicosWon = chicosWon.swappedTeams(),
+    winningTeam = otherTeam(winningTeam),
+    chicoJustWon = otherTeam(chicoJustWon),
+    scoreBreakdown = scoreBreakdown?.let {
+        ScoreBreakdown(teamAScoreDetails = it.teamBScoreDetails, teamBScoreDetails = it.teamAScoreDetails)
+    },
+    roundHistory = roundHistory.map { it.copy(winningTeam = otherTeam(it.winningTeam)) }
+)
 
 /** 4 cartas "dummy" para dibujar reversos de manos ajenas (nunca se muestran de cara). */
 private val ONLINE_PLACEHOLDER_HAND: List<Card> = List(4) { Card(Suit.OROS, Rank.AS) }

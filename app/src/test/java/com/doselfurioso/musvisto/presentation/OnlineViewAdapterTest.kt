@@ -8,6 +8,8 @@ import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionView
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.ScoreBreakdown
+import com.doselfurioso.musvisto.model.ScoreDetail
 import com.doselfurioso.musvisto.model.Suit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -79,5 +81,36 @@ class OnlineViewAdapterTest {
         val out = adaptOnlineView(view, "p1", emptySet(), false)
         assertEquals(1, out.currentLanceActions.size)
         assertTrue(out.currentLanceActions["p3"]?.action is GameAction.Paso)
+    }
+
+    @Test
+    fun `si mi asiento es teamB, intercambia los campos de equipo (mi equipo = NOSOTROS)`() {
+        // p2 = teamB en redactedView (índices pares = teamA, impares = teamB).
+        val view = redactedView("p2").copy(
+            score = mapOf("teamA" to 10, "teamB" to 25),
+            chicosWon = mapOf("teamA" to 1, "teamB" to 0),
+            winningTeam = "teamB",
+            scoreBreakdown = ScoreBreakdown(
+                teamAScoreDetails = listOf(ScoreDetail("A", 3)),
+                teamBScoreDetails = listOf(ScoreDetail("B", 7))
+            )
+        )
+        val out = adaptOnlineView(view, "p2", emptySet(), false)
+        // teamB es MI equipo → tras el swap su marcador/ganador salen como teamA (NOSOTROS).
+        assertEquals(25, out.score["teamA"])
+        assertEquals(10, out.score["teamB"])
+        assertEquals(1, out.chicosWon["teamB"])
+        assertEquals("teamA", out.winningTeam)
+        assertEquals(7, out.scoreBreakdown!!.teamAScoreDetails.first().points)
+    }
+
+    @Test
+    fun `si mi asiento es teamA, NO intercambia (ya soy NOSOTROS)`() {
+        val view = redactedView("p1").copy(
+            score = mapOf("teamA" to 10, "teamB" to 25), winningTeam = "teamB"
+        )
+        val out = adaptOnlineView(view, "p1", emptySet(), false)
+        assertEquals(10, out.score["teamA"])
+        assertEquals("teamB", out.winningTeam)
     }
 }
