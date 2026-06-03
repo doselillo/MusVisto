@@ -71,6 +71,31 @@ class MatchHost(
     }
 
     /**
+     * Anuncios de la ronda de DECLARACIÓN (PARES_CHECK/JUEGO_CHECK): por cada jugador en
+     * orden de turno, si tiene jugada o no (Tengo / No tengo) — lo mismo que offline muestra
+     * en `GameViewModel.handleDeclarationSequence`. El host lo expone para PACEARLO host-side
+     * (que el cliente VEA la ronda) antes de resolverla con [resolveSystemPhaseIfAny]; no muta
+     * el estado (los anuncios los sella [announce] uno a uno). Vacío fuera de fase _CHECK.
+     */
+    fun declarationAnnouncements(): List<Pair<String, GameCommand>> {
+        val state = authoritativeState
+        val order = gameLogic.getTurnOrderedPlayers(state.players, state.manoPlayerId)
+        return order.map { player ->
+            val hasPlay = when (state.gamePhase) {
+                GamePhase.PARES_CHECK -> gameLogic.getHandPares(player.hand).strength > 0
+                GamePhase.JUEGO_CHECK -> gameLogic.getHandJuegoValue(player.hand) >= JUEGO_MIN
+                else -> false
+            }
+            player.id to if (hasPlay) GameCommand.Tengo else GameCommand.NoTengo
+        }
+    }
+
+    /** Sella una acción SOLO para anunciarla en el cliente (no pasa por el reducer). */
+    fun announce(seatId: String, command: GameCommand) {
+        authoritativeState = authoritativeState.copy(lastActionView = LastActionView(seatId, command))
+    }
+
+    /**
      * Transición de ronda (Fase 3c), parte 1: **PUNTUAR**. Cuando el reducer llega
      * a `ROUND_OVER` (tras el último lance), replica host-side la contabilidad que
      * en local hace `GameViewModel.processEndOfRound`: aplica `scoreRound`
@@ -176,5 +201,10 @@ class MatchHost(
             emptyList()
         }
         return redacted.copy(availableCommands = commands)
+    }
+
+    private companion object {
+        /** Valor mínimo de Juego (31) para "tener juego" en la declaración. */
+        const val JUEGO_MIN = 31
     }
 }

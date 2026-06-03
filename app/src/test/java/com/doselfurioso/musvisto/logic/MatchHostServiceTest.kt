@@ -1,11 +1,14 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
+import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.model.toCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -289,6 +292,41 @@ class MatchHostServiceTest {
         val after = host.authoritativeState
         assertTrue("ya no está en fin de ronda tras Continuar", after.gamePhase != GamePhase.ROUND_OVER)
         assertEquals("la mano rota al siguiente jugador", "p4", after.manoPlayerId)
+    }
+
+    @Test
+    fun `declarationAnnouncements - Tengo si hay pares, No tengo si no`() {
+        val gameLogic = MusGameLogic(Random(0))
+        fun c(s: Suit, r: Rank) = Card(s, r)
+        fun seat(id: String, team: String, cards: List<Card>) =
+            Player(id = id, name = id, avatarResId = 0, team = team, hand = cards)
+        val players = listOf(
+            seat("p1", "teamA", listOf( // dos reyes = pares
+                c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.REY),
+                c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.SEIS)
+            )),
+            seat("p2", "teamB", listOf( // sin pares
+                c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.CABALLO),
+                c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.SEIS)
+            )),
+            seat("p3", "teamA", listOf( // dos ases = pares
+                c(Suit.OROS, Rank.AS), c(Suit.COPAS, Rank.AS),
+                c(Suit.ESPADAS, Rank.CINCO), c(Suit.BASTOS, Rank.SEIS)
+            )),
+            seat("p4", "teamB", listOf( // sin pares
+                c(Suit.OROS, Rank.REY), c(Suit.COPAS, Rank.SOTA),
+                c(Suit.ESPADAS, Rank.CUATRO), c(Suit.BASTOS, Rank.SEIS)
+            ))
+        )
+        val state = GameState(
+            players = players, gamePhase = GamePhase.PARES_CHECK,
+            manoPlayerId = "p1", currentTurnPlayerId = "p1"
+        )
+        val announcements = MatchHost(gameLogic, state).declarationAnnouncements().toMap()
+        assertEquals(GameCommand.Tengo, announcements["p1"])
+        assertEquals(GameCommand.NoTengo, announcements["p2"])
+        assertEquals(GameCommand.Tengo, announcements["p3"])
+        assertEquals(GameCommand.NoTengo, announcements["p4"])
     }
 
     /** Suscribe un observador y devuelve un getter de la última vista recibida. */

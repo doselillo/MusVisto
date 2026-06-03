@@ -102,8 +102,7 @@ class MatchHostService(
     private suspend fun advanceLoop() {
         var steps = 0
         while (steps++ < MAX_AI_STEPS && currentCoroutineContext().isActive) {
-            if (resolveSystemPhase()) {
-                runCatching { publishAllViews() }.onFailure { log("publish (sistema) falló: $it") }
+            if (resolveDeclaration()) {
                 continue
             }
             if (resolveRoundTransition()) {
@@ -159,10 +158,32 @@ class MatchHostService(
         return true
     }
 
-    private fun resolveSystemPhase(): Boolean =
-        runCatching { host.resolveSystemPhaseIfAny() }
-            .onFailure { log("resolveSystemPhase falló: ${it.stackTraceToString()}") }
-            .getOrDefault(false)
+    /**
+     * Ronda de DECLARACIÓN (PARES_CHECK/JUEGO_CHECK): en vez de resolverla de golpe (era
+     * INVISIBLE online), ANUNCIA cada "Tengo / No tengo" en orden de turno con pacing —para
+     * que el cliente VEA la ronda, como en el modo local— y luego la resuelve host-side.
+     * Devuelve true si gestionó la declaración. Blindado como el resto del bucle.
+     */
+    private suspend fun resolveDeclaration(): Boolean {
+        val phase = host.authoritativeState.gamePhase
+        if (phase != GamePhase.PARES_CHECK && phase != GamePhase.JUEGO_CHECK) return false
+        val announcements = runCatching { host.declarationAnnouncements() }
+            .onFailure { log("declarationAnnouncements falló: ${it.stackTraceToString()}") }
+            .getOrDefault(emptyList())
+        for ((seatId, command) in announcements) {
+            if (pacing.turnMs > 0) delay(pacing.turnMs)
+            runCatching {
+                host.announce(seatId, command)
+                publishAllViews()
+            }.onFailure { log("anuncio de declaración ($seatId) falló: $it") }
+        }
+        if (pacing.turnMs > 0) delay(pacing.turnMs)
+        runCatching {
+            host.resolveSystemPhaseIfAny()
+            publishAllViews()
+        }.onFailure { log("resolveDeclaration (resolver) falló: ${it.stackTraceToString()}") }
+        return true
+    }
 
     /**
      * Comando de la IA de turno, BLINDADO: si [AiSeatDriver.commandFor] (que corre
