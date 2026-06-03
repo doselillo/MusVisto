@@ -82,6 +82,18 @@ class MatchHostTest {
     }
 
     @Test
+    fun `submitCommand sella la ultima accion para anunciarla en el cliente`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        host.submitCommand("p1", GameCommand.Mus)
+
+        // La vista de OTRO asiento lleva quién hizo qué (info pública), en forma
+        // serializable (lastAction es @Transient y no viaja por la red).
+        val view = host.viewFor("p2")
+        assertEquals("p1", view.lastActionView?.seatId)
+        assertEquals(GameCommand.Mus, view.lastActionView?.command)
+    }
+
+    @Test
     fun `un comando que viaja por el codec produce el mismo estado que el directo`() {
         val initial = dealtMusState()
         val direct = MatchHost(MusGameLogic(Random(0)), initial)

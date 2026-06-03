@@ -116,7 +116,8 @@ private fun GameContent(
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+        ActionAnnouncement(view)
 
         view.players.forEach { player ->
             SeatLine(
@@ -175,6 +176,27 @@ private fun TeamScore(label: String, score: Int, color: Color, modifier: Modifie
         Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Medium)
         Text("$score", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+@Composable
+private fun ActionAnnouncement(view: GameState) {
+    val last = view.lastActionView ?: return
+    val who = view.players.firstOrNull { it.id == last.seatId }?.name ?: last.seatId
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PanelGreen, RoundedCornerShape(10.dp))
+            .padding(vertical = 8.dp, horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "$who  ·  ${commandLabel(last.command)}",
+            color = TurnGold,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+    Spacer(Modifier.height(12.dp))
 }
 
 @Composable

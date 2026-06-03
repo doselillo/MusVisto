@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.random.Random
 
 /**
@@ -66,7 +68,7 @@ class MatchHostServiceTest {
     @Test
     fun `al arrancar, cada cliente recibe su vista redactada`() {
         val transport = FakeMatchTransport()
-        val service = MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds)
+        val service = MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds, scope = CoroutineScope(Dispatchers.Unconfined))
 
         val p1View = capture(transport, "p1")
         val p2View = capture(transport, "p2")
@@ -84,7 +86,7 @@ class MatchHostServiceTest {
     @Test
     fun `un comando de un cliente avanza el estado y re-publica las vistas`() {
         val transport = FakeMatchTransport()
-        val service = MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds)
+        val service = MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds, scope = CoroutineScope(Dispatchers.Unconfined))
         val p2View = capture(transport, "p2")
         service.start()
 
@@ -100,7 +102,7 @@ class MatchHostServiceTest {
     @Test
     fun `el comando viaja por el codec sin cambiar el resultado`() {
         val transport = FakeMatchTransport()
-        MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds).start()
+        MatchHostService(MatchHost(MusGameLogic(Random(0)), dealtMusState()), transport, seatIds, scope = CoroutineScope(Dispatchers.Unconfined)).start()
 
         val decoded = GameCommandCodec.decode(GameCommandCodec.encode(GameCommand.Mus))
         transport.sendCommand("p1", decoded)
@@ -127,7 +129,7 @@ class MatchHostServiceTest {
         val aiLogics = seatIds.associateWith { AILogic(gameLogic, rng, AIProfile()) }
         val transport = FakeMatchTransport()
 
-        MatchHostService(host, transport, seatIds, AiSeatDriver(aiLogics)).start()
+        MatchHostService(host, transport, seatIds, AiSeatDriver(aiLogics), scope = CoroutineScope(Dispatchers.Unconfined)).start()
 
         // La IA jugó sola la ronda entera (Mus → lances → resolución) por el bucle del host.
         val phase = host.authoritativeState.gamePhase

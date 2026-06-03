@@ -6,6 +6,7 @@ import com.doselfurioso.musvisto.model.GameSettings
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.RoomSeat
+import kotlinx.coroutines.CoroutineScope
 import kotlin.random.Random
 
 /**
@@ -26,6 +27,8 @@ import kotlin.random.Random
 class OnlineMatchHost(
     private val gameLogic: MusGameLogic,
     private val transport: MatchTransport,
+    private val scope: CoroutineScope,
+    private val pacingMs: Long = DEFAULT_PACING_MS,
     private val rng: Random = Random(System.currentTimeMillis())
 ) {
     private var service: MatchHostService? = null
@@ -57,7 +60,9 @@ class OnlineMatchHost(
             host = MatchHost(gameLogic, initial),
             transport = transport,
             seatIds = seatIds,
-            aiDriver = AiSeatDriver(aiLogics)
+            aiDriver = AiSeatDriver(aiLogics),
+            scope = scope,
+            pacingMs = pacingMs
         ).also { it.start() }
     }
 
@@ -68,4 +73,9 @@ class OnlineMatchHost(
         isAi = isAi,
         team = team
     )
+
+    private companion object {
+        /** Ritmo (ms) de las acciones de IA host-side para que el cliente las vea. */
+        const val DEFAULT_PACING_MS = 800L
+    }
 }

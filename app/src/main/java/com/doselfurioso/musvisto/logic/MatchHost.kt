@@ -3,6 +3,7 @@ package com.doselfurioso.musvisto.logic
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.LastActionView
 import com.doselfurioso.musvisto.model.toAction
 import com.doselfurioso.musvisto.model.toCommand
 
@@ -47,6 +48,7 @@ class MatchHost(
             else -> authoritativeState
         }
         authoritativeState = gameLogic.processAction(stateForAction, command.toAction(), seatId)
+            .copy(lastActionView = LastActionView(seatId, command))
         return authoritativeState
     }
 

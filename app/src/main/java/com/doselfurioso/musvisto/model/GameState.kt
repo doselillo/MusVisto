@@ -81,7 +81,11 @@ data class GameState(
     // host la proyecta a [GameCommand] y rellena este campo SOLO para el asiento
     // de turno (los demás, lista vacía). Vacío en el juego local, que usa
     // `availableActions` directamente. Ver logic/MatchHost.viewFor.
-    val availableCommands: List<GameCommand> = emptyList()
+    val availableCommands: List<GameCommand> = emptyList(),
+    // Multijugador: última acción ejecutada, para anunciarla en el cliente
+    // ("p3: Paso"). El host la sella por comando; serializable (a diferencia de
+    // [lastAction], que es @Transient). null en el juego local. Ver LastActionView.
+    val lastActionView: LastActionView? = null
 )
 
 @Serializable
@@ -101,3 +105,11 @@ data class ActiveGestureInfo(val playerId: String, val gestureResId: Int)
 
 @Serializable
 data class ScoreEventInfo(val teamId: String, val detail: ScoreDetail)
+
+/**
+ * Multijugador: la última acción ejecutada en la partida, para que el cliente la
+ * ANUNCIE ("p3: Paso"). El host la sella en cada comando ([com.doselfurioso.musvisto.logic.MatchHost.submitCommand]).
+ * Lleva el [GameCommand] (serializable), a diferencia de [LastActionInfo] (@Transient).
+ */
+@Serializable
+data class LastActionView(val seatId: String, val command: GameCommand)
