@@ -121,6 +121,17 @@ fun Modifier.bottomBorder(strokeWidth: Dp, color: Color) = composed(
 
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
+/**
+ * Rota la lista de jugadores para que [localSeatId] quede en el índice 0 (abajo en la
+ * mesa). Offline `localSeatId` ya es p1 (índice 0) → identidad. Online cada cliente se
+ * ve a sí mismo abajo; al ser rotación CÍCLICA la geometría de equipos (alternancia
+ * A,B,A,B) se conserva, así la pareja queda enfrente (+2) y los rivales a los lados.
+ */
+private fun rotatePlayersForSeat(players: List<Player>, localSeatId: String): List<Player> {
+    val index = players.indexOfFirst { it.id == localSeatId }
+    return if (index <= 0) players else players.subList(index, players.size) + players.subList(0, index)
+}
+
 @Composable
 fun GameScreen(
     gameViewModel: GameViewModel,
@@ -128,7 +139,52 @@ fun GameScreen(
 ) {
     val gameState by gameViewModel.gameState.collectAsState()
     val isDebugMode by gameViewModel.isDebugMode.collectAsState()
-    val players = gameState.players
+    GameTable(
+        gameState = gameState,
+        localSeatId = gameViewModel.localSeatId,
+        isDebugMode = isDebugMode,
+        onAction = { action, playerId -> gameViewModel.onAction(action, playerId) },
+        onCardSelected = { gameViewModel.onCardSelected(it) },
+        hasShowableGesture = { gameViewModel.hasShowableGesture(it) },
+        vmOverlays = { overlayDimens ->
+            if (gameState.isPaused) {
+                PauseMenuOverlay(
+                    navController = navController,
+                    onAction = gameViewModel::onAction,
+                    localSeatId = gameViewModel.localSeatId,
+                    dimensions = overlayDimens,
+                    gameViewModel = gameViewModel
+                )
+            }
+            // Paneles de debug — no-op en release (y en online).
+            DebugFeatures.AiDebugPanelOverlay(gameViewModel)
+            DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
+        }
+    )
+}
+
+/**
+ * Mesa de juego SIN ViewModel: pinta un [GameState] y emite acciones por callbacks. La
+ * comparten el modo local (wrapper [GameScreen]) y el online (`OnlineGameScreen`), este
+ * último alimentado por la vista redactada del host. Rota los asientos con
+ * [rotatePlayersForSeat] para que [localSeatId] quede SIEMPRE abajo (offline = identidad).
+ * Los overlays acoplados al VM (pausa, debug) llegan por [vmOverlays]; los data-driven
+ * (envite, fin de ronda / partida) se pintan aquí desde el estado + [onAction].
+ */
+// La mesa es un layout cohesivo (4 áreas de jugador + botonera + overlays); se extrae
+// como UNA unidad reusable local/online. Trocearla más fragmentaría el layout sin valor.
+@Suppress("LongMethod")
+@Composable
+fun GameTable(
+    gameState: GameState,
+    localSeatId: String,
+    isDebugMode: Boolean,
+    onAction: (GameAction, String) -> Unit,
+    onCardSelected: (CardData) -> Unit,
+    hasShowableGesture: (Player) -> Boolean,
+    vmOverlays: @Composable (ResponsiveDimens) -> Unit = {}
+) {
+    val players = rotatePlayersForSeat(gameState.players, localSeatId)
 
     BoxWithConstraints(
         modifier = Modifier
@@ -177,7 +233,7 @@ fun GameScreen(
             val partner    = players[2]
             val rivalRight = players[3]
 
-            val isMyTurn = gameState.currentTurnPlayerId == gameViewModel.localSeatId
+            val isMyTurn = gameState.currentTurnPlayerId == localSeatId
             // (Se eliminó `actionsForUi`/`currentPlayer`: cómputo muerto —
             // ActionButtons usa `gameState.availableActions` directamente.)
 
@@ -324,7 +380,7 @@ fun GameScreen(
                                 selectedCards = gameState.selectedCardsForDiscard,
                                 gamePhase = gameState.gamePhase,
                                 isMyTurn = isMyTurn,
-                                onCardClick = { card -> gameViewModel.onCardSelected(card) },
+                                onCardClick = { card -> onCardSelected(card) },
                                 dimens = dimens
                             )
                         },
@@ -339,10 +395,10 @@ fun GameScreen(
                     ActionButtons(
                         actions = gameState.availableActions,
                         gamePhase = gameState.gamePhase,
-                        onActionClick = { action, playerId -> gameViewModel.onAction(action, playerId) },
+                        onActionClick = { action, playerId -> onAction(action, playerId) },
                         selectedCardCount = gameState.selectedCardsForDiscard.size,
                         isEnabled = isMyTurn,
-                        currentPlayerId = gameViewModel.localSeatId,
+                        currentPlayerId = localSeatId,
                         isRaise = gameState.currentBet != null,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -368,7 +424,7 @@ fun GameScreen(
                             // #38: si la mano no da para seña (jugada no señalizable,
                             // p. ej. par de caballos o juego ≠ 31), el botón se atenúa
                             // y no responde — no hay seña que pasar.
-                            val canShowGesture = gameViewModel.hasShowableGesture(player)
+                            val canShowGesture = hasShowableGesture(player)
                             Box(
                                 modifier = Modifier
                                     .size(58.dp * scaleFactor)
@@ -378,7 +434,7 @@ fun GameScreen(
                                     )
                                     .then(
                                         if (canShowGesture) Modifier.clickable {
-                                            gameViewModel.onAction(GameAction.ShowGesture, player.id)
+                                            onAction(GameAction.ShowGesture, player.id)
                                         } else Modifier
                                     ),
                                 contentAlignment = Alignment.Center
@@ -409,7 +465,7 @@ fun GameScreen(
                             modifier = Modifier
                                 .size(58.dp * scaleFactor)
                                 .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                .clickable { gameViewModel.onAction(GameAction.TogglePauseMenu, player.id) },
+                                .clickable { onAction(GameAction.TogglePauseMenu, player.id) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -430,8 +486,9 @@ fun GameScreen(
                 players = players,
                 dimens = dimens,
                 screenHeight = screenHeight,
-                navController = navController,
-                gameViewModel = gameViewModel
+                localSeatId = localSeatId,
+                onAction = onAction,
+                vmOverlays = vmOverlays
             )
         }
     }
@@ -449,24 +506,13 @@ private fun GameOverlays(
     players: List<Player>,
     dimens: ResponsiveDimens,
     screenHeight: Dp,
-    navController: NavController,
-    gameViewModel: GameViewModel
+    localSeatId: String,
+    onAction: (GameAction, String) -> Unit,
+    vmOverlays: @Composable (ResponsiveDimens) -> Unit
 ) {
-    if (gameState.isPaused) {
-        PauseMenuOverlay(
-            navController = navController,
-            onAction = gameViewModel::onAction,
-            localSeatId = gameViewModel.localSeatId,
-            dimensions = dimens,
-            gameViewModel = gameViewModel
-        )
-    }
-
-    // Panel flotante de logs de IA — solo se renderiza en builds debug.
-    DebugFeatures.AiDebugPanelOverlay(gameViewModel)
-
-    // Selector de escenarios de prueba — solo se renderiza en builds debug.
-    DebugFeatures.ScenarioSelectorOverlay(gameViewModel)
+    // Overlays acoplados al VM (pausa + paneles de debug): los aporta el wrapper local;
+    // online pasa un slot vacío. Mismo z-order que antes (por debajo de los data-driven).
+    vmOverlays(dimens)
 
     if (gameState.isSelectingBet) {
         Box(
@@ -477,10 +523,10 @@ private fun GameOverlays(
         ) {
             BetSelector(
                 onBet = { amount ->
-                    gameViewModel.onAction(GameAction.Envido(amount), gameViewModel.localSeatId)
+                    onAction(GameAction.Envido(amount), localSeatId)
                 },
                 onCancel = {
-                    gameViewModel.onAction(GameAction.CancelBetSelection, gameViewModel.localSeatId)
+                    onAction(GameAction.CancelBetSelection, localSeatId)
                 },
                 isRaise = gameState.currentBet != null
             )
@@ -500,10 +546,10 @@ private fun GameOverlays(
             players = players,
             bottomPadding = screenHeight * 0.28f,
             onNewGameClick = {
-                gameViewModel.onAction(GameAction.NewGame, gameViewModel.localSeatId)
+                onAction(GameAction.NewGame, localSeatId)
             },
             onContinueClick = {
-                gameViewModel.onAction(GameAction.Continue, gameViewModel.localSeatId)
+                onAction(GameAction.Continue, localSeatId)
             }
         )
     }
@@ -522,7 +568,7 @@ private fun GameOverlays(
                 chicosWon = gameState.chicosWon,
                 chicosToWin = gameState.settings.chicosToWinVaca,
                 onContinueClick = {
-                    gameViewModel.onAction(GameAction.Continue, gameViewModel.localSeatId)
+                    onAction(GameAction.Continue, localSeatId)
                 },
                 dimens = dimens
             )
