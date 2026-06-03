@@ -127,15 +127,19 @@ internal fun adaptOnlineView(
     selectedCards: Set<Card>,
     isSelectingBet: Boolean
 ): GameState {
-    // Manos ajenas: la redacción las vacía; rellenar a 4 placeholder para que se dibujen
-    // 4 reversos (las composables de mano dibujan por cards.size). En el enseñe
-    // (revealAllHands) llegan las manos reales → no se tocan.
-    val players = if (view.revealAllHands) {
-        view.players
-    } else {
-        view.players.map { p ->
-            if (p.id != mySeatId && p.hand.isEmpty()) p.copy(hand = ONLINE_PLACEHOLDER_HAND) else p
+    // Avatar: el host manda avatarResId=0 (los recursos Android no viajan por red);
+    // asignamos uno por asiento (índice) desde el roster — consistente en todos los
+    // clientes y, sobre todo, evita painterResource(0) → crash en PlayerAvatar.
+    // Manos ajenas: la redacción las vacía → rellenar a 4 reversos (las composables de
+    // mano dibujan por cards.size); en el enseñe (revealAllHands) llegan reales.
+    val players = view.players.mapIndexed { index, p ->
+        val avatar = CharacterRoster.all[index % CharacterRoster.all.size].avatarResId
+        val hand = if (!view.revealAllHands && p.id != mySeatId && p.hand.isEmpty()) {
+            ONLINE_PLACEHOLDER_HAND
+        } else {
+            p.hand
         }
+        p.copy(avatarResId = avatar, hand = hand)
     }
     // Anuncio sobre el avatar: el host manda solo la ÚLTIMA acción (lastActionView); el
     // historial del lance (currentLanceActions) es @Transient y no viaja.
