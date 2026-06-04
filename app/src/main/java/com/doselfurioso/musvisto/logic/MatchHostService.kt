@@ -37,13 +37,14 @@ data class MatchPacing(
 )
 
 /**
- * Acción que el host juega por un HUMANO que agotó su [MatchPacing.turnTimeoutMs] (AFK).
- * Decisión PURA ([MatchHostService.timeoutActionFor]) separada del cableado del reloj.
+ * Qué está esperando el host cuando se asienta (clasificación PURA del estado, ver
+ * [MatchHostService.timeoutActionFor]). El turn timer actúa sobre esto; la POLÍTICA
+ * de escalado (acción segura → cede a IA) la decide [MatchHostService.onTurnTimeout].
  */
 internal sealed interface TimeoutAction {
-    /** Turno en un lance: jugar la acción segura del asiento (Paso › No quiero › primera). */
-    data class SafeMove(val seatId: String, val command: GameCommand) : TimeoutAction
-    /** Fin de ronda esperando "Continuar": repartir la siguiente (auto-continue). */
+    /** Turno de un HUMANO en un lance (con acciones): se le espera. */
+    data class HumanTurn(val seatId: String) : TimeoutAction
+    /** Fin de ronda esperando "Continuar": al agotar el tiempo, repartir la siguiente. */
     object DealNext : TimeoutAction
 }
 
@@ -92,6 +93,12 @@ class MatchHostService(
     // con cada avance.
     private var turnTimeoutJob: Job? = null
 
+    // AFK / cede a IA (rebanada 2): timeouts CONSECUTIVOS por asiento humano (se resetean
+    // en cuanto ese asiento manda un comando = está presente). Al llegar a [AFK_THRESHOLD]
+    // el asiento entra en [afkSeats] y lo conduce su cerebro de IA hasta que el humano vuelve.
+    private val consecutiveTimeouts = mutableMapOf<String, Int>()
+    private val afkSeats = mutableSetOf<String>()
+
     // Señas online (Fase 4.2): true tras planificar/mostrar las señas de la entrada
     // ACTUAL a MUS; se resetea al salir de MUS para re-planificar tras descarte / nueva
     // ronda (igual que offline re-corre onEnterMusPhase). Ver [resolveAiGestures].
@@ -99,6 +106,10 @@ class MatchHostService(
 
     fun start() {
         transport.observeCommands { seatId, command ->
+            // Un comando de un asiento = ese jugador está PRESENTE → sale de AFK y se le
+            // reinicia el contador de timeouts (cede a IA, rebanada 2).
+            afkSeats.remove(seatId)
+            consecutiveTimeouts.remove(seatId)
             // Pase lo que pase al aplicar/publicar el comando, SIEMPRE relanzamos el
             // avance: una excepción tragada por el callback de Firebase dejaría la IA
             // sin arrancar (cuelgue). La capturamos, la registramos y seguimos.
@@ -208,18 +219,12 @@ class MatchHostService(
         }
     }
 
-    /** Dispara el timeout: re-evalúa el estado (pudo cambiar) y juega por el humano AFK. Blindado. */
+    /** Dispara el timeout: re-evalúa el estado (pudo cambiar) y actúa por el humano. Blindado. */
     private fun onTurnTimeout() {
-        when (val action = timeoutActionFor(host.authoritativeState)) {
-            is TimeoutAction.SafeMove -> {
-                log("turn timeout: ${action.seatId} AFK → ${action.command}")
-                runCatching {
-                    host.submitCommand(action.seatId, action.command)
-                    publishAllViews()
-                }.onFailure { log("turn timeout (safe move) falló: ${it.stackTraceToString()}") }
-            }
+        when (val wait = timeoutActionFor(host.authoritativeState)) {
+            is TimeoutAction.HumanTurn -> handleHumanTimeout(wait.seatId)
             TimeoutAction.DealNext -> {
-                log("turn timeout: fin de ronda AFK → auto-Continuar")
+                log("turn timeout: fin de ronda sin Continuar → auto-repartir")
                 runCatching {
                     host.dealNextRound()
                     publishAllViews()
@@ -231,11 +236,35 @@ class MatchHostService(
     }
 
     /**
-     * Decisión PURA del turn timer: qué juega el host por un humano que agotó su tiempo.
-     *  - `ROUND_OVER` (no GAME_OVER) → [TimeoutAction.DealNext] (auto-Continuar). Solo se
+     * Política de AFK (rebanada 2): el humano [seatId] agotó su tiempo. Mientras no acumule
+     * [AFK_THRESHOLD] timeouts CONSECUTIVOS, el host juega por él una acción SEGURA (Paso/No
+     * quiero) y le deja seguir al mando. Al llegar al umbral —y si hay cerebro para conducirlo—
+     * lo marca AFK: a partir de ahí su asiento lo lleva la IA (a ritmo normal, no 45 s/turno)
+     * hasta que el humano vuelva (cualquier comando suyo lo reclama, ver [start]). Sin cerebro
+     * (p. ej. tests), se queda en acción segura indefinidamente (nunca congela).
+     */
+    private fun handleHumanTimeout(seatId: String) {
+        val timeouts = (consecutiveTimeouts[seatId] ?: 0) + 1
+        consecutiveTimeouts[seatId] = timeouts
+        if (timeouts >= AFK_THRESHOLD && aiDriver?.canDrive(seatId) == true) {
+            afkSeats.add(seatId)
+            log("turn timeout: $seatId AFK ($timeouts consecutivos) → cede a IA")
+            return // el bucle ([nextAiCommand] con afkSeats) lo conducirá
+        }
+        val safe = safeFallback(host.authoritativeState) ?: return
+        log("turn timeout: $seatId → ${safe.second} (acción segura, $timeouts/$AFK_THRESHOLD)")
+        runCatching {
+            host.submitCommand(safe.first, safe.second)
+            publishAllViews()
+        }.onFailure { log("turn timeout (safe move) falló: ${it.stackTraceToString()}") }
+    }
+
+    /**
+     * Clasificación PURA de lo que el host espera al asentarse (la usa el scheduling y el
+     * disparo del timeout):
+     *  - `ROUND_OVER` (no GAME_OVER) → [TimeoutAction.DealNext] (auto-repartir). Solo se
      *    asienta aquí con humanos en mesa (la mesa de solo IA ya auto-reparte).
-     *  - turno de un HUMANO con acciones → [TimeoutAction.SafeMove] con la acción segura
-     *    ([safeFallback]: Paso › No quiero › primera).
+     *  - turno de un HUMANO con acciones legales → [TimeoutAction.HumanTurn].
      *  - turno de IA / GAME_OVER / sin acciones → null (no hay humano a quien esperar).
      */
     internal fun timeoutActionFor(state: GameState): TimeoutAction? {
@@ -243,8 +272,8 @@ class MatchHostService(
         val turn = state.currentTurnPlayerId ?: return null
         val player = state.players.find { it.id == turn } ?: return null
         if (player.isAi) return null
-        val (seatId, command) = safeFallback(state) ?: return null
-        return TimeoutAction.SafeMove(seatId, command)
+        if (state.availableActions.mapNotNull { it.toCommand() }.isEmpty()) return null
+        return TimeoutAction.HumanTurn(turn)
     }
 
     /**
@@ -368,7 +397,7 @@ class MatchHostService(
     private fun nextAiCommand(): Pair<String, GameCommand>? {
         val driver = aiDriver ?: return null
         return try {
-            driver.commandFor(host.authoritativeState)
+            driver.commandFor(host.authoritativeState, afkSeats)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -397,5 +426,8 @@ class MatchHostService(
     private companion object {
         /** Tope de acciones de IA encadenadas entre dos turnos humanos (anti-cuelgue). */
         const val MAX_AI_STEPS = 500
+
+        /** Timeouts CONSECUTIVOS de un humano antes de cederle el asiento a la IA (AFK). */
+        const val AFK_THRESHOLD = 2
     }
 }

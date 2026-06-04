@@ -61,7 +61,10 @@ class OnlineMatchHost(
             availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
 
-        val aiLogics = seats.filter { it.isAi }.associate { seat ->
+        // Cerebros para TODOS los asientos: las IA los usan siempre; los humanos solo si
+        // caen AFK (turn timer rebanada 2 → MatchHostService cede el asiento a la IA). Un
+        // asiento humano no tiene arquetipo → EQUILIBRADO (byName cae a él).
+        val aiLogics = seats.associate { seat ->
             seat.seatId to AILogic(gameLogic, rng, AIArchetype.byName(seat.archetype.orEmpty()).profile)
         }
 

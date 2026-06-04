@@ -389,17 +389,35 @@ class MatchHostServiceTest {
             players = players(), gamePhase = phase, currentTurnPlayerId = turn,
             manoPlayerId = "p1", playersInLance = seatIds.toSet(), availableActions = actions
         )
-        // p1 es HUMANO (players(): p1 isAi=false); turno suyo con acciones de apuesta → Paso (acción segura).
+        // p1 es HUMANO (players(): p1 isAi=false); turno suyo con acciones → se le espera.
         assertEquals(
-            TimeoutAction.SafeMove("p1", GameCommand.Pass),
+            TimeoutAction.HumanTurn("p1"),
             service.timeoutActionFor(st(GamePhase.GRANDE, "p1", listOf(GameAction.Paso, GameAction.Envido(2))))
         )
         // Turno de IA (p2) → null: lo lleva el bucle, no el timeout.
         assertNull(service.timeoutActionFor(st(GamePhase.GRANDE, "p2", listOf(GameAction.Paso))))
+        // Humano sin acciones legales → null (nada que esperar).
+        assertNull(service.timeoutActionFor(st(GamePhase.GRANDE, "p1", emptyList())))
         // Fin de ronda esperando "Continuar" → auto-repartir.
         assertEquals(TimeoutAction.DealNext, service.timeoutActionFor(st(GamePhase.ROUND_OVER, null, emptyList())))
         // Fin de partida → null (no hay a quién esperar).
         assertNull(service.timeoutActionFor(st(GamePhase.GAME_OVER, null, emptyList())))
+    }
+
+    @Test
+    fun `AiSeatDriver conduce un asiento humano solo si esta AFK (cede a IA)`() {
+        val gameLogic = MusGameLogic(Random(0))
+        val state = dealtMusState() // turno de p1 (HUMANO en players()), MUS, [Mus, NoMus]
+        val driver = AiSeatDriver(seatIds.associateWith { AILogic(gameLogic, Random(0), AIProfile()) })
+
+        // Humano PRESENTE (no AFK): no se le conduce, se le espera.
+        assertNull(driver.commandFor(state))
+        // Mismo asiento AFK: la IA decide por él (su cerebro produce un comando).
+        val afkMove = driver.commandFor(state, afkSeats = setOf("p1"))
+        assertEquals("p1", afkMove?.first)
+        assertNotNull("la IA debe producir un comando para el asiento AFK", afkMove?.second)
+        // Hay cerebro para conducirlo si se ausenta.
+        assertTrue(driver.canDrive("p1"))
     }
 
     @Test

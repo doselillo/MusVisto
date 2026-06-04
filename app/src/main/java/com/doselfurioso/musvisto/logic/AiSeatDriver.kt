@@ -17,15 +17,24 @@ import com.doselfurioso.musvisto.model.toCommand
  * acción del actor de turno (ROUND_OVER/GAME_OVER, o turno de un humano) devuelve
  * `null`: el bucle del host se detiene y espera (transición de ronda y arranque
  * son responsabilidad del orquestador, como en el simulador).
+ *
+ * **AFK / cede a IA (Fase 3, turn timer rebanada 2):** [aiLogics] puede llevar cerebros
+ * de TODOS los asientos (también humanos); un asiento humano solo se conduce si está en
+ * [afkSeats] (lo decide el orquestador tras agotar el timeout). Así el cerebro existe pero
+ * NO juega por un humano presente: solo cuando lleva rato ausente.
  */
 class AiSeatDriver(
     private val aiLogics: Map<String, AILogic>
 ) {
-    fun commandFor(state: GameState): Pair<String, GameCommand>? {
+    /** ¿Hay cerebro para conducir [seatId] si se ausenta? (lo consulta el orquestador). */
+    fun canDrive(seatId: String): Boolean = seatId in aiLogics
+
+    fun commandFor(state: GameState, afkSeats: Set<String> = emptySet()): Pair<String, GameCommand>? {
         if (state.gamePhase == GamePhase.ROUND_OVER || state.gamePhase == GamePhase.GAME_OVER) return null
         val turnId = state.currentTurnPlayerId ?: return null
         val player = state.players.find { it.id == turnId } ?: return null
-        if (!player.isAi) return null
+        // Conduce IA reales SIEMPRE; humanos SOLO si están marcados AFK (cede a IA).
+        if (!player.isAi && turnId !in afkSeats) return null
         val ai = aiLogics[turnId] ?: return null
 
         val decision = ai.makeDecision(state, player)
