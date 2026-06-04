@@ -1595,16 +1595,20 @@ class AILogic constructor(
     // ¿Este observador intercepta esta seña rival? Determinista y ESTABLE
     // dentro de la ronda (no parpadea entre lances): hash de mano (rota cada
     // ronda) + emisor + observador + seña. Re-tira solo al cambiar de ronda.
+    // El predicado vive en [GestureVisibility] (compartido con la redacción del
+    // host online, Fase 4.2); aquí se invoca con la prob del PERFIL de la IA.
     private fun opponentSignPerceived(
         gameState: GameState,
         observer: Player,
         gesturerId: String,
         kind: GestureKind
-    ): Boolean {
-        val seed = "${gameState.manoPlayerId}|$gesturerId|${observer.id}|${kind.name}"
-        val r = seed.hashCode().mod(1000) / 1000.0
-        return r < OPPONENT_SIGN_INTERCEPT_PROB
-    }
+    ): Boolean = GestureVisibility.perceivesOpponentSign(
+        manoPlayerId = gameState.manoPlayerId,
+        gesturerId = gesturerId,
+        observerId = observer.id,
+        kind = kind,
+        prob = OPPONENT_SIGN_INTERCEPT_PROB
+    )
 
     private fun adjustStrengthsBasedOnKnownGestures(
         baseStrength: HandStrength,

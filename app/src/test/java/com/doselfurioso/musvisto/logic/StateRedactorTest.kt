@@ -1,11 +1,14 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,5 +71,56 @@ class StateRedactorTest {
         val redacted = StateRedactor.redactFor("p2", state())
         assertEquals(hand(Rank.AS, Rank.AS), redacted.players.first { it.id == "p2" }.hand)
         assertTrue(redacted.players.first { it.id == "p1" }.hand.isEmpty())
+    }
+
+    // --- Señas (Fase 4.2) ---
+
+    private fun withGesture(gesturerId: String, kind: GestureKind) = state().copy(
+        manoPlayerId = "p1",
+        activeGesture = ActiveGestureInfo(gesturerId, kind),
+        knownGestures = mapOf(gesturerId to ActiveGestureInfo(gesturerId, kind)),
+        pendingGestures = mapOf("p3" to GestureKind.ASES_2)
+    )
+
+    @Test
+    fun `redactFor SIEMPRE muestra la sena del propio equipo`() {
+        // p3 (teamA) es la pareja de p1 (teamA): su seña se ve siempre.
+        val redacted = StateRedactor.redactFor("p1", withGesture("p3", GestureKind.REYES_2))
+        assertEquals(ActiveGestureInfo("p3", GestureKind.REYES_2), redacted.activeGesture)
+    }
+
+    @Test
+    fun `redactFor muestra la sena RIVAL solo si el asiento la caza`() {
+        // p2 (teamB) señaliza; p1 (teamB? no, teamA) la ve solo si la caza (prob humana 0.20),
+        // con el MISMO predicado/seed que usa la IA → la mesa coincide.
+        val kind = GestureKind.JUEGO_31
+        val redacted = StateRedactor.redactFor("p1", withGesture("p2", kind))
+        val caza = GestureVisibility.perceivesOpponentSign(
+            manoPlayerId = "p1",
+            gesturerId = "p2",
+            observerId = "p1",
+            kind = kind,
+            prob = GestureVisibility.HUMAN_INTERCEPT_PROB
+        )
+        if (caza) {
+            assertEquals(ActiveGestureInfo("p2", kind), redacted.activeGesture)
+        } else {
+            assertNull("Seña rival no cazada debe borrarse (ni flash)", redacted.activeGesture)
+        }
+    }
+
+    @Test
+    fun `redactFor nunca filtra knownGestures ni pendingGestures (estado interno del host)`() {
+        val redacted = StateRedactor.redactFor("p2", withGesture("p3", GestureKind.REYES_2))
+        assertTrue("knownGestures es interno del host", redacted.knownGestures.isEmpty())
+        assertTrue("pendingGestures es interno del host", redacted.pendingGestures.isEmpty())
+    }
+
+    @Test
+    fun `redactFor en ensene tampoco filtra el estado interno de senas`() {
+        val source = withGesture("p3", GestureKind.REYES_2).copy(revealAllHands = true)
+        val redacted = StateRedactor.redactFor("p2", source)
+        assertTrue(redacted.knownGestures.isEmpty())
+        assertTrue(redacted.pendingGestures.isEmpty())
     }
 }
