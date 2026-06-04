@@ -7,6 +7,8 @@ import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.RoomSeat
 import com.doselfurioso.musvisto.model.Rooms
 import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -68,7 +70,15 @@ class OnlineMatchHostLiveTest {
             }
         }
 
-        OnlineMatchHost(MusGameLogic(Random(0)), transport, Random(0)).start(seats, GameSettings())
+        // Smoke en vivo: scope de fondo + pacing rápido (que la ronda resuelva dentro del
+        // timeout, no nos interesa el ritmo aquí) + rng sembrado (señas IA deterministas).
+        OnlineMatchHost(
+            MusGameLogic(Random(0)),
+            transport,
+            CoroutineScope(Dispatchers.Default),
+            pacing = MatchPacing(),
+            rng = Random(0)
+        ).start(seats, GameSettings())
 
         assertTrue(
             "La mesa de solo IA debe auto-resolver la ronda y publicar la vista por Firebase",
