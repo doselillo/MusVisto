@@ -33,7 +33,8 @@ class OnlineMatchHost(
     private val pacing: MatchPacing = MatchPacing(
         turnMs = DEFAULT_PACING_MS,
         roundOverMs = DEFAULT_ROUND_OVER_PACING_MS,
-        gestureMs = DEFAULT_GESTURE_MS
+        gesturePartnerMs = DEFAULT_GESTURE_PARTNER_MS,
+        gestureOtherMs = DEFAULT_GESTURE_OTHER_MS
     ),
     private val log: (String) -> Unit = {},
     private val rng: Random = Random(System.currentTimeMillis())
@@ -87,7 +88,9 @@ class OnlineMatchHost(
         const val DEFAULT_PACING_MS = 800L
         /** Pausa (ms) del "fin de ronda" visible antes de repartir la siguiente. */
         const val DEFAULT_ROUND_OVER_PACING_MS = 3000L
-        /** Tiempo (ms) que dura visible cada seña de IA online (Fase 4.2): legible para el compañero humano. */
-        const val DEFAULT_GESTURE_MS = 1500L
+        /** Seña de IA con compañero HUMANO (Fase 4.2): legible, el capitán la lee para el corte #20. */
+        const val DEFAULT_GESTURE_PARTNER_MS = 1500L
+        /** Seña de IA-IA o rival cazada (Fase 4.2): flash corto, no regalar lectura (como offline). */
+        const val DEFAULT_GESTURE_OTHER_MS = 300L
     }
 }

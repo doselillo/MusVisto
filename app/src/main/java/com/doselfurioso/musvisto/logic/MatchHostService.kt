@@ -15,13 +15,18 @@ import kotlinx.coroutines.launch
 /**
  * Ritmos (ms) del bucle host: [turnMs] entre acciones de IA (que el cliente las vea
  * jugar), [roundOverMs] de "fin de ronda" visible antes de repartir la siguiente (más
- * largo, para leer el resultado) y [gestureMs] que dura visible cada seña de IA online
- * (Fase 4.2). En tests, todos 0 → transición síncrona.
+ * largo, para leer el resultado) y la ventana visible de cada seña de IA online (Fase
+ * 4.2). Esta última se desdobla, igual que `GameViewModel.gestureVisibleMs` offline:
+ * [gesturePartnerMs] (legible) para la seña de una IA con COMPAÑERO HUMANO —el capitán
+ * la lee para decidir el corte (#20)— y [gestureOtherMs] (flash corto) para el resto
+ * (IA-IA, y rivales: un humano que CAZA una seña rival solo la ve un instante, como
+ * offline, para no regalar lectura). En tests, todos 0 → transición síncrona.
  */
 data class MatchPacing(
     val turnMs: Long = 0L,
     val roundOverMs: Long = turnMs,
-    val gestureMs: Long = turnMs
+    val gesturePartnerMs: Long = turnMs,
+    val gestureOtherMs: Long = turnMs
 )
 
 /**
@@ -197,13 +202,23 @@ class MatchHostService(
                 host.showGesture(seatId, kind)
                 publishAllViews()
             }.onFailure { log("showGesture ($seatId) falló: ${it.stackTraceToString()}") }
-            if (pacing.gestureMs > 0) delay(pacing.gestureMs)
+            // Legible solo si la emite una IA con compañero HUMANO (el capitán la lee
+            // para el corte #20); si no, flash corto → un rival que la caza no la lee gratis.
+            val visibleMs = if (hasHumanPartner(seatId)) pacing.gesturePartnerMs else pacing.gestureOtherMs
+            if (visibleMs > 0) delay(visibleMs)
             runCatching {
                 host.clearActiveGesture()
                 publishAllViews()
             }.onFailure { log("clearActiveGesture ($seatId) falló: $it") }
         }
         return true
+    }
+
+    /** ¿El asiento [seatId] tiene de compañero a un HUMANO? (decide la ventana visible de su seña). */
+    private fun hasHumanPartner(seatId: String): Boolean {
+        val players = host.authoritativeState.players
+        val team = players.find { it.id == seatId }?.team ?: return false
+        return players.any { it.id != seatId && it.team == team && !it.isAi }
     }
 
     /**
