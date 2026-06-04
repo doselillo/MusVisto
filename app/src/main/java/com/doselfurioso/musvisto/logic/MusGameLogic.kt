@@ -113,6 +113,34 @@ class MusGameLogic constructor(
     }
 
     /**
+     * Seña canónica que comunica [hand] (la que el jugador "pasa"), o null si la mano
+     * no es señalizable. VERAZ: se deriva de la mano (no se puede mentir). Extraída del
+     * ViewModel (Fase 4 de multijugador) para que el host autoritativo la calcule por
+     * asiento igual que el modo local. Treses cuentan como Reyes y Doses como Ases.
+     */
+    fun determineGesture(hand: List<Card>): GestureKind? {
+        if (hand.isEmpty()) return null
+        val reyesCount = hand.count { it.rank == Rank.REY || it.rank == Rank.TRES }
+        val asesCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
+        val paresPlay = getHandPares(hand)
+        val juegoValue = getHandJuegoValue(hand)
+
+        // Prioridad: duples > 31 > medias > pares > ciega.
+        return when {
+            // #23: "duples altos" = par alto de Reyes (comunica "2 reyes"); resto = bajos.
+            paresPlay is ParesPlay.Duples ->
+                if (reyesCount >= 2) GestureKind.DUPLES_ALTOS else GestureKind.DUPLES_BAJOS
+            juegoValue == 31 -> GestureKind.JUEGO_31
+            reyesCount >= 3 -> GestureKind.REYES_3
+            asesCount >= 3 -> GestureKind.ASES_3
+            reyesCount == 2 -> GestureKind.REYES_2
+            asesCount == 2 -> GestureKind.ASES_2
+            paresPlay is ParesPlay.NoPares && juegoValue < 31 -> GestureKind.CIEGA
+            else -> null
+        }
+    }
+
+    /**
      * Analyzes a hand and returns the corresponding ParesPlay.
      */
     fun getHandPares(hand: List<Card>): ParesPlay {

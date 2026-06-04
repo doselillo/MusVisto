@@ -1,13 +1,13 @@
 package com.doselfurioso.musvisto.logic
 
 import android.util.Log
-import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.debug.DebugFeatures
 import java.util.UUID
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.ParesPlay
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
@@ -795,7 +795,7 @@ class AILogic constructor(
             it.team == aiPlayer.team && it.id != aiPlayer.id
         } ?: return false
         val gesture = gameState.knownGestures[partner.id] ?: return false
-        return when (val m = getGestureMeaning(gesture.gestureResId)) {
+        return when (val m = getGestureMeaning(gesture.gestureKind)) {
             is GestureMeaning.Pares -> when (val play = m.play) {
                 is ParesPlay.Duples -> true
                 is ParesPlay.Medias -> play.rank == Rank.REY
@@ -1580,36 +1580,16 @@ class AILogic constructor(
         object Ciega : GestureMeaning()
     }
 
-    private fun getGestureMeaning(gestureResId: Int): GestureMeaning? {
-        return when (gestureResId) {
-            // Para las señas de pares, asumimos una jugada representativa fuerte.
-            R.drawable.duples_altos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.REY, Rank.REY))
-            R.drawable.duples_bajos -> GestureMeaning.Pares(ParesPlay.Duples(Rank.SOTA, Rank.AS))
-            R.drawable.reyes_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.REY))
-            R.drawable.ases_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.AS))
-            R.drawable.reyes_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.REY))
-            R.drawable.ases_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.AS))
-
-            R.drawable.sena_31 -> GestureMeaning.Juego(31)
-            R.drawable.ciega -> GestureMeaning.Ciega
-
-            else -> null
-        }
-    }
-
-
-    private fun gestureIdToName(gestureResId: Int): String {
-        return when (gestureResId) {
-            R.drawable.reyes_2 -> "Dos Reyes"
-            R.drawable.reyes_3 -> "Tres Reyes"
-            R.drawable.ases_2 -> "Dos Ases"
-            R.drawable.ases_3 -> "Tres Ases"
-            R.drawable.sena_31 -> "31 de Juego"
-            R.drawable.ciega -> "Ciega"
-            R.drawable.duples_altos -> "Duples Altos"
-            R.drawable.duples_bajos -> "Duples Bajos"
-            else -> "Unknown Gesture"
-        }
+    private fun getGestureMeaning(kind: GestureKind): GestureMeaning? = when (kind) {
+        // Para las señas de pares, asumimos una jugada representativa fuerte.
+        GestureKind.DUPLES_ALTOS -> GestureMeaning.Pares(ParesPlay.Duples(Rank.REY, Rank.REY))
+        GestureKind.DUPLES_BAJOS -> GestureMeaning.Pares(ParesPlay.Duples(Rank.SOTA, Rank.AS))
+        GestureKind.REYES_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.REY))
+        GestureKind.ASES_3 -> GestureMeaning.Pares(ParesPlay.Medias(Rank.AS))
+        GestureKind.REYES_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.REY))
+        GestureKind.ASES_2 -> GestureMeaning.Pares(ParesPlay.Pares(Rank.AS))
+        GestureKind.JUEGO_31 -> GestureMeaning.Juego(31)
+        GestureKind.CIEGA -> GestureMeaning.Ciega
     }
 
     // ¿Este observador intercepta esta seña rival? Determinista y ESTABLE
@@ -1619,9 +1599,9 @@ class AILogic constructor(
         gameState: GameState,
         observer: Player,
         gesturerId: String,
-        gestureResId: Int
+        kind: GestureKind
     ): Boolean {
-        val seed = "${gameState.manoPlayerId}|$gesturerId|${observer.id}|$gestureResId"
+        val seed = "${gameState.manoPlayerId}|$gesturerId|${observer.id}|${kind.name}"
         val r = seed.hashCode().mod(1000) / 1000.0
         return r < OPPONENT_SIGN_INTERCEPT_PROB
     }
@@ -1643,7 +1623,7 @@ class AILogic constructor(
         // Capa importante con delegación amplia (#20): si NO he pasado seña, el
         // capitán humano juega a ciegas y la delegación pierde valor.
         val ownGesture = gameState.knownGestures[aiPlayer.id]
-        val ownGestureName = if (ownGesture != null) gestureIdToName(ownGesture.gestureResId) else "(no pasada)"
+        val ownGestureName = if (ownGesture != null) ownGesture.gestureKind.label else "(no pasada)"
         logBuilder.appendLine("   - Mi seña activa: $ownGestureName")
 
         val teamStrength = mergePartnerGestures(baseStrength, gameState, aiPlayer, logBuilder)
@@ -1673,7 +1653,7 @@ class AILogic constructor(
         for ((playerId, gesture) in gameState.knownGestures) {
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team == aiPlayer.team && gesturer.id != aiPlayer.id) {
-                val gestureName = gestureIdToName(gesture.gestureResId)
+                val gestureName = gesture.gestureKind.label
                 logBuilder.appendLine("   - (Offensive) Partner ${gesturer.name} has '$gestureName'. Merging strength.")
                 val gesturerIsMano = gameState.manoPlayerId == gesturer.id
 
@@ -1681,8 +1661,8 @@ class AILogic constructor(
                 // de la jugada concreta. Aplicamos un boost moderado al lance que cuadra:
                 // las 2 cartas que no vemos podrían tirar la jugada del compañero, por eso
                 // no asumimos el máximo.
-                val grandeBoost = partnerGrandeBoost(gesture.gestureResId)
-                val chicaBoost = partnerChicaBoost(gesture.gestureResId)
+                val grandeBoost = partnerGrandeBoost(gesture.gestureKind)
+                val chicaBoost = partnerChicaBoost(gesture.gestureKind)
                 if (grandeBoost > teamStrength.grande) {
                     teamStrength = teamStrength.copy(grande = grandeBoost)
                     logBuilder.appendLine("     -> Partner gesture boosts Grande to $grandeBoost.")
@@ -1692,7 +1672,7 @@ class AILogic constructor(
                     logBuilder.appendLine("     -> Partner gesture boosts Chica to $chicaBoost.")
                 }
 
-                when (val meaning = getGestureMeaning(gesture.gestureResId)) {
+                when (val meaning = getGestureMeaning(gesture.gestureKind)) {
                     is GestureMeaning.Pares -> {
                         val gestureStrength = getParesPlayStrength(meaning.play, gesturerIsMano)
                         teamStrength = teamStrength.copy(pares = max(teamStrength.pares, gestureStrength))
@@ -1742,14 +1722,14 @@ class AILogic constructor(
             val gesturer = gameState.players.find { it.id == playerId } ?: continue
             if (gesturer.team != aiPlayer.team) {
                 // El rival NO siempre caza la seña: solo a veces (#7).
-                if (!opponentSignPerceived(gameState, aiPlayer, playerId, gesture.gestureResId)) {
+                if (!opponentSignPerceived(gameState, aiPlayer, playerId, gesture.gestureKind)) {
                     logBuilder.appendLine("   - (Defensive) Seña de ${gesturer.name} NO interceptada por ${aiPlayer.name}.")
                     continue
                 }
-                val gestureName = gestureIdToName(gesture.gestureResId)
+                val gestureName = gesture.gestureKind.label
                 logBuilder.appendLine("   - (Defensive) Opponent ${gesturer.name} has '$gestureName' (interceptada).")
 
-                when (val meaning = getGestureMeaning(gesture.gestureResId)) {
+                when (val meaning = getGestureMeaning(gesture.gestureKind)) {
                     is GestureMeaning.Pares -> {
                         // Solo reduce la fuerza si la seña del rival es mejor que la del equipo
                         if (meaning.play.strength > gameLogic.getHandPares(aiPlayer.hand).strength) {
@@ -1779,8 +1759,8 @@ class AILogic constructor(
                 // bajo mi confianza si esa fuerza implícita SUPERA mi propia
                 // mano en ese lance (igual que la rama de Pares): con 4 reyes
                 // no me asusta una seña de 3 reyes. Reducción = mitad del boost.
-                val oppG = partnerGrandeBoost(gesture.gestureResId)
-                val oppC = partnerChicaBoost(gesture.gestureResId)
+                val oppG = partnerGrandeBoost(gesture.gestureKind)
+                val oppC = partnerChicaBoost(gesture.gestureKind)
                 if (oppG > baseStrength.grande) {
                     val g = (finalAdjustedStrength.grande - oppG / 2).coerceIn(0, 100)
                     finalAdjustedStrength = finalAdjustedStrength.copy(grande = g)
@@ -1799,19 +1779,19 @@ class AILogic constructor(
     // Boost al lance Grande del equipo según la seña del compañero.
     // Estimación moderada: una seña fija 2 cartas pero deja otras 2 desconocidas
     // que podrían rebajar la jugada real para Grande.
-    internal fun partnerGrandeBoost(gestureResId: Int): Int = when (gestureResId) {
-        R.drawable.reyes_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
-        R.drawable.sena_31 -> 35   // #14: 31 da figuras pero 0-1 Reyes modal; señal Grande débil
-        R.drawable.reyes_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
-        R.drawable.duples_altos -> 78  // #23: 2 reyes garantizados sin riesgo de descarte; entre reyes_2 y reyes_3
+    internal fun partnerGrandeBoost(kind: GestureKind): Int = when (kind) {
+        GestureKind.REYES_3 -> 90   // 3 Reyes/Treses → dispara Envido seguro (>80)
+        GestureKind.JUEGO_31 -> 35   // #14: 31 da figuras pero 0-1 Reyes modal; señal Grande débil
+        GestureKind.REYES_2 -> 65   // par alto: activa bluff y empuja a Envido si ya tienes algo
+        GestureKind.DUPLES_ALTOS -> 78  // #23: 2 reyes garantizados sin riesgo de descarte; entre reyes_2 y reyes_3
         else -> 0
     }
 
     // Boost al lance Chica del equipo según la seña del compañero.
-    internal fun partnerChicaBoost(gestureResId: Int): Int = when (gestureResId) {
-        R.drawable.ases_3 -> 90    // 3 Ases/Doses → dispara Envido seguro
-        R.drawable.ases_2 -> 65    // par bajo
-        R.drawable.duples_bajos -> 50
+    internal fun partnerChicaBoost(kind: GestureKind): Int = when (kind) {
+        GestureKind.ASES_3 -> 90    // 3 Ases/Doses → dispara Envido seguro
+        GestureKind.ASES_2 -> 65    // par bajo
+        GestureKind.DUPLES_BAJOS -> 50
         else -> 0
     }
 

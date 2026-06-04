@@ -1,6 +1,5 @@
 package com.doselfurioso.musvisto.logic
 
-import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.model.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -167,7 +166,7 @@ class AILogicTest {
             players = listOf(ai, opp1, partner, opp2),
             gamePhase = GamePhase.JUEGO,
             manoPlayerId = ai.id, // ai pos 0 (más temprano), partner pos 2
-            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, GestureKind.JUEGO_31))
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertTrue("En apoyo no debe abrir", decision.action is GameAction.Paso)
@@ -186,7 +185,7 @@ class AILogicTest {
             players = listOf(partner, opp1, ai, opp2),
             gamePhase = GamePhase.JUEGO,
             manoPlayerId = partner.id, // partner pos 0, ai pos 2 -> ai capitán
-            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, GestureKind.JUEGO_31))
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertFalse("El capitán no juega de apoyo", decision.action is GameAction.Paso)
@@ -204,7 +203,7 @@ class AILogicTest {
             players = listOf(ai, opp1, partner, opp2),
             gamePhase = GamePhase.JUEGO,
             manoPlayerId = ai.id,
-            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, GestureKind.JUEGO_31))
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertFalse("Mano propia fuerte no cede la iniciativa", decision.action is GameAction.Paso)
@@ -326,7 +325,7 @@ class AILogicTest {
             gamePhase = GamePhase.PARES,
             manoPlayerId = ai.id,
             playersInLance = setOf(ai.id, humanPartner.id, opp1.id),
-            pendingGestures = mapOf(ai.id to R.drawable.reyes_2) // Voy a señalizar
+            pendingGestures = mapOf(ai.id to GestureKind.REYES_2) // Voy a señalizar
         )
         // Con seña pendiente → apoyo → Paso siempre.
         repeat(30) {
@@ -930,28 +929,28 @@ class AILogicTest {
 
     @Test
     fun `partnerGrandeBoost - reyes_3 is the strongest grande boost`() {
-        assertEquals(90, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.reyes_3))
+        assertEquals(90, aiLogic.partnerGrandeBoost(GestureKind.REYES_3))
     }
 
     @Test
     fun `partnerGrandeBoost - sena_31 weak Grande signal (0-1 reyes modal), low boost`() {
         // #14: bajado 70 -> 35; un 31 no implica Reyes, queda por debajo de
         // reyes_2=65 (par confirmado) y del umbral de apoyo de Grande.
-        assertEquals(35, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
+        assertEquals(35, aiLogic.partnerGrandeBoost(GestureKind.JUEGO_31))
     }
 
     @Test
     fun `partnerGrandeBoost - reyes_2 gets medium boost`() {
-        assertEquals(65, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.reyes_2))
+        assertEquals(65, aiLogic.partnerGrandeBoost(GestureKind.REYES_2))
     }
 
     @Test
     fun `partnerGrandeBoost - duples_altos signals 2 kings (entre reyes_2 y reyes_3)`() {
         // #23: duples_altos garantiza 2 reyes sin riesgo de descarte ->
         // boost de Grande alto (78), entre reyes_2 (65) y reyes_3 (90).
-        val b = aiLogic.partnerGrandeBoost(R.drawable.duples_altos)
-        val reyes2 = aiLogic.partnerGrandeBoost(R.drawable.reyes_2)
-        val reyes3 = aiLogic.partnerGrandeBoost(R.drawable.reyes_3)
+        val b = aiLogic.partnerGrandeBoost(GestureKind.DUPLES_ALTOS)
+        val reyes2 = aiLogic.partnerGrandeBoost(GestureKind.REYES_2)
+        val reyes3 = aiLogic.partnerGrandeBoost(GestureKind.REYES_3)
         assertEquals(78, b)
         assertTrue("debe superar a reyes_2", b > reyes2)
         assertTrue("no debe igualar a reyes_3", b < reyes3)
@@ -959,34 +958,34 @@ class AILogicTest {
 
     @Test
     fun `partnerGrandeBoost - chica-only and ciega gestures give zero grande boost`() {
-        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ases_2))
-        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ases_3))
-        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.duples_bajos))
-        assertEquals(0, aiLogic.partnerGrandeBoost(com.doselfurioso.musvisto.R.drawable.ciega))
+        assertEquals(0, aiLogic.partnerGrandeBoost(GestureKind.ASES_2))
+        assertEquals(0, aiLogic.partnerGrandeBoost(GestureKind.ASES_3))
+        assertEquals(0, aiLogic.partnerGrandeBoost(GestureKind.DUPLES_BAJOS))
+        assertEquals(0, aiLogic.partnerGrandeBoost(GestureKind.CIEGA))
     }
 
     @Test
     fun `partnerChicaBoost - ases_3 is the strongest chica boost`() {
-        assertEquals(90, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ases_3))
+        assertEquals(90, aiLogic.partnerChicaBoost(GestureKind.ASES_3))
     }
 
     @Test
     fun `partnerChicaBoost - ases_2 gets medium boost`() {
-        assertEquals(65, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ases_2))
+        assertEquals(65, aiLogic.partnerChicaBoost(GestureKind.ASES_2))
     }
 
     @Test
     fun `partnerChicaBoost - duples_bajos gets low boost`() {
-        assertEquals(50, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.duples_bajos))
+        assertEquals(50, aiLogic.partnerChicaBoost(GestureKind.DUPLES_BAJOS))
     }
 
     @Test
     fun `partnerChicaBoost - grande-only and ciega gestures give zero chica boost`() {
-        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.reyes_2))
-        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.reyes_3))
-        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.duples_altos))
-        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.sena_31))
-        assertEquals(0, aiLogic.partnerChicaBoost(com.doselfurioso.musvisto.R.drawable.ciega))
+        assertEquals(0, aiLogic.partnerChicaBoost(GestureKind.REYES_2))
+        assertEquals(0, aiLogic.partnerChicaBoost(GestureKind.REYES_3))
+        assertEquals(0, aiLogic.partnerChicaBoost(GestureKind.DUPLES_ALTOS))
+        assertEquals(0, aiLogic.partnerChicaBoost(GestureKind.JUEGO_31))
+        assertEquals(0, aiLogic.partnerChicaBoost(GestureKind.CIEGA))
     }
 
     // --- TESTS ENDGAME ORDAGO (#16 + (a) + sinergia con seña) ---
@@ -1204,7 +1203,7 @@ class AILogicTest {
             currentBet = bet,
             manoPlayerId = opponentPlayer.id,
             currentTurnPlayerId = ai.id,
-            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, R.drawable.sena_31))
+            knownGestures = mapOf(partner.id to ActiveGestureInfo(partner.id, GestureKind.JUEGO_31))
         )
         val decision = aiLogic.makeDecision(gameState, ai)
         assertTrue(

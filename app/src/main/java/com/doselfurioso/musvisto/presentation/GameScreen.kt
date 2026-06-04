@@ -62,6 +62,7 @@ import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameEvent
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.LanceResult
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.OrdagoInfo
@@ -913,6 +914,18 @@ private fun BoxScope.AvatarCornerIcon(
     )
 }
 
+/** Mapea la seña (clave estable de red/motor) al drawable que pinta la mesa. */
+private fun GestureKind.drawableRes(): Int = when (this) {
+    GestureKind.REYES_2 -> R.drawable.reyes_2
+    GestureKind.REYES_3 -> R.drawable.reyes_3
+    GestureKind.ASES_2 -> R.drawable.ases_2
+    GestureKind.ASES_3 -> R.drawable.ases_3
+    GestureKind.JUEGO_31 -> R.drawable.sena_31
+    GestureKind.CIEGA -> R.drawable.ciega
+    GestureKind.DUPLES_ALTOS -> R.drawable.duples_altos
+    GestureKind.DUPLES_BAJOS -> R.drawable.duples_bajos
+}
+
 @Composable
 private fun PlayerAvatar(
     player: Player,
@@ -1285,7 +1298,8 @@ fun VerticalPlayerArea(
             isCurrentTurn = isCurrentTurn,
             isMano = isMano, hasCutMus = hasCutMus,
             dimens = dimens,
-            activeGestureResId = if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+            activeGestureResId =
+                if (activeGesture?.playerId == player.id) activeGesture.gestureKind.drawableRes() else null,
             discardCount = gameState.discardCounts[player.id],
             isInLance = isPlayerInActiveLance(gameState, player.id))
         handContent()
@@ -1335,7 +1349,7 @@ fun HorizontalPlayerArea(
                 hasCutMus = hasCutMus,
                 dimens = dimens,
                 activeGestureResId =
-                    if (activeGesture?.playerId == player.id) activeGesture.gestureResId else null,
+                    if (activeGesture?.playerId == player.id) activeGesture.gestureKind.drawableRes() else null,
                 discardCount = gameState.discardCounts[player.id],
                 isInLance = isPlayerInActiveLance(gameState, player.id)
             )

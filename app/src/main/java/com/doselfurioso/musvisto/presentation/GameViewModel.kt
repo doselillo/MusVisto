@@ -255,12 +255,11 @@ class GameViewModel constructor(
                 return
             }
 
-            val gestureResId = determineGesture(player)
-            if (gestureResId != null) {
-                val gestureName = gestureIdToName(gestureResId)
-                Log.d(TAG, "Player ${player.name} is showing gesture: '$gestureName'")
+            val kind = gameLogic.determineGesture(player.hand)
+            if (kind != null) {
+                Log.d(TAG, "Player ${player.name} is showing gesture: '${kind.label}'")
 
-                val newGesture = ActiveGestureInfo(playerId, gestureResId)
+                val newGesture = ActiveGestureInfo(playerId, kind)
                 val updatedKnownGestures = _gameState.value.knownGestures + (playerId to newGesture)
 
                 _gameState.value = _gameState.value.copy(
@@ -335,20 +334,6 @@ class GameViewModel constructor(
 
         val newState = gameLogic.processAction(currentState, actionToProcess, playerId)
         updateStateAndCheckAiTurn(newState)
-    }
-
-    private fun gestureIdToName(gestureResId: Int): String {
-        return when (gestureResId) {
-            R.drawable.reyes_2 -> "Dos Reyes"
-            R.drawable.reyes_3 -> "Tres Reyes"
-            R.drawable.ases_2 -> "Dos Ases"
-            R.drawable.ases_3 -> "Tres Ases"
-            R.drawable.sena_31 -> "31 de Juego"
-            R.drawable.ciega -> "Ciega"
-            R.drawable.duples_altos -> "Duples Altos"
-            R.drawable.duples_bajos -> "Duples Bajos"
-            else -> "Unknown Gesture"
-        }
     }
 
     /**
@@ -704,71 +689,13 @@ class GameViewModel constructor(
         updateStateAndCheckAiTurn(newState.copy(isSelectingBet = false))
     }
 
-    private fun determineGesture(player: Player): Int? {
-        val hand = player.hand
-        if (hand.isEmpty()) return null
-
-        // --- Lógica de Conteo de Cartas Clave ---
-        // Recuerda que los Treses cuentan como Reyes y los Doses como Ases para los pares.
-        val reyesCount = hand.count { it.rank == Rank.REY || it.rank == Rank.TRES }
-        val asesCount = hand.count { it.rank == Rank.AS || it.rank == Rank.DOS }
-
-        val paresPlay = gameLogic.getHandPares(hand)
-        val juegoValue = gameLogic.getHandJuegoValue(hand)
-
-        // --- Comprobación de Señas por Orden de Prioridad ---
-
-
-        // 1. Señas de Duples (dos pares)
-        if (paresPlay is ParesPlay.Duples) {
-            // #23: "duples altos" comunica EXACTAMENTE "tengo 2 reyes" (par
-            // alto de Reyes). El resto de duples → "duples bajos". Así el
-            // compañero puede leer la fuerza de Grande real de la seña.
-            if (reyesCount >= 2) {
-                return R.drawable.duples_altos // Seña: Duples Altos (2 reyes)
-            } else {
-                return R.drawable.duples_bajos // Seña: Duples Bajos
-            }
-        }
-
-        // 2. Seña de 31 de Juego - La mejor jugada de Juego
-        if (juegoValue == 31) {
-            return R.drawable.sena_31 // Seña: 31
-        }
-
-        // 3. Señas de Medias (3 cartas iguales) - Son las más raras y específicas
-        if (reyesCount >= 3) {
-            return R.drawable.reyes_3 // Seña: Tres Reyes
-        }
-        if (asesCount >= 3) {
-            return R.drawable.ases_3  // Seña: Tres Ases
-        }
-
-        // 4. Señas de Pares (dos cartas iguales)
-        if (reyesCount == 2) {
-            return R.drawable.reyes_2 // Seña: Dos Reyes
-        }
-        if (asesCount == 2) {
-            return R.drawable.ases_2  // Seña: Dos Ases
-        }
-
-        // 5. Seña de Ciega (no llevar nada)
-        // Se considera "ciega" si no se tiene ni Pares ni Juego (valor < 31)
-        if (paresPlay is ParesPlay.NoPares && juegoValue < 31) {
-            return R.drawable.ciega // Seña: Ciega
-        }
-
-        // Si no se cumple ninguna de las condiciones anteriores, no hay seña que pasar.
-        return null
-    }
-
     /**
      * ¿Tiene [player] una seña que pasar con su mano actual? (#38) Reutiliza
      * `determineGesture` para que la UI atenúe el botón de seña cuando el
      * jugador tiene jugada pero no es señalizable (p. ej. par de caballos,
      * juego ≠ 31): no hay seña que comunicar, el botón no debe parecer activo.
      */
-    fun hasShowableGesture(player: Player): Boolean = determineGesture(player) != null
+    fun hasShowableGesture(player: Player): Boolean = gameLogic.determineGesture(player.hand) != null
 
     /**
      * #20 (pieza C): cuánto dura visible en pantalla la seña de [signalerId].
@@ -805,7 +732,7 @@ class GameViewModel constructor(
         val pending = state.players.filter { ai ->
             ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }
         }.mapNotNull { ai ->
-            val gesture = determineGesture(ai) ?: return@mapNotNull null
+            val gesture = gameLogic.determineGesture(ai.hand) ?: return@mapNotNull null
             val isHumanPartner = humanTeam != null && ai.team == humanTeam
             val prob = if (isHumanPartner) PENDING_GESTURE_PROB_HUMAN_PARTNER
                        else PENDING_GESTURE_PROB_AI_PARTNER
