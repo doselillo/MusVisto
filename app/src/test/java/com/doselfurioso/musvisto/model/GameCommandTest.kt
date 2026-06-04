@@ -26,6 +26,7 @@ class GameCommandTest {
         GameCommand.Accept,
         GameCommand.Decline,
         GameCommand.Ordago,
+        GameCommand.ShowGesture,
     )
 
     @Test
@@ -49,6 +50,9 @@ class GameCommandTest {
         assertEquals(GameAction.Paso, GameAction.Paso.toCommand()?.toAction())
         assertEquals(GameAction.Quiero, GameAction.Quiero.toCommand()?.toAction())
         assertEquals(GameAction.Órdago, GameAction.Órdago.toCommand()?.toAction())
+        // Seña (Fase 4.3): viaja como comando aunque el host la intercepte antes del reducer.
+        assertEquals(GameCommand.ShowGesture, GameAction.ShowGesture.toCommand())
+        assertEquals(GameAction.ShowGesture, GameAction.ShowGesture.toCommand()?.toAction())
     }
 
     @Test
@@ -69,7 +73,6 @@ class GameCommandTest {
         assertNull(GameAction.ToggleBetSelector.toCommand())
         assertNull(GameAction.CancelBetSelection.toCommand())
         assertNull(GameAction.TogglePauseMenu.toCommand())
-        assertNull(GameAction.ShowGesture.toCommand())
         assertNull(GameAction.LogAction("debug").toCommand())
     }
 

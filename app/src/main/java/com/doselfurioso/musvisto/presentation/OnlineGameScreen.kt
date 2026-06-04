@@ -58,8 +58,9 @@ fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewMode
                 isDebugMode = false,
                 onAction = { action, _ -> viewModel.onAction(action) },
                 onCardSelected = { viewModel.onCardSelected(it) },
-                hasShowableGesture = { false },
-                showSeatActions = false
+                hasShowableGesture = { viewModel.hasShowableGesture(it) },
+                // Fase 4.3: el humano emite seña online (SÍ botón seña). Sin pausa (usa "Salir").
+                showPauseButton = false
             )
             TextButton(
                 onClick = { navController.popBackStack() },

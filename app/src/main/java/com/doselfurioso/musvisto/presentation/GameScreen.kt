@@ -174,8 +174,9 @@ fun GameScreen(
  */
 // La mesa es un layout cohesivo (4 áreas de jugador + botonera + overlays); se extrae
 // como UNA unidad reusable local/online. Trocearla más fragmentaría el layout sin valor;
-// y como composable de mesa lleva inherentemente estado + varios callbacks + flags.
-@Suppress("LongMethod", "LongParameterList")
+// y como composable de mesa lleva inherentemente estado + varios callbacks + flags (los
+// flags seña/pausa por separado para online suben algo la complejidad, aceptable aquí).
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 @Composable
 fun GameTable(
     gameState: GameState,
@@ -184,9 +185,10 @@ fun GameTable(
     onAction: (GameAction, String) -> Unit,
     onCardSelected: (CardData) -> Unit,
     hasShowableGesture: (Player) -> Boolean,
-    // Botones seña/pausa de la esquina: true offline; online los oculta (sin señas
-    // —Fase 4— ni pausa; el "Salir" lo pone OnlineGameScreen).
-    showSeatActions: Boolean = true,
+    // Botones de la esquina inferior izquierda. Offline: ambos. Online: SEÑA sí (Fase 4.3),
+    // PAUSA no (el "Salir" lo pone OnlineGameScreen).
+    showGestureButton: Boolean = true,
+    showPauseButton: Boolean = true,
     vmOverlays: @Composable (ResponsiveDimens) -> Unit = {}
 ) {
     val players = rotatePlayersForSeat(gameState.players, localSeatId)
@@ -413,9 +415,9 @@ fun GameTable(
                         dimens = dimens
                     )
 
-                    // Botones Seña y Pausa — esquina inferior izquierda (online los
-                    // oculta: sin señas ni pausa; el "Salir" lo pone OnlineGameScreen).
-                    if (showSeatActions) {
+                    // Botones Seña y Pausa — esquina inferior izquierda. Online muestra
+                    // SEÑA (Fase 4.3) pero no PAUSA (el "Salir" lo pone OnlineGameScreen).
+                    if (showGestureButton || showPauseButton) {
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -427,6 +429,7 @@ fun GameTable(
                         // señas hasta el primer corte que determina la mano).
                         // En su lugar, un indicador del modo que explica por qué
                         // no hay botón de seña.
+                        if (showGestureButton) {
                         if (!gameState.musCorrido) {
                             // #38: si la mano no da para seña (jugada no señalizable,
                             // p. ej. par de caballos o juego ≠ 31), el botón se atenúa
@@ -468,6 +471,8 @@ fun GameTable(
                                 )
                             }
                         }
+                        } // fin if (showGestureButton)
+                        if (showPauseButton) {
                         Box(
                             modifier = Modifier
                                 .size(58.dp * scaleFactor)
@@ -482,8 +487,9 @@ fun GameTable(
                                 modifier = Modifier.size(48.dp * scaleFactor)
                             )
                         }
+                        } // fin if (showPauseButton)
                     }
-                    } // fin if (showSeatActions)
+                    } // fin if (showGestureButton || showPauseButton)
                 }
             }
 

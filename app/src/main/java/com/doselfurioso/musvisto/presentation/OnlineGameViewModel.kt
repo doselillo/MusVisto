@@ -13,6 +13,7 @@ import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionInfo
+import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.ScoreBreakdown
 import com.doselfurioso.musvisto.model.Suit
@@ -91,11 +92,20 @@ class OnlineGameViewModel(
                 send(GameCommand.Discard(_selectedCards.value.toList()))
                 _selectedCards.value = emptySet()
             }
-            // Online aún sin pausa ni señas (Fase 4): se ignoran.
-            is GameAction.TogglePauseMenu, is GameAction.ShowGesture -> Unit
+            // Seña (Fase 4.3): el host la computa VERAZ de mi mano y la pacea/redacta.
+            is GameAction.ShowGesture -> send(GameCommand.ShowGesture)
+            // Online sin pausa: se ignora (el "Salir" lo pone la pantalla).
+            is GameAction.TogglePauseMenu -> Unit
             else -> action.toCommand(_selectedCards.value)?.let { send(it) }
         }
     }
+
+    /**
+     * ¿Mi mano da para seña? (Fase 4.3). Gatea el botón "Seña" online. Solo para MI asiento:
+     * mi mano sí viaja en la vista redactada (las ajenas son placeholders → no consultar).
+     */
+    fun hasShowableGesture(player: Player): Boolean =
+        player.id == mySeatId && gameLogic.determineGesture(player.hand) != null
 
     /** Alterna la selección de una carta para el descarte (estado local del cliente). */
     fun onCardSelected(card: Card) {

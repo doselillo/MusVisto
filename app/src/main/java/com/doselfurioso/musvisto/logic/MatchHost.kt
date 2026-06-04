@@ -228,6 +228,20 @@ class MatchHost(
     }
 
     /**
+     * Señas online (Fase 4.3): el HUMANO [seatId] pasa su seña. El host la computa VERAZ
+     * de su mano (`determineGesture`, no se puede mentir, igual que las de IA) y la muestra
+     * vía [showGesture]. Devuelve el kind mostrado, o null si la mano no es señalizable o
+     * estamos en Mus corrido (#17, sin señas). QUIÉN la ve lo decide la redacción por asiento.
+     */
+    fun showHumanGesture(seatId: String): GestureKind? {
+        if (authoritativeState.musCorrido) return null
+        val player = authoritativeState.players.find { it.id == seatId } ?: return null
+        val kind = gameLogic.determineGesture(player.hand) ?: return null
+        showGesture(seatId, kind)
+        return kind
+    }
+
+    /**
      * Vista redactada (fog of war) para un asiento + sus comandos legales. Los
      * comandos son el espejo serializable de `availableActions` (`@Transient` → no
      * viaja por la red, el cliente NO los puede recalcular): el host los proyecta a

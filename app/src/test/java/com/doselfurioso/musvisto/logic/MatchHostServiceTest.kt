@@ -6,6 +6,7 @@ import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
@@ -335,6 +336,46 @@ class MatchHostServiceTest {
         assertTrue("p1 debe ver la seña de su compañero p3", p1Views.any { it.activeGesture?.playerId == "p3" })
         // Y NUNCA recibe el estado interno de señas del host (anti-trampa).
         assertTrue("knownGestures jamás viaja al cliente", p1Views.all { it.knownGestures.isEmpty() })
+    }
+
+    @Test
+    fun `un comando ShowGesture de un humano muestra su sena VERAZ (no pasa por el reducer)`() {
+        val gameLogic = MusGameLogic(Random(0))
+        fun seat(id: String, team: String, ai: Boolean, vararg ranks: Rank) = Player(
+            id = id, name = id, avatarResId = 0, isAi = ai, team = team,
+            hand = ranks.mapIndexed { i, r -> Card(Suit.values()[i % Suit.values().size], r) }
+        )
+        // p1 HUMANO (teamA) con DOS REYES; resto IA. Sin pacing (ventana 0) → la seña queda set.
+        val table = listOf(
+            seat("p1", "teamA", false, Rank.REY, Rank.REY, Rank.AS, Rank.CUATRO),
+            seat("p2", "teamB", true, Rank.AS, Rank.AS, Rank.DOS, Rank.TRES),
+            seat("p3", "teamA", true, Rank.SOTA, Rank.CABALLO, Rank.CINCO, Rank.SEIS),
+            seat("p4", "teamB", true, Rank.SOTA, Rank.SOTA, Rank.CINCO, Rank.SEIS)
+        )
+        val host = MatchHost(
+            gameLogic,
+            GameState(
+                players = table, gamePhase = GamePhase.MUS,
+                currentTurnPlayerId = "p1", manoPlayerId = "p1",
+                playersInLance = seatIds.toSet(),
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            )
+        )
+        val brains = seatIds.associateWith { AILogic(gameLogic, Random(0), AIProfile()) }
+        val transport = FakeMatchTransport()
+        MatchHostService(
+            host, transport, seatIds, AiSeatDriver(brains.filterKeys { it != "p1" }),
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        // El cliente p1 pasa su seña por el transporte (como por red).
+        transport.sendCommand("p1", GameCommand.ShowGesture)
+
+        // El host la computó VERAZ de la mano de p1 (dos reyes → REYES_2) y la activó.
+        assertEquals("p1", host.authoritativeState.activeGesture?.playerId)
+        assertEquals(GestureKind.REYES_2, host.authoritativeState.activeGesture?.gestureKind)
+        // El compañero p3 (teamA) la ve en su vista publicada.
+        assertEquals(GestureKind.REYES_2, transport.lastView.getValue("p3").activeGesture?.gestureKind)
     }
 
     @Test

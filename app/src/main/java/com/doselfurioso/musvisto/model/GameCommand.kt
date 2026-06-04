@@ -15,10 +15,11 @@ import kotlinx.serialization.json.Json
  * que SÍ viaja: solo la información que el motor (`MusGameLogic.processAction`)
  * necesita para reproducir la acción de forma determinista en otro dispositivo.
  *
- * Solo se modelan las acciones que pasan por el reducer. Las acciones puramente
- * locales de UI (abrir/cerrar el selector de envite, pausa, log de debug) NO
- * viajan, así que no tienen comando. Las señas (`ShowGesture`) se gestionan en
- * el ViewModel, no en el reducer, y su modelo de red es la Fase 4 del plan.
+ * Se modelan las acciones que pasan por el reducer MÁS las señas (`ShowGesture`,
+ * Fase 4.3): la seña NO pasa por el reducer —el host la intercepta, como `Continue`,
+ * y computa la seña VERAZ de la mano del emisor— pero SÍ viaja por la red. Las acciones
+ * puramente locales de UI (abrir/cerrar el selector de envite, pausa, log de debug) NO
+ * viajan, así que no tienen comando.
  *
  * Esta pieza es ADDITIVA: define el formato de red sin rewirear todavía el motor
  * (el host consumirá `GameCommand` en una sub-fase posterior).
@@ -39,6 +40,10 @@ sealed class GameCommand {
     @Serializable object Accept : GameCommand()                     // Quiero
     @Serializable object Decline : GameCommand()                    // NoQuiero
     @Serializable object Ordago : GameCommand()
+    /** Seña del jugador (Fase 4.3). NO pasa por el reducer: el host la intercepta (como
+     *  [Continue]) y computa la seña VERAZ de la mano del emisor. Sin payload: el kind lo
+     *  deriva el host de la mano → no se puede mentir. */
+    @Serializable object ShowGesture : GameCommand()
 }
 
 /**
@@ -62,11 +67,12 @@ fun GameAction.toCommand(selectedCards: Set<Card> = emptySet()): GameCommand? = 
     is GameAction.Quiero -> GameCommand.Accept
     is GameAction.NoQuiero -> GameCommand.Decline
     is GameAction.Órdago -> GameCommand.Ordago
+    // Seña (Fase 4.3): viaja, pero el host la intercepta antes del reducer (no es acción de juego).
+    is GameAction.ShowGesture -> GameCommand.ShowGesture
     // Locales / no pasan por el reducer: no viajan.
     is GameAction.ToggleBetSelector,
     is GameAction.CancelBetSelection,
     is GameAction.TogglePauseMenu,
-    is GameAction.ShowGesture,
     is GameAction.LogAction -> null
 }
 
@@ -89,6 +95,9 @@ fun GameCommand.toAction(): GameAction = when (this) {
     is GameCommand.Accept -> GameAction.Quiero
     is GameCommand.Decline -> GameAction.NoQuiero
     is GameCommand.Ordago -> GameAction.Órdago
+    // El host intercepta ShowGesture ANTES del reducer (Fase 4.3); esta rama existe por
+    // exhaustividad del `when` y no debería ejecutarse en el flujo normal.
+    is GameCommand.ShowGesture -> GameAction.ShowGesture
 }
 
 /**

@@ -101,7 +101,35 @@ class MatchHostService(
             if (host.authoritativeState.gamePhase == GamePhase.ROUND_OVER) host.dealNextRound()
             return
         }
+        if (command == GameCommand.ShowGesture) {
+            revealHumanGesture(seatId)
+            return
+        }
         host.submitCommand(seatId, command)
+    }
+
+    /**
+     * Seña de un HUMANO (Fase 4.3): NO pasa por el reducer (no es acción de juego). El host
+     * la computa VERAZ y la muestra ([MatchHost.showHumanGesture]); la publicación inicial la
+     * hace [start] tras `applyIncoming`. Como la seña llega ASYNC (callback de Firebase, no
+     * desde el bucle de avance donde se pacean las de IA), la ventana visible la cierra un job
+     * aparte: tras [MatchPacing.gesturePartnerMs]/[gestureOtherMs] (legible si el emisor tiene
+     * compañero humano; si no, flash) limpia la seña —solo si SIGUE siendo la suya, para no
+     * pisar una seña/acción posterior—. En tests (ventana 0) no auto-limpia: la seña queda asertable.
+     */
+    private fun revealHumanGesture(seatId: String) {
+        host.showHumanGesture(seatId) ?: return
+        val window = if (hasHumanPartner(seatId)) pacing.gesturePartnerMs else pacing.gestureOtherMs
+        if (window <= 0) return
+        scope.launch {
+            delay(window)
+            if (host.authoritativeState.activeGesture?.playerId == seatId) {
+                runCatching {
+                    host.clearActiveGesture()
+                    publishAllViews()
+                }.onFailure { log("clear seña humana ($seatId) falló: ${it.stackTraceToString()}") }
+            }
+        }
     }
 
     /** Relanza el avance como job ÚNICO (cancela el anterior, hermano de [scope]). */

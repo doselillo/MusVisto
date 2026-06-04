@@ -1,6 +1,7 @@
 package com.doselfurioso.musvisto.logic
 
 import com.doselfurioso.musvisto.model.ActiveGestureInfo
+import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameCommandCodec
@@ -8,6 +9,8 @@ import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.Player
+import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.Suit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -193,6 +196,47 @@ class MatchHostTest {
             assertEquals("seña veraz de $id", logic.determineGesture(hand), kind)
         }
         assertEquals("planGestures guarda pendingGestures en el host", pending, host.authoritativeState.pendingGestures)
+    }
+
+    // --- Seña del HUMANO online (Fase 4.3) ---
+
+    /** Solo importan los rangos para `determineGesture`; suits cíclicos (sin cartas duplicadas). */
+    private fun seat(id: String, team: String, vararg ranks: Rank) = Player(
+        id = id, name = id, avatarResId = 0, team = team,
+        hand = ranks.mapIndexed { i, r -> Card(Suit.values()[i % Suit.values().size], r) }
+    )
+
+    @Test
+    fun `showHumanGesture muestra la sena VERAZ del emisor al companero y la redacta al rival`() {
+        // p1 (teamA, humano) con DOS REYES → REYES_2.
+        val table = listOf(
+            seat("p1", "teamA", Rank.REY, Rank.REY, Rank.AS, Rank.CUATRO),
+            seat("p2", "teamB", Rank.AS, Rank.AS, Rank.DOS, Rank.TRES),
+            seat("p3", "teamA", Rank.SOTA, Rank.CABALLO, Rank.CINCO, Rank.SEIS),
+            seat("p4", "teamB", Rank.SOTA, Rank.SOTA, Rank.CINCO, Rank.SEIS)
+        )
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState().copy(players = table, manoPlayerId = "p1"))
+
+        assertEquals(GestureKind.REYES_2, host.showHumanGesture("p1"))
+        // El compañero p3 (teamA) la ve SIEMPRE.
+        assertEquals(ActiveGestureInfo("p1", GestureKind.REYES_2), host.viewFor("p3").activeGesture)
+        // El rival p2 (teamB) solo si la caza (mismo predicado/seed que la IA).
+        val caza = GestureVisibility.perceivesOpponentSign(
+            manoPlayerId = "p1", gesturerId = "p1", observerId = "p2",
+            kind = GestureKind.REYES_2, prob = GestureVisibility.HUMAN_INTERCEPT_PROB
+        )
+        assertEquals(
+            if (caza) ActiveGestureInfo("p1", GestureKind.REYES_2) else null,
+            host.viewFor("p2").activeGesture
+        )
+    }
+
+    @Test
+    fun `showHumanGesture no hace nada en Mus corrido ni con mano no senalizable`() {
+        // Mus corrido (#17): sin señas.
+        val musCorrido = MatchHost(MusGameLogic(Random(0)), dealtMusState().copy(musCorrido = true))
+        assertNull(musCorrido.showHumanGesture("p1"))
+        assertNull(musCorrido.authoritativeState.activeGesture)
     }
 
     @Test
