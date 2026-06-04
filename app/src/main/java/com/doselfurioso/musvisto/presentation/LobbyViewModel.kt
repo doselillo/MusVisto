@@ -5,6 +5,7 @@ import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.FirebaseAuthGateway
 import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.logic.LobbyService
+import com.doselfurioso.musvisto.model.GameSettings
 import com.doselfurioso.musvisto.model.RoomHandle
 import com.doselfurioso.musvisto.model.RoomSnapshot
 import com.doselfurioso.musvisto.model.Rooms
@@ -22,6 +23,8 @@ enum class LobbyPhase { ENTRY, CONNECTING, IN_ROOM }
  */
 data class LobbyUiState(
     val phase: LobbyPhase = LobbyPhase.ENTRY,
+    /** Nombre tecleado en la pantalla de entrada; con el que se entra a la sala. */
+    val displayName: String = "",
     val room: RoomSnapshot? = null,
     val myHandle: RoomHandle? = null,
     val myUid: String? = null,
@@ -48,13 +51,24 @@ class LobbyViewModel(
     private var roomObserver: ValueEventListener? = null
     private var observedRoomId: String? = null
 
+    init {
+        // Precarga el nombre guardado (coherente con el offline). El placeholder
+        // por defecto ("Tú") se trata como "sin nombre" → el campo pide uno real.
+        _state.update { it.copy(displayName = initialLobbyName(store.loadSettings().humanName)) }
+    }
+
+    /** Edita el nombre del campo de entrada; capado para no romper el layout de la mesa. */
+    fun setName(name: String) {
+        _state.update { it.copy(displayName = name.take(LOBBY_NAME_MAX_LENGTH)) }
+    }
+
     fun createRoom() {
         if (_state.value.phase == LobbyPhase.CONNECTING) return
+        val name = commitName()
         _state.update { it.copy(phase = LobbyPhase.CONNECTING, error = null) }
         auth.ensureSignedIn { authResult ->
             authResult.onSuccess { uid ->
-                val settings = store.loadSettings()
-                lobby.createRoom(uid, settings.humanName, settings) { result ->
+                lobby.createRoom(uid, name, store.loadSettings()) { result ->
                     result.onSuccess { handle -> enterRoom(uid, handle) }.onFailure(::fail)
                 }
             }.onFailure(::fail)
@@ -68,15 +82,26 @@ class LobbyViewModel(
             return
         }
         if (_state.value.phase == LobbyPhase.CONNECTING) return
+        val name = commitName()
         _state.update { it.copy(phase = LobbyPhase.CONNECTING, error = null) }
         auth.ensureSignedIn { authResult ->
             authResult.onSuccess { uid ->
-                val name = store.loadSettings().humanName
                 lobby.joinRoom(trimmed, uid, name) { result ->
                     result.onSuccess { handle -> enterRoom(uid, handle) }.onFailure(::fail)
                 }
             }.onFailure(::fail)
         }
+    }
+
+    /**
+     * Nombre con el que entrar a la sala (fallback "Jugador" si se dejó en blanco) y
+     * persiste el tecleado no vacío en [GameSettings], para recordarlo y mantenerlo
+     * coherente con el offline. Llamar al crear/unirse.
+     */
+    private fun commitName(): String {
+        val typed = _state.value.displayName.trim()
+        if (typed.isNotEmpty()) store.saveSettings(store.loadSettings().copy(humanName = typed))
+        return effectiveLobbyName(typed)
     }
 
     private fun enterRoom(uid: String, handle: RoomHandle) {
@@ -136,7 +161,8 @@ class LobbyViewModel(
 
     fun leaveRoom() {
         detachObserver()
-        _state.value = LobbyUiState()
+        // Conserva el nombre (ya persistido) para no obligar a reescribirlo al volver.
+        _state.value = LobbyUiState(displayName = initialLobbyName(store.loadSettings().humanName))
     }
 
     fun clearError() = _state.update { it.copy(error = null) }
@@ -163,3 +189,23 @@ class LobbyViewModel(
         super.onCleared()
     }
 }
+
+private const val LOBBY_NAME_MAX_LENGTH = 16
+private const val LOBBY_FALLBACK_NAME = "Jugador"
+
+/**
+ * El nombre guardado para precargar el campo del lobby; cadena vacía si sigue siendo
+ * el placeholder offline por defecto ("Tú") → la pantalla pide un nombre real en vez
+ * de mostrar el placeholder como si lo fuera.
+ */
+internal fun initialLobbyName(savedName: String): String {
+    val trimmed = savedName.trim()
+    return if (trimmed == GameSettings().humanName) "" else trimmed
+}
+
+/**
+ * Nombre efectivo con el que entrar a la sala: el tecleado (recortado), o "Jugador"
+ * si se dejó en blanco. Nunca devuelve "Tú" (el placeholder offline = el bug).
+ */
+internal fun effectiveLobbyName(typedName: String): String =
+    typedName.trim().ifBlank { LOBBY_FALLBACK_NAME }

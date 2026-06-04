@@ -71,6 +71,8 @@ fun OnlineLobbyScreen(navController: NavController, viewModel: LobbyViewModel) {
     ) {
         when (state.phase) {
             LobbyPhase.ENTRY -> EntryContent(
+                name = state.displayName,
+                onNameChange = viewModel::setName,
                 error = state.error,
                 onCreate = viewModel::createRoom,
                 onJoin = viewModel::joinRoom,
@@ -93,6 +95,8 @@ fun OnlineLobbyScreen(navController: NavController, viewModel: LobbyViewModel) {
 
 @Composable
 private fun EntryContent(
+    name: String,
+    onNameChange: (String) -> Unit,
     error: String?,
     onCreate: () -> Unit,
     onJoin: (String) -> Unit,
@@ -108,7 +112,16 @@ private fun EntryContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Jugar online", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(32.dp))
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            singleLine = true,
+            label = { Text("Tu nombre") },
+            colors = lobbyFieldColors()
+        )
+        Spacer(Modifier.height(28.dp))
 
         LobbyButton(text = "Crear sala", onClick = onCreate)
         Spacer(Modifier.height(28.dp))
