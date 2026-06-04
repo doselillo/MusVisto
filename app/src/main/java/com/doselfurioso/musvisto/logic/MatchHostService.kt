@@ -20,14 +20,32 @@ import kotlinx.coroutines.launch
  * [gesturePartnerMs] (legible) para la seña de una IA con COMPAÑERO HUMANO —el capitán
  * la lee para decidir el corte (#20)— y [gestureOtherMs] (flash corto) para el resto
  * (IA-IA, y rivales: un humano que CAZA una seña rival solo la ve un instante, como
- * offline, para no regalar lectura). En tests, todos 0 → transición síncrona.
+ * offline, para no regalar lectura).
+ *
+ * [turnTimeoutMs] (Fase 3 — turn timer): tiempo que el host espera a un HUMANO antes de
+ * jugar por él una acción segura (Paso/No quiero) o auto-Continuar en fin de ronda, para
+ * que un jugador AFK no congele la mesa. **0 = desactivado** (tests y mesas sin red).
+ *
+ * En tests, todos 0 → transición síncrona y sin timeouts.
  */
 data class MatchPacing(
     val turnMs: Long = 0L,
     val roundOverMs: Long = turnMs,
     val gesturePartnerMs: Long = turnMs,
-    val gestureOtherMs: Long = turnMs
+    val gestureOtherMs: Long = turnMs,
+    val turnTimeoutMs: Long = 0L
 )
+
+/**
+ * Acción que el host juega por un HUMANO que agotó su [MatchPacing.turnTimeoutMs] (AFK).
+ * Decisión PURA ([MatchHostService.timeoutActionFor]) separada del cableado del reloj.
+ */
+internal sealed interface TimeoutAction {
+    /** Turno en un lance: jugar la acción segura del asiento (Paso › No quiero › primera). */
+    data class SafeMove(val seatId: String, val command: GameCommand) : TimeoutAction
+    /** Fin de ronda esperando "Continuar": repartir la siguiente (auto-continue). */
+    object DealNext : TimeoutAction
+}
 
 /**
  * Lado **host** del bucle multijugador: conecta el [MatchHost] autoritativo a un
@@ -68,6 +86,11 @@ class MatchHostService(
     private val log: (String) -> Unit = {}
 ) {
     private var advanceJob: Job? = null
+
+    // Turn timer (Fase 3): job que espera [MatchPacing.turnTimeoutMs] al humano de turno
+    // y, si no actúa, juega por él (ver [scheduleTurnTimeout]). Único; se cancela/reprograma
+    // con cada avance.
+    private var turnTimeoutJob: Job? = null
 
     // Señas online (Fase 4.2): true tras planificar/mostrar las señas de la entrada
     // ACTUAL a MUS; se resetea al salir de MUS para re-planificar tras descarte / nueva
@@ -134,6 +157,9 @@ class MatchHostService(
 
     /** Relanza el avance como job ÚNICO (cancela el anterior, hermano de [scope]). */
     private fun launchAdvance() {
+        // Cualquier avance/comando resetea el reloj de turno: lo reprograma [advanceLoop]
+        // al asentarse de nuevo (cada turno humano recibe un timeout fresco).
+        turnTimeoutJob?.cancel()
         advanceJob?.cancel()
         advanceJob = scope.launch { advanceLoop() }
     }
@@ -162,6 +188,63 @@ class MatchHostService(
                 publishAllViews()
             }.onFailure { log("submit/publish de IA ${next.first} falló: ${it.stackTraceToString()}") }
         }
+        // El bucle se asentó esperando a un humano (turno en lance o "Continuar" en fin de
+        // ronda): arranca el reloj de turno por si está AFK.
+        scheduleTurnTimeout()
+    }
+
+    /**
+     * Turn timer (Fase 3): al asentarse el bucle esperando a un humano, programa un job que
+     * —tras [MatchPacing.turnTimeoutMs]— juega por él si sigue sin actuar (acción segura en
+     * un lance, o auto-Continuar en fin de ronda; ver [timeoutActionFor]). Desactivado si
+     * `turnTimeoutMs <= 0` (tests). Se cancela en [launchAdvance] con el siguiente avance.
+     */
+    private fun scheduleTurnTimeout() {
+        if (pacing.turnTimeoutMs <= 0) return
+        if (timeoutActionFor(host.authoritativeState) == null) return // no esperamos a un humano
+        turnTimeoutJob = scope.launch {
+            delay(pacing.turnTimeoutMs)
+            onTurnTimeout()
+        }
+    }
+
+    /** Dispara el timeout: re-evalúa el estado (pudo cambiar) y juega por el humano AFK. Blindado. */
+    private fun onTurnTimeout() {
+        when (val action = timeoutActionFor(host.authoritativeState)) {
+            is TimeoutAction.SafeMove -> {
+                log("turn timeout: ${action.seatId} AFK → ${action.command}")
+                runCatching {
+                    host.submitCommand(action.seatId, action.command)
+                    publishAllViews()
+                }.onFailure { log("turn timeout (safe move) falló: ${it.stackTraceToString()}") }
+            }
+            TimeoutAction.DealNext -> {
+                log("turn timeout: fin de ronda AFK → auto-Continuar")
+                runCatching {
+                    host.dealNextRound()
+                    publishAllViews()
+                }.onFailure { log("turn timeout (deal next) falló: ${it.stackTraceToString()}") }
+            }
+            null -> return // el humano actuó justo a tiempo (o ya no procede): nada que hacer
+        }
+        launchAdvance()
+    }
+
+    /**
+     * Decisión PURA del turn timer: qué juega el host por un humano que agotó su tiempo.
+     *  - `ROUND_OVER` (no GAME_OVER) → [TimeoutAction.DealNext] (auto-Continuar). Solo se
+     *    asienta aquí con humanos en mesa (la mesa de solo IA ya auto-reparte).
+     *  - turno de un HUMANO con acciones → [TimeoutAction.SafeMove] con la acción segura
+     *    ([safeFallback]: Paso › No quiero › primera).
+     *  - turno de IA / GAME_OVER / sin acciones → null (no hay humano a quien esperar).
+     */
+    internal fun timeoutActionFor(state: GameState): TimeoutAction? {
+        if (state.gamePhase == GamePhase.ROUND_OVER) return TimeoutAction.DealNext
+        val turn = state.currentTurnPlayerId ?: return null
+        val player = state.players.find { it.id == turn } ?: return null
+        if (player.isAi) return null
+        val (seatId, command) = safeFallback(state) ?: return null
+        return TimeoutAction.SafeMove(seatId, command)
     }
 
     /**

@@ -13,6 +13,7 @@ import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.model.toCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.CoroutineScope
@@ -376,6 +377,29 @@ class MatchHostServiceTest {
         assertEquals(GestureKind.REYES_2, host.authoritativeState.activeGesture?.gestureKind)
         // El compañero p3 (teamA) la ve en su vista publicada.
         assertEquals(GestureKind.REYES_2, transport.lastView.getValue("p3").activeGesture?.gestureKind)
+    }
+
+    @Test
+    fun `timeoutActionFor - turno humano juega accion segura, IA o fin de partida no`() {
+        val service = MatchHostService(
+            MatchHost(MusGameLogic(Random(0)), dealtMusState()), FakeMatchTransport(), seatIds,
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        )
+        fun st(phase: GamePhase, turn: String?, actions: List<GameAction>) = GameState(
+            players = players(), gamePhase = phase, currentTurnPlayerId = turn,
+            manoPlayerId = "p1", playersInLance = seatIds.toSet(), availableActions = actions
+        )
+        // p1 es HUMANO (players(): p1 isAi=false); turno suyo con acciones de apuesta → Paso (acción segura).
+        assertEquals(
+            TimeoutAction.SafeMove("p1", GameCommand.Pass),
+            service.timeoutActionFor(st(GamePhase.GRANDE, "p1", listOf(GameAction.Paso, GameAction.Envido(2))))
+        )
+        // Turno de IA (p2) → null: lo lleva el bucle, no el timeout.
+        assertNull(service.timeoutActionFor(st(GamePhase.GRANDE, "p2", listOf(GameAction.Paso))))
+        // Fin de ronda esperando "Continuar" → auto-repartir.
+        assertEquals(TimeoutAction.DealNext, service.timeoutActionFor(st(GamePhase.ROUND_OVER, null, emptyList())))
+        // Fin de partida → null (no hay a quién esperar).
+        assertNull(service.timeoutActionFor(st(GamePhase.GAME_OVER, null, emptyList())))
     }
 
     @Test

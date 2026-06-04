@@ -34,7 +34,8 @@ class OnlineMatchHost(
         turnMs = DEFAULT_PACING_MS,
         roundOverMs = DEFAULT_ROUND_OVER_PACING_MS,
         gesturePartnerMs = DEFAULT_GESTURE_PARTNER_MS,
-        gestureOtherMs = DEFAULT_GESTURE_OTHER_MS
+        gestureOtherMs = DEFAULT_GESTURE_OTHER_MS,
+        turnTimeoutMs = DEFAULT_TURN_TIMEOUT_MS
     ),
     private val log: (String) -> Unit = {},
     private val rng: Random = Random(System.currentTimeMillis())
@@ -92,5 +93,7 @@ class OnlineMatchHost(
         const val DEFAULT_GESTURE_PARTNER_MS = 1500L
         /** Seña de IA-IA o rival cazada (Fase 4.2): flash corto, no regalar lectura (como offline). */
         const val DEFAULT_GESTURE_OTHER_MS = 300L
+        /** Turn timer (Fase 3): margen para que un humano decida antes de que el host juegue por él (AFK). */
+        const val DEFAULT_TURN_TIMEOUT_MS = 45_000L
     }
 }
