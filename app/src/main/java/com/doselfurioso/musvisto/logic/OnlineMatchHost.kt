@@ -30,8 +30,11 @@ class OnlineMatchHost(
     private val gameLogic: MusGameLogic,
     private val transport: MatchTransport,
     private val scope: CoroutineScope,
-    private val pacingMs: Long = DEFAULT_PACING_MS,
-    private val roundOverPacingMs: Long = DEFAULT_ROUND_OVER_PACING_MS,
+    private val pacing: MatchPacing = MatchPacing(
+        turnMs = DEFAULT_PACING_MS,
+        roundOverMs = DEFAULT_ROUND_OVER_PACING_MS,
+        gestureMs = DEFAULT_GESTURE_MS
+    ),
     private val log: (String) -> Unit = {},
     private val rng: Random = Random(System.currentTimeMillis())
 ) {
@@ -61,12 +64,12 @@ class OnlineMatchHost(
         }
 
         service = MatchHostService(
-            host = MatchHost(gameLogic, initial),
+            host = MatchHost(gameLogic, initial, rng),
             transport = transport,
             seatIds = seatIds,
             aiDriver = AiSeatDriver(aiLogics),
             scope = scope,
-            pacing = MatchPacing(turnMs = pacingMs, roundOverMs = roundOverPacingMs),
+            pacing = pacing,
             log = log
         ).also { it.start() }
     }
@@ -84,5 +87,7 @@ class OnlineMatchHost(
         const val DEFAULT_PACING_MS = 800L
         /** Pausa (ms) del "fin de ronda" visible antes de repartir la siguiente. */
         const val DEFAULT_ROUND_OVER_PACING_MS = 3000L
+        /** Tiempo (ms) que dura visible cada seña de IA online (Fase 4.2): legible para el compañero humano. */
+        const val DEFAULT_GESTURE_MS = 1500L
     }
 }

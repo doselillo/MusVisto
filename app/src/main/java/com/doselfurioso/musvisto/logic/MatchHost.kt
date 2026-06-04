@@ -1,12 +1,15 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.LastActionView
 import com.doselfurioso.musvisto.model.toAction
 import com.doselfurioso.musvisto.model.toCommand
+import kotlin.random.Random
 
 /**
  * Núcleo **host-autoritativo** del multijugador (prep, sin red).
@@ -31,7 +34,11 @@ import com.doselfurioso.musvisto.model.toCommand
  */
 class MatchHost(
     private val gameLogic: MusGameLogic,
-    initialState: GameState
+    initialState: GameState,
+    // Señas online (Fase 4.2): aleatoriedad de la PRE-DECISIÓN de señas (qué IA pasan
+    // seña al entrar a MUS). Separada del rng de barajado del motor para no acoplar
+    // streams; inyectable para tests deterministas. Default = Random.Default.
+    private val rng: Random = Random.Default
 ) {
     var authoritativeState: GameState = initialState
         private set
@@ -184,6 +191,40 @@ class MatchHost(
             playersInLance = players.map { it.id }.toSet(),
             availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
+    }
+
+    /**
+     * Señas online (Fase 4.2), paso 1: **PLANIFICAR**. Pre-decide qué IA pasan seña al
+     * entrar a MUS y lo guarda en `pendingGestures` (lo lee AILogic para delegar el corte
+     * #20: si voy a señalizar, mi pareja humana decidirá; si no, juego mi mano). Devuelve
+     * el mapa ordenado para que el orquestador PACEE el reveal visual. Mirror host-side de
+     * `GameViewModel.onEnterMusPhase` (la decisión vive en [MusGameLogic.planAiGestures]).
+     */
+    fun planGestures(): Map<String, GestureKind> {
+        val pending = gameLogic.planAiGestures(authoritativeState, rng)
+        authoritativeState = authoritativeState.copy(pendingGestures = pending)
+        return pending
+    }
+
+    /**
+     * Señas online (Fase 4.2), paso 2: **MOSTRAR** la seña de [seatId]. Mirror de
+     * `GameViewModel.onAction(ShowGesture)`: activa la seña (parte visual) y la recuerda en
+     * `knownGestures` (lo que la IA usa para apoyar al compañero / interceptar al rival). La
+     * seña es VERAZ (la pre-decidida en [planGestures], derivada de la mano → no se puede
+     * mentir). QUIÉN la ve lo decide la redacción por asiento ([StateRedactor]); aquí el host
+     * la pone en el estado autoritativo completo.
+     */
+    fun showGesture(seatId: String, kind: GestureKind) {
+        val gesture = ActiveGestureInfo(seatId, kind)
+        authoritativeState = authoritativeState.copy(
+            activeGesture = gesture,
+            knownGestures = authoritativeState.knownGestures + (seatId to gesture)
+        )
+    }
+
+    /** Señas online (Fase 4.2): agota la ventana visible de la seña activa (mirror del timer offline). */
+    fun clearActiveGesture() {
+        authoritativeState = authoritativeState.copy(activeGesture = null)
     }
 
     /**

@@ -58,6 +58,22 @@ class GameStateCodecTest {
     }
 
     @Test
+    fun `los campos de sena sobreviven el round-trip JSON`() {
+        // Señas online (Fase 4.2): activeGesture viaja al cliente (la mesa lo pinta);
+        // knownGestures/pendingGestures los redacta StateRedactor antes de publicar, pero
+        // el codec debe poder serializarlos igual (GestureKind enum + mapas anidados).
+        val original = dealtState().copy(
+            activeGesture = ActiveGestureInfo("p3", GestureKind.REYES_2),
+            knownGestures = mapOf("p3" to ActiveGestureInfo("p3", GestureKind.REYES_2)),
+            pendingGestures = mapOf("p2" to GestureKind.ASES_3)
+        )
+        val restored = GameStateCodec.decode(GameStateCodec.encode(original))
+        assertEquals(original.activeGesture, restored.activeGesture)
+        assertEquals(original.knownGestures, restored.knownGestures)
+        assertEquals(original.pendingGestures, restored.pendingGestures)
+    }
+
+    @Test
     fun `la vista con availableCommands y lastActionView sobrevive el round-trip`() {
         // Estos campos llevan GameCommand (jerarquía sellada) ANIDADO en GameState:
         // hay que asegurar que la serialización polimórfica funciona dentro del

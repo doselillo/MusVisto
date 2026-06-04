@@ -295,6 +295,49 @@ class MatchHostServiceTest {
     }
 
     @Test
+    fun `senas IA online - el companero humano ve la sena de su IA por el bucle del host`() {
+        val gameLogic = MusGameLogic(Random(0))
+        // Solo importan los RANGOS para determineGesture; los suits se asignan cíclicos (sin cartas duplicadas).
+        fun seat(id: String, team: String, ai: Boolean, vararg ranks: Rank) = Player(
+            id = id, name = id, avatarResId = 0, isAi = ai, team = team,
+            hand = ranks.mapIndexed { i, r -> Card(Suit.values()[i % Suit.values().size], r) }
+        )
+        // p1 HUMANO (teamA) + su compañero IA p3 (teamA) con DOS REYES (mano señalizable).
+        val table = listOf(
+            seat("p1", "teamA", false, Rank.REY, Rank.CABALLO, Rank.SOTA, Rank.SIETE),
+            seat("p2", "teamB", true, Rank.AS, Rank.AS, Rank.DOS, Rank.TRES),
+            seat("p3", "teamA", true, Rank.REY, Rank.REY, Rank.AS, Rank.CUATRO),
+            seat("p4", "teamB", true, Rank.SOTA, Rank.SOTA, Rank.CINCO, Rank.SEIS)
+        )
+        // rng que SIEMPRE señaliza (nextFloat=0) → la IA con mano señalizable pasa seña.
+        val alwaysSignal = object : Random() { override fun nextBits(bitCount: Int) = 0 }
+        val host = MatchHost(
+            gameLogic,
+            GameState(
+                players = table, gamePhase = GamePhase.MUS,
+                currentTurnPlayerId = "p1", manoPlayerId = "p1",
+                playersInLance = seatIds.toSet(),
+                availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+            ),
+            alwaysSignal
+        )
+        val brains = seatIds.associateWith { AILogic(gameLogic, Random(0), AIProfile()) }
+        val transport = FakeMatchTransport()
+        val p1Views = mutableListOf<GameState>()
+        transport.observeView("p1") { p1Views.add(it) }
+
+        MatchHostService(
+            host, transport, seatIds, AiSeatDriver(brains.filterKeys { it != "p1" }),
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        // p1 (teamA) VE la seña de su compañero p3 (teamA): la redacción siempre muestra la del equipo.
+        assertTrue("p1 debe ver la seña de su compañero p3", p1Views.any { it.activeGesture?.playerId == "p3" })
+        // Y NUNCA recibe el estado interno de señas del host (anti-trampa).
+        assertTrue("knownGestures jamás viaja al cliente", p1Views.all { it.knownGestures.isEmpty() })
+    }
+
+    @Test
     fun `declarationAnnouncements - Tengo si hay pares, No tengo si no`() {
         val gameLogic = MusGameLogic(Random(0))
         fun c(s: Suit, r: Rank) = Card(s, r)

@@ -3,6 +3,13 @@ package com.doselfurioso.musvisto.logic
 import com.doselfurioso.musvisto.model.*
 import kotlin.random.Random
 
+// Señas online (Fase 4.2): prob. de que una IA pase su seña al entrar a MUS, por si su
+// pareja es humana (capitán que necesita la seña para el corte #20) o IA. Espejan
+// GameViewModel.PENDING_GESTURE_PROB_* (offline): duplicados a propósito —el planificador
+// host es código separado del ViewModel local (como scoreRoundOver), para no acoplar el
+// motor a presentation. Mismos valores → misma sensación.
+private const val MUS_PENDING_GESTURE_PROB_HUMAN_PARTNER = 0.95f
+private const val MUS_PENDING_GESTURE_PROB_AI_PARTNER = 0.90f
 
 class MusGameLogic constructor(
     private val random: Random,
@@ -138,6 +145,31 @@ class MusGameLogic constructor(
             paresPlay is ParesPlay.NoPares && juegoValue < 31 -> GestureKind.CIEGA
             else -> null
         }
+    }
+
+    /**
+     * Señas online (Fase 4.2): pre-decide qué IA pasan seña al entrar a MUS. Espejo
+     * host-side de `GameViewModel.onEnterMusPhase`, pero SIN `localSeatId` (online hay
+     * hasta 2 humanos): el "compañero humano" se decide POR ASIENTO (`partner.isAi ==
+     * false`), no contra un único humano local. Para cada IA CON pareja y mano
+     * señalizable, tira [rng]: [MUS_PENDING_GESTURE_PROB_HUMAN_PARTNER] si su pareja es
+     * humana (el capitán necesita la seña para el corte #20), si no la de IA-IA. Vacío
+     * en Mus corrido (#17: sin señas hasta el 1er corte). Puro y determinista por [rng].
+     */
+    fun planAiGestures(state: GameState, rng: Random): Map<String, GestureKind> {
+        if (state.musCorrido) return emptyMap()
+        return state.players.filter { ai ->
+            ai.isAi && state.players.any { p -> p.id != ai.id && p.team == ai.team }
+        }.mapNotNull { ai ->
+            val gesture = determineGesture(ai.hand) ?: return@mapNotNull null
+            val partnerIsHuman = state.players.any { p -> p.id != ai.id && p.team == ai.team && !p.isAi }
+            val prob = if (partnerIsHuman) {
+                MUS_PENDING_GESTURE_PROB_HUMAN_PARTNER
+            } else {
+                MUS_PENDING_GESTURE_PROB_AI_PARTNER
+            }
+            if (rng.nextFloat() < prob) ai.id to gesture else null
+        }.toMap()
     }
 
     /**

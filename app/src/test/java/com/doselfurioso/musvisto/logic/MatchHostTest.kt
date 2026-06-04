@@ -1,13 +1,16 @@
 package com.doselfurioso.musvisto.logic
 
+import com.doselfurioso.musvisto.model.ActiveGestureInfo
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
 import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
+import com.doselfurioso.musvisto.model.GestureKind
 import com.doselfurioso.musvisto.model.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -129,6 +132,67 @@ class MatchHostTest {
         host.submitCommand(mano, GameCommand.Discard(toDiscard))
 
         assertEquals(2, host.authoritativeState.discardCounts[mano])
+    }
+
+    // --- Señas online (Fase 4.2) ---
+
+    @Test
+    fun `showGesture muestra la sena al companero y nunca filtra knownGestures`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        host.showGesture("p3", GestureKind.REYES_2) // p3 es teamA
+
+        val p1View = host.viewFor("p1") // p1 teamA = compañero de p3
+        assertEquals(ActiveGestureInfo("p3", GestureKind.REYES_2), p1View.activeGesture)
+        assertTrue("knownGestures es interno del host (anti-trampa)", p1View.knownGestures.isEmpty())
+        // El host SÍ conserva la memoria completa: la usa AILogic para apoyar/interceptar.
+        assertTrue(host.authoritativeState.knownGestures.containsKey("p3"))
+    }
+
+    @Test
+    fun `viewFor redacta la sena RIVAL segun el predicado de caza`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        val kind = GestureKind.JUEGO_31
+        host.showGesture("p3", kind) // p3 teamA señaliza
+
+        val p2View = host.viewFor("p2") // p2 teamB = rival
+        val caza = GestureVisibility.perceivesOpponentSign(
+            manoPlayerId = host.authoritativeState.manoPlayerId,
+            gesturerId = "p3",
+            observerId = "p2",
+            kind = kind,
+            prob = GestureVisibility.HUMAN_INTERCEPT_PROB
+        )
+        if (caza) {
+            assertEquals(ActiveGestureInfo("p3", kind), p2View.activeGesture)
+        } else {
+            assertNull("Seña rival no cazada se borra de la vista", p2View.activeGesture)
+        }
+    }
+
+    @Test
+    fun `planGestures respeta el Mus corrido (sin senas hasta el primer corte)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState().copy(musCorrido = true))
+        assertTrue(host.planGestures().isEmpty())
+        assertTrue(host.authoritativeState.pendingGestures.isEmpty())
+    }
+
+    @Test
+    fun `planGestures pre-decide senas VERACES para las IA con pareja`() {
+        val state = dealtMusState()
+        // rng que SIEMPRE pasa la tirada (nextFloat=0): cada IA con mano señalizable señaliza.
+        val alwaysSignal = object : Random() { override fun nextBits(bitCount: Int) = 0 }
+        val host = MatchHost(MusGameLogic(Random(0)), state, alwaysSignal)
+        val pending = host.planGestures()
+
+        assertTrue("hay al menos una IA con mano señalizable", pending.isNotEmpty())
+        assertTrue("p1 (humano) no pre-decide seña", "p1" !in pending)
+        // Cada seña es VERAZ: coincide con determineGesture de esa mano (no se puede mentir).
+        val logic = MusGameLogic(Random(0))
+        pending.forEach { (id, kind) ->
+            val hand = state.players.first { it.id == id }.hand
+            assertEquals("seña veraz de $id", logic.determineGesture(hand), kind)
+        }
+        assertEquals("planGestures guarda pendingGestures en el host", pending, host.authoritativeState.pendingGestures)
     }
 
     @Test

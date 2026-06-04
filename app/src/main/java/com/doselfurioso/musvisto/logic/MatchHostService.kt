@@ -14,10 +14,15 @@ import kotlinx.coroutines.launch
 
 /**
  * Ritmos (ms) del bucle host: [turnMs] entre acciones de IA (que el cliente las vea
- * jugar) y [roundOverMs] de "fin de ronda" visible antes de repartir la siguiente
- * (más largo, para leer el resultado). En tests, ambos 0 → transición síncrona.
+ * jugar), [roundOverMs] de "fin de ronda" visible antes de repartir la siguiente (más
+ * largo, para leer el resultado) y [gestureMs] que dura visible cada seña de IA online
+ * (Fase 4.2). En tests, todos 0 → transición síncrona.
  */
-data class MatchPacing(val turnMs: Long = 0L, val roundOverMs: Long = turnMs)
+data class MatchPacing(
+    val turnMs: Long = 0L,
+    val roundOverMs: Long = turnMs,
+    val gestureMs: Long = turnMs
+)
 
 /**
  * Lado **host** del bucle multijugador: conecta el [MatchHost] autoritativo a un
@@ -58,6 +63,11 @@ class MatchHostService(
     private val log: (String) -> Unit = {}
 ) {
     private var advanceJob: Job? = null
+
+    // Señas online (Fase 4.2): true tras planificar/mostrar las señas de la entrada
+    // ACTUAL a MUS; se resetea al salir de MUS para re-planificar tras descarte / nueva
+    // ronda (igual que offline re-corre onEnterMusPhase). Ver [resolveAiGestures].
+    private var gesturesResolved = false
 
     fun start() {
         transport.observeCommands { seatId, command ->
@@ -102,6 +112,9 @@ class MatchHostService(
     private suspend fun advanceLoop() {
         var steps = 0
         while (steps++ < MAX_AI_STEPS && currentCoroutineContext().isActive) {
+            if (resolveAiGestures()) {
+                continue
+            }
             if (resolveDeclaration()) {
                 continue
             }
@@ -155,6 +168,41 @@ class MatchHostService(
             host.dealNextRound()
             publishAllViews()
         }.onFailure { log("dealNextRound falló: ${it.stackTraceToString()}") }
+        return true
+    }
+
+    /**
+     * Señas de IA online (Fase 4.2): al entrar a MUS, planifica las señas host-side y
+     * PACEA su reveal (set→publish→delay→clear→publish) para que el cliente las VEA, como
+     * el modo local en `triggerAiGestures`. La redacción por asiento ([StateRedactor])
+     * decide QUIÉN ve cada una (compañero siempre, rival solo si la caza). Se resuelve UNA
+     * vez por entrada a MUS ([gesturesResolved] se resetea al salir de MUS → re-planifica
+     * tras descarte / nueva ronda). En Mus corrido no hay señas (lo respeta el planificador,
+     * `pending` vacío). Devuelve true si planificó/paceó algo (el bucle re-evalúa). Blindado
+     * como el resto del bucle (Firebase se traga las excepciones de sus callbacks).
+     */
+    private suspend fun resolveAiGestures(): Boolean {
+        if (host.authoritativeState.gamePhase != GamePhase.MUS) {
+            gesturesResolved = false
+            return false
+        }
+        if (gesturesResolved) return false
+        gesturesResolved = true
+        val pending = runCatching { host.planGestures() }
+            .onFailure { log("planGestures falló: ${it.stackTraceToString()}") }
+            .getOrDefault(emptyMap())
+        if (pending.isEmpty()) return false
+        for ((seatId, kind) in pending) {
+            runCatching {
+                host.showGesture(seatId, kind)
+                publishAllViews()
+            }.onFailure { log("showGesture ($seatId) falló: ${it.stackTraceToString()}") }
+            if (pacing.gestureMs > 0) delay(pacing.gestureMs)
+            runCatching {
+                host.clearActiveGesture()
+                publishAllViews()
+            }.onFailure { log("clearActiveGesture ($seatId) falló: $it") }
+        }
         return true
     }
 
