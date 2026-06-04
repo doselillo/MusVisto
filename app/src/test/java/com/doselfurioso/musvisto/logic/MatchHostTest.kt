@@ -8,6 +8,7 @@ import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.GestureKind
+import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
@@ -237,6 +238,65 @@ class MatchHostTest {
         val musCorrido = MatchHost(MusGameLogic(Random(0)), dealtMusState().copy(musCorrido = true))
         assertNull(musCorrido.showHumanGesture("p1"))
         assertNull(musCorrido.authoritativeState.activeGesture)
+    }
+
+    // --- Vacas / multi-chico (#29) ---
+
+    @Test
+    fun `dealNextChico reparte con el marcador a cero y arrastra los chicos`() {
+        val host = MatchHost(
+            MusGameLogic(Random(0)),
+            dealtMusState().copy(
+                score = mapOf("teamA" to 38, "teamB" to 12),
+                chicosWon = mapOf("teamA" to 1, "teamB" to 0),
+                manoPlayerId = "p1"
+            )
+        )
+        host.dealNextChico()
+        val s = host.authoritativeState
+        assertEquals("chico nuevo arranca 0-0", mapOf("teamA" to 0, "teamB" to 0), s.score)
+        assertEquals("se arrastran los chicos ganados", mapOf("teamA" to 1, "teamB" to 0), s.chicosWon)
+        assertEquals(GamePhase.MUS, s.gamePhase)
+        assertEquals("la mano rota al siguiente", "p4", s.manoPlayerId)
+    }
+
+    @Test
+    fun `applyOrdagoChicoWin - si la vaca sigue marca chicoJustWon (no winningTeam)`() {
+        // bestOfChicos=3 → chicosToWinVaca=2. teamA con 0 chicos gana este por órdago → 1, la vaca sigue.
+        val host = MatchHost(
+            MusGameLogic(Random(0)),
+            dealtMusState().copy(
+                gamePhase = GamePhase.GAME_OVER,
+                winningTeam = "teamA",
+                ordagoInfo = OrdagoInfo("p1", GamePhase.GRANDE),
+                chicosWon = mapOf("teamA" to 0, "teamB" to 0)
+            )
+        )
+        host.applyOrdagoChicoWin()
+        val s = host.authoritativeState
+        assertEquals(1, s.chicosWon["teamA"])
+        assertEquals("teamA", s.chicoJustWon)
+        assertNull("la vaca NO ha terminado", s.winningTeam)
+        assertEquals(GamePhase.GAME_OVER, s.gamePhase)
+    }
+
+    @Test
+    fun `applyOrdagoChicoWin - el chico decisivo gana la vaca (winningTeam)`() {
+        // teamA con 1 chico (de 2 necesarios) gana este por órdago → 2 = vaca.
+        val host = MatchHost(
+            MusGameLogic(Random(0)),
+            dealtMusState().copy(
+                gamePhase = GamePhase.GAME_OVER,
+                winningTeam = "teamA",
+                ordagoInfo = OrdagoInfo("p1", GamePhase.GRANDE),
+                chicosWon = mapOf("teamA" to 1, "teamB" to 0)
+            )
+        )
+        host.applyOrdagoChicoWin()
+        val s = host.authoritativeState
+        assertEquals(2, s.chicosWon["teamA"])
+        assertEquals("teamA", s.winningTeam)
+        assertNull("ya no es 'chico ganado, sigue la vaca'", s.chicoJustWon)
     }
 
     @Test

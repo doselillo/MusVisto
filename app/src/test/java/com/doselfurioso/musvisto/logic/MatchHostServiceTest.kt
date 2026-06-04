@@ -7,6 +7,7 @@ import com.doselfurioso.musvisto.model.GameCommandCodec
 import com.doselfurioso.musvisto.model.GamePhase
 import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.GestureKind
+import com.doselfurioso.musvisto.model.OrdagoInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
 import com.doselfurioso.musvisto.model.Suit
@@ -208,7 +209,7 @@ class MatchHostServiceTest {
     }
 
     @Test
-    fun `transicion de ronda - mesa de solo IA encadena rondas hasta ganar el chico`() {
+    fun `transicion de ronda - mesa de solo IA encadena chicos hasta ganar la vaca`() {
         val gameLogic = MusGameLogic(Random(0))
         val allAi = players().map { it.copy(isAi = true) }
         val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
@@ -232,15 +233,47 @@ class MatchHostServiceTest {
         ).start()
 
         val finalState = host.authoritativeState
-        val scoreToWin = finalState.settings.pointsPerChico
-        // Alcanzar pointsPerChico (40) exige ENCADENAR muchas rondas (cada una da
-        // pocos tantos) → demuestra que la transición ROUND_OVER→reparto se repitió.
-        assertEquals("La partida debe terminar al ganar el chico", GamePhase.GAME_OVER, finalState.gamePhase)
-        assertNotNull("Debe registrarse el ganador del chico", finalState.winningTeam)
-        val topScore = (finalState.score["teamA"] ?: 0).coerceAtLeast(finalState.score["teamB"] ?: 0)
-        assertTrue("El ganador debe haber alcanzado el chico ($topScore >= $scoreToWin)", topScore >= scoreToWin)
+        // Ganar la VACA exige encadenar varios CHICOS (cada uno, muchas rondas) → demuestra
+        // tanto la transición ROUND_OVER→reparto como chico-ganado→chico nuevo 0-0 (#29).
+        assertEquals("La partida debe terminar al ganar la vaca", GamePhase.GAME_OVER, finalState.gamePhase)
+        assertNotNull("Debe registrarse el ganador de la vaca", finalState.winningTeam)
+        val winner = finalState.winningTeam!!
+        val chicosNeeded = finalState.settings.chicosToWinVaca
+        assertTrue(
+            "El ganador debe alcanzar los chicos de la vaca (${finalState.chicosWon} / $chicosNeeded)",
+            (finalState.chicosWon[winner] ?: 0) >= chicosNeeded
+        )
         // Y el último estado publicado a cada cliente debe reflejar el fin de partida.
         assertEquals(GamePhase.GAME_OVER, transport.lastView.getValue("p1").gamePhase)
+    }
+
+    @Test
+    fun `vacas - un ordago que cierra la vaca termina la partida (host-side)`() {
+        val gameLogic = MusGameLogic(Random(0))
+        val allAi = players().map { it.copy(isAi = true) }
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, rest) = gameLogic.dealCards(allAi, deck, "p1")
+        // "Órdago recién ganado por teamA" (el reducer deja GAME_OVER + ordagoInfo + winningTeam),
+        // con teamA a un chico de la vaca (1 de 2) → este órdago cierra la vaca.
+        val state = GameState(
+            players = dealt, deck = rest, gamePhase = GamePhase.GAME_OVER,
+            currentTurnPlayerId = "p1", manoPlayerId = "p1",
+            winningTeam = "teamA",
+            ordagoInfo = OrdagoInfo("p1", GamePhase.GRANDE),
+            chicosWon = mapOf("teamA" to 1, "teamB" to 0),
+            playersInLance = seatIds.toSet()
+        )
+        val host = MatchHost(gameLogic, state)
+        val aiLogics = seatIds.associateWith { AILogic(gameLogic, Random(0), AIProfile()) }
+        MatchHostService(
+            host, FakeMatchTransport(), seatIds, AiSeatDriver(aiLogics),
+            scope = CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        val s = host.authoritativeState
+        assertEquals(GamePhase.GAME_OVER, s.gamePhase)
+        assertEquals("el órdago suma el chico decisivo → gana la vaca", "teamA", s.winningTeam)
+        assertEquals(2, s.chicosWon["teamA"])
     }
 
     @Test

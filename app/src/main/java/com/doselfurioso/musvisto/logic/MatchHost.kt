@@ -143,21 +143,66 @@ class MatchHost(
             "teamB" to (roundEndState.score["teamB"] ?: 0) + pointsTeamB
         )
 
+        val scoredState = stateWithBreakdown.copy(score = newScore)
         val scoreToWin = roundEndState.settings.pointsPerChico
-        val winner = when {
+        val chicoWinner = when {
             (newScore["teamA"] ?: 0) >= scoreToWin -> "teamA"
             (newScore["teamB"] ?: 0) >= scoreToWin -> "teamB"
             else -> null
         }
 
-        authoritativeState = stateWithBreakdown.copy(
-            score = newScore,
-            gamePhase = if (winner != null) GamePhase.GAME_OVER else GamePhase.ROUND_OVER,
-            winningTeam = winner,
+        authoritativeState = if (chicoWinner != null) {
+            // Chico ganado por tantos (#29 vacas): contabiliza el chico y decide si la vaca
+            // termina (espejo de GameViewModel.applyChicoWin, isOrdago=false → queda ROUND_OVER).
+            applyChicoWin(scoredState, chicoWinner, isOrdago = false)
+        } else {
+            scoredState.copy(
+                gamePhase = GamePhase.ROUND_OVER,
+                availableActions = emptyList(),
+                revealAllHands = true
+            )
+        }
+        return chicoWinner != null
+    }
+
+    /**
+     * Contabilidad de CHICO (#29 vacas), espejo de `GameViewModel.applyChicoWin`. [baseState]
+     * ya trae score/desglose/ordagoInfo; aquí solo se tocan los flags de chico/vaca y la fase:
+     *  - vaca terminada (`chicosWon[winner] >= chicosToWinVaca`) → `winningTeam` (fin de partida).
+     *  - vaca continúa → `chicoJustWon` (al Continuar arranca chico nuevo 0-0, [dealNextChico]).
+     * El camino del órdago usa GAME_OVER (overlay de órdago); el de los tantos, ROUND_OVER.
+     */
+    private fun applyChicoWin(baseState: GameState, chicoWinner: String, isOrdago: Boolean): GameState {
+        val newChicos = baseState.chicosWon +
+            (chicoWinner to (baseState.chicosWon[chicoWinner] ?: 0) + 1)
+        val vacaOver = (newChicos[chicoWinner] ?: 0) >= baseState.settings.chicosToWinVaca
+        return baseState.copy(
+            chicosWon = newChicos,
+            winningTeam = if (vacaOver) chicoWinner else null,
+            chicoJustWon = if (vacaOver) null else chicoWinner,
+            gamePhase = if (isOrdago) GamePhase.GAME_OVER else GamePhase.ROUND_OVER,
             availableActions = emptyList(),
             revealAllHands = true
         )
-        return winner != null
+    }
+
+    /**
+     * Transición de ronda (#29 vacas): un ÓRDAGO ganado deja el reducer en GAME_OVER +
+     * `winningTeam` (= ganó el CHICO, no la partida). Lo reinterpreta en clave de vaca (espejo
+     * de `GameViewModel.processOrdagoChicoEnd`): contabiliza el chico (`isOrdago=true`, mantiene
+     * GAME_OVER) → vaca terminada (`winningTeam`) o chico nuevo pendiente (`chicoJustWon`).
+     */
+    fun applyOrdagoChicoWin() {
+        val chicoWinner = authoritativeState.winningTeam ?: return
+        authoritativeState = applyChicoWin(authoritativeState, chicoWinner, isOrdago = true)
+    }
+
+    /** Fin de partida (#29): la vaca terminó → GAME_OVER (lo dispara "Continuar" sobre `winningTeam`). */
+    fun finishGame() {
+        authoritativeState = authoritativeState.copy(
+            gamePhase = GamePhase.GAME_OVER,
+            availableActions = emptyList()
+        )
     }
 
     /**
@@ -169,9 +214,17 @@ class MatchHost(
      *
      * Construye un `GameState` NUEVO (no `copy`) → los acumuladores de ronda
      * (scoreEvents, roundHistory, agreedBets, breakdown, revealAllHands…) vuelven a
-     * sus defaults vacíos, igual que un reparto inicial.
+     * sus defaults vacíos, igual que un reparto inicial. Arrastra marcador y chicos.
      */
-    fun dealNextRound() {
+    fun dealNextRound() = deal(resetScore = false)
+
+    /**
+     * Reparte el primer reparto de un CHICO NUEVO (#29 vacas): como [dealNextRound] pero con
+     * el **marcador a 0-0** (arrastra los `chicosWon`). Lo dispara "Continuar" sobre `chicoJustWon`.
+     */
+    fun dealNextChico() = deal(resetScore = true)
+
+    private fun deal(resetScore: Boolean) {
         val players = authoritativeState.players
         val lastManoIndex = players.indexOfFirst { it.id == authoritativeState.manoPlayerId }
         val nextManoId = players[(lastManoIndex - 1 + players.size) % players.size].id
@@ -183,7 +236,7 @@ class MatchHost(
             players = dealt,
             deck = remaining,
             settings = authoritativeState.settings,
-            score = authoritativeState.score,
+            score = if (resetScore) mapOf("teamA" to 0, "teamB" to 0) else authoritativeState.score,
             chicosWon = authoritativeState.chicosWon,
             gamePhase = GamePhase.MUS,
             manoPlayerId = nextManoId,

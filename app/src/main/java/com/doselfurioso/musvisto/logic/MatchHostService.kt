@@ -104,6 +104,10 @@ class MatchHostService(
     // ronda (igual que offline re-corre onEnterMusPhase). Ver [resolveAiGestures].
     private var gesturesResolved = false
 
+    // Vacas (#29): true tras contabilizar el chico de un ÓRDAGO ganado (GAME_OVER del reducer);
+    // anti-recuento. Se resetea al salir de GAME_OVER. Ver [resolveOrdagoChicoEnd].
+    private var ordagoSettled = false
+
     fun start() {
         transport.observeCommands { seatId, command ->
             // Un comando de un asiento = ese jugador está PRESENTE → sale de AFK y se le
@@ -132,7 +136,7 @@ class MatchHostService(
      */
     private fun applyIncoming(seatId: String, command: GameCommand) {
         if (command == GameCommand.Continue) {
-            if (host.authoritativeState.gamePhase == GamePhase.ROUND_OVER) host.dealNextRound()
+            applyContinue()
             return
         }
         if (command == GameCommand.ShowGesture) {
@@ -140,6 +144,21 @@ class MatchHostService(
             return
         }
         host.submitCommand(seatId, command)
+    }
+
+    /**
+     * Avanza tras un fin de ronda / chico / partida — espejo del `when` de Continue offline
+     * (#29 vacas). Lo dispara "Continuar" (un humano), el turn timer (AFK) o el auto-pacing de
+     * una mesa de solo IA: `winningTeam`→fin de partida; `chicoJustWon`→chico nuevo 0-0; ROUND_OVER
+     * normal→siguiente ronda. Un Continue obsoleto (fase ya avanzada) no hace nada (guard del `when`).
+     */
+    private fun applyContinue() {
+        val s = host.authoritativeState
+        when {
+            s.winningTeam != null -> host.finishGame()
+            s.chicoJustWon != null -> host.dealNextChico()
+            s.gamePhase == GamePhase.ROUND_OVER -> host.dealNextRound()
+        }
     }
 
     /**
@@ -188,6 +207,10 @@ class MatchHostService(
             if (resolveDeclaration()) {
                 continue
             }
+            if (resolveOrdagoChicoEnd()) {
+                steps = 0 // chico nuevo tras órdago: presupuesto de pasos fresco
+                continue
+            }
             if (resolveRoundTransition()) {
                 steps = 0 // ronda nueva: presupuesto de pasos fresco (anti-cuelgue por ronda)
                 continue
@@ -224,11 +247,11 @@ class MatchHostService(
         when (val wait = timeoutActionFor(host.authoritativeState)) {
             is TimeoutAction.HumanTurn -> handleHumanTimeout(wait.seatId)
             TimeoutAction.DealNext -> {
-                log("turn timeout: fin de ronda sin Continuar → auto-repartir")
+                log("turn timeout: fin de ronda/chico sin Continuar → auto-avanzar")
                 runCatching {
-                    host.dealNextRound()
+                    applyContinue() // #29: fin de partida / chico nuevo / siguiente ronda
                     publishAllViews()
-                }.onFailure { log("turn timeout (deal next) falló: ${it.stackTraceToString()}") }
+                }.onFailure { log("turn timeout (continuar) falló: ${it.stackTraceToString()}") }
             }
             null -> return // el humano actuó justo a tiempo (o ya no procede): nada que hacer
         }
@@ -262,13 +285,18 @@ class MatchHostService(
     /**
      * Clasificación PURA de lo que el host espera al asentarse (la usa el scheduling y el
      * disparo del timeout):
-     *  - `ROUND_OVER` (no GAME_OVER) → [TimeoutAction.DealNext] (auto-repartir). Solo se
-     *    asienta aquí con humanos en mesa (la mesa de solo IA ya auto-reparte).
+     *  - `ROUND_OVER` (fin de ronda/chico esperando "Continuar") → [TimeoutAction.DealNext].
+     *  - `GAME_OVER` con `chicoJustWon` (#29: chico ganado por ÓRDAGO, la vaca sigue) → DealNext
+     *    (auto-continúa al chico nuevo si el humano está AFK).
      *  - turno de un HUMANO con acciones legales → [TimeoutAction.HumanTurn].
-     *  - turno de IA / GAME_OVER / sin acciones → null (no hay humano a quien esperar).
+     *  - turno de IA / fin de partida (vaca) / sin acciones → null (no hay humano a quien esperar).
      */
     internal fun timeoutActionFor(state: GameState): TimeoutAction? {
-        if (state.gamePhase == GamePhase.ROUND_OVER) return TimeoutAction.DealNext
+        // Esperando "Continuar": fin de ronda/chico (ROUND_OVER), o chico ganado por órdago
+        // con la vaca aún viva (GAME_OVER + chicoJustWon).
+        val waitingToContinue = state.gamePhase == GamePhase.ROUND_OVER ||
+            (state.gamePhase == GamePhase.GAME_OVER && state.chicoJustWon != null)
+        if (waitingToContinue) return TimeoutAction.DealNext
         val turn = state.currentTurnPlayerId ?: return null
         val player = state.players.find { it.id == turn } ?: return null
         if (player.isAi) return null
@@ -291,11 +319,42 @@ class MatchHostService(
      * Blindado: una excepción de la puntuación se registra y no se reparte (el estado
      * queda mostrable, sin spin).
      */
+    /**
+     * Vacas (#29) — camino del ÓRDAGO: el reducer deja GAME_OVER + `ordagoInfo` al ganarse un
+     * órdago (= ganó el CHICO). El host lo reinterpreta en clave de vaca
+     * ([MatchHost.applyOrdagoChicoWin]): contabiliza el chico UNA vez (guard [ordagoSettled],
+     * reseteado al salir de GAME_OVER) → vaca terminada (`winningTeam`, para) o chico pendiente
+     * (`chicoJustWon`). Con humanos espera "Continuar"; una mesa de SOLO IA auto-reparte el chico
+     * nuevo (si no, se congelaría). Devuelve true solo si REPARTIÓ. Blindado.
+     */
+    private suspend fun resolveOrdagoChicoEnd(): Boolean {
+        val state = host.authoritativeState
+        if (state.gamePhase != GamePhase.GAME_OVER) {
+            ordagoSettled = false
+            return false
+        }
+        if (state.ordagoInfo == null || ordagoSettled) return false
+        ordagoSettled = true
+        runCatching {
+            host.applyOrdagoChicoWin()
+            publishAllViews()
+        }.onFailure { log("applyOrdagoChicoWin falló: ${it.stackTraceToString()}") }
+        val after = host.authoritativeState
+        // Vaca terminada → para; humanos → esperan "Continuar"; solo-IA → auto-reparte el chico nuevo.
+        if (after.chicoJustWon == null || after.players.any { !it.isAi }) return false
+        if (pacing.roundOverMs > 0) delay(pacing.roundOverMs)
+        runCatching {
+            applyContinue() // chicoJustWon → dealNextChico
+            publishAllViews()
+        }.onFailure { log("auto-avance (órdago→chico) falló: ${it.stackTraceToString()}") }
+        return true
+    }
+
     private suspend fun resolveRoundTransition(): Boolean {
         if (host.authoritativeState.gamePhase != GamePhase.ROUND_OVER) return false
         if (host.authoritativeState.scoreBreakdown == null) { // aún sin puntuar
-            val matchOver = try {
-                host.scoreRoundOver()
+            try {
+                host.scoreRoundOver() // #29: puntúa + contabiliza chico (chicoJustWon / winningTeam)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -303,17 +362,18 @@ class MatchHostService(
                 return false
             }
             runCatching { publishAllViews() }.onFailure { log("publish (fin de ronda) falló: $it") }
-            if (matchOver) return false // partida terminada (GAME_OVER ya publicado); el bucle para.
         }
-        // Con un humano en mesa, el reparto lo dispara su "Continuar" (ver [start]); el
-        // bucle se queda esperando. Solo una mesa de SOLO IA la auto-avanza el host.
+        // Con un humano en mesa, el avance lo dispara su "Continuar" (ver [start]/[applyContinue]);
+        // el bucle se queda esperando. Solo una mesa de SOLO IA la auto-avanza el host (#29:
+        // fin de partida / chico nuevo / siguiente ronda, según el estado puntuado).
         if (host.authoritativeState.players.any { !it.isAi }) return false
         if (pacing.roundOverMs > 0) delay(pacing.roundOverMs)
         runCatching {
-            host.dealNextRound()
+            applyContinue()
             publishAllViews()
-        }.onFailure { log("dealNextRound falló: ${it.stackTraceToString()}") }
-        return true
+        }.onFailure { log("auto-avance de fin de ronda falló: ${it.stackTraceToString()}") }
+        // Solo "avanzó de verdad" (presupuesto fresco) si NO terminó la partida.
+        return host.authoritativeState.gamePhase != GamePhase.GAME_OVER
     }
 
     /**
