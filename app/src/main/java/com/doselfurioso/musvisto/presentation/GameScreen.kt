@@ -87,6 +87,10 @@ private const val ANNOUNCEMENT_TEXT_FADE_MS = 180
 // pares/juego). Atenuado, no oculto: sigue ahí pero claramente fuera.
 private const val DIMMED_AVATAR_ALPHA = 0.4f
 
+// Presencia online: avatar de un jugador HUMANO desconectado — atenuado + punto gris.
+private const val OFFLINE_AVATAR_ALPHA = 0.45f
+private val OfflineDotColor = Color(0xFF8A8A8A)
+
 // Tope visual del selector de envite. En el Mus no hay límite real de
 // cuánto se puede envidar; lo acotamos al valor máximo de un juego (40 =
 // órdago / puntos para ganar). Evita envidar cantidades arbitrarias con "+".
@@ -189,6 +193,8 @@ fun GameTable(
     // PAUSA no (el "Salir" lo pone OnlineGameScreen).
     showGestureButton: Boolean = true,
     showPauseButton: Boolean = true,
+    // Presencia online: asientos humanos caídos → indicador en su avatar. Offline = vacío (sin marca).
+    offlineSeatIds: Set<String> = emptySet(),
     vmOverlays: @Composable (ResponsiveDimens) -> Unit = {}
 ) {
     val players = rotatePlayersForSeat(gameState.players, localSeatId)
@@ -272,6 +278,7 @@ fun GameTable(
                         isMano = displayedManoId == partner.id,
                         hasCutMus = gameState.noMusPlayer == partner.id,
                         activeGesture = gameState.activeGesture,
+                        isOffline = partner.id in offlineSeatIds,
                         handContent = {
                             PartnerHand(
                                 modifier = Modifier.graphicsLayer { rotationZ = 180f },
@@ -304,6 +311,7 @@ fun GameTable(
                             isMano = displayedManoId == rivalLeft.id,
                             hasCutMus = gameState.noMusPlayer == rivalLeft.id,
                             activeGesture = gameState.activeGesture,
+                            isOffline = rivalLeft.id in offlineSeatIds,
                             handContent = {
                                 SideOpponentHandStacked(
                                     modifier = Modifier.graphicsLayer { rotationX = 90f },
@@ -350,6 +358,7 @@ fun GameTable(
                             isMano = displayedManoId == rivalRight.id,
                             hasCutMus = gameState.noMusPlayer == rivalRight.id,
                             activeGesture = gameState.activeGesture,
+                            isOffline = rivalRight.id in offlineSeatIds,
                             handContent = {
                                 SideOpponentHandStacked(
                                     modifier = Modifier.graphicsLayer { rotationZ = 180f },
@@ -381,6 +390,7 @@ fun GameTable(
                         isMano = displayedManoId == player.id,
                         hasCutMus = gameState.noMusPlayer == player.id,
                         activeGesture = gameState.activeGesture,
+                        isOffline = player.id in offlineSeatIds,
                         handContent = {
                             PlayerHandArc(
                                 cards = player.hand.sortedByDescending { it.rank.value },
@@ -942,7 +952,8 @@ private fun PlayerAvatar(
     activeGestureResId: Int?,
     discardCount: Int? = null,
     isInLance: Boolean = true,
-    dimens: ResponsiveDimens
+    dimens: ResponsiveDimens,
+    isOffline: Boolean = false
 ) {
     val borderColor = if (isCurrentTurn) Color.Yellow else Color.Transparent
 
@@ -955,7 +966,13 @@ private fun PlayerAvatar(
             contentDescription = "Avatar of ${player.name}",
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = if (isInLance) 1f else DIMMED_AVATAR_ALPHA }
+                .graphicsLayer {
+                    alpha = when {
+                        isOffline -> OFFLINE_AVATAR_ALPHA
+                        isInLance -> 1f
+                        else -> DIMMED_AVATAR_ALPHA
+                    }
+                }
                 .clip(CircleShape)
                 .border(4.dp, borderColor, CircleShape)
         )
@@ -1012,6 +1029,18 @@ private fun PlayerAvatar(
                     modifier = Modifier.padding(start = 2.dp)
                 )
             }
+        }
+
+        // Presencia online: punto gris en la esquina (TopEnd libre: mano=BottomEnd,
+        // corta-mus=BottomStart, descarte=TopStart, seña=centro) cuando este humano está caído.
+        if (isOffline) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(dimens.avatarSize / 4)
+                    .background(OfflineDotColor, CircleShape)
+                    .border(2.dp, Color.White, CircleShape)
+            )
         }
     }
 }
@@ -1282,7 +1311,8 @@ fun VerticalPlayerArea(
     hasCutMus: Boolean,
     activeGesture: ActiveGestureInfo?,
     dimens: ResponsiveDimens,
-    gameState: GameState
+    gameState: GameState,
+    isOffline: Boolean = false
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1307,7 +1337,8 @@ fun VerticalPlayerArea(
             activeGestureResId =
                 if (activeGesture?.playerId == player.id) activeGesture.gestureKind.drawableRes() else null,
             discardCount = gameState.discardCounts[player.id],
-            isInLance = isPlayerInActiveLance(gameState, player.id))
+            isInLance = isPlayerInActiveLance(gameState, player.id),
+            isOffline = isOffline)
         handContent()
     }
 }
@@ -1324,7 +1355,8 @@ fun HorizontalPlayerArea(
     modifier: Modifier = Modifier,
     gameState: GameState,
     announcementAbove: Boolean = false,
-    avatarLeadingPadding: Dp = 0.dp
+    avatarLeadingPadding: Dp = 0.dp,
+    isOffline: Boolean = false
 ) {
     Row(
         modifier = modifier,
@@ -1357,7 +1389,8 @@ fun HorizontalPlayerArea(
                 activeGestureResId =
                     if (activeGesture?.playerId == player.id) activeGesture.gestureKind.drawableRes() else null,
                 discardCount = gameState.discardCounts[player.id],
-                isInLance = isPlayerInActiveLance(gameState, player.id)
+                isInLance = isPlayerInActiveLance(gameState, player.id),
+                isOffline = isOffline
             )
             if (!announcementAbove) {
                 Box(

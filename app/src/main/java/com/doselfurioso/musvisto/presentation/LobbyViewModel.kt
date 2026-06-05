@@ -5,6 +5,7 @@ import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.FirebaseAuthGateway
 import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.logic.LobbyService
+import com.doselfurioso.musvisto.logic.PresenceService
 import com.doselfurioso.musvisto.model.GameSettings
 import com.doselfurioso.musvisto.model.RoomHandle
 import com.doselfurioso.musvisto.model.RoomSnapshot
@@ -42,7 +43,8 @@ data class LobbyUiState(
 class LobbyViewModel(
     private val auth: FirebaseAuthGateway,
     private val lobby: LobbyService,
-    private val store: GameStore
+    private val store: GameStore,
+    private val presence: PresenceService = PresenceService()
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LobbyUiState())
@@ -106,6 +108,9 @@ class LobbyViewModel(
 
     private fun enterRoom(uid: String, handle: RoomHandle) {
         observedRoomId = handle.roomId
+        // Presencia: anuncia este asiento como conectado y arma el onDisconnect (su flag se
+        // baja solo si caemos). Se mantiene viva en el traspaso a la partida (ver onCleared).
+        presence.attach(handle.roomId, handle.seatId)
         roomObserver = lobby.observeRoom(handle.roomId) { snapshot ->
             _state.update {
                 it.copy(
@@ -161,6 +166,8 @@ class LobbyViewModel(
 
     fun leaveRoom() {
         detachObserver()
+        // Salida explícita: baja el flag de presencia ya (no esperar a que el SO mate el proceso).
+        presence.goOffline()
         // Conserva el nombre (ya persistido) para no obligar a reescribirlo al volver.
         _state.value = LobbyUiState(displayName = initialLobbyName(store.loadSettings().humanName))
     }
@@ -186,6 +193,10 @@ class LobbyViewModel(
 
     override fun onCleared() {
         detachObserver()
+        // detach NEUTRO (no baja el flag): si esto es el traspaso lobby→partida, el
+        // OnlineGameViewModel re-arma la presencia; el flag sigue conectado, sin parpadeo.
+        // Una salida explícita ya bajó el flag antes (leaveRoom → goOffline).
+        presence.detach()
         super.onCleared()
     }
 }

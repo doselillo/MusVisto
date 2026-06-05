@@ -34,6 +34,7 @@ private val BackgroundGreen = Color(0xFF006A4E)
 @Composable
 fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewModel) {
     val state by viewModel.displayState.collectAsState()
+    val offlineSeats by viewModel.offlineSeats.collectAsState()
 
     Box(
         modifier = Modifier
@@ -60,7 +61,9 @@ fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewMode
                 onCardSelected = { viewModel.onCardSelected(it) },
                 hasShowableGesture = { viewModel.hasShowableGesture(it) },
                 // Fase 4.3: el humano emite seña online (SÍ botón seña). Sin pausa (usa "Salir").
-                showPauseButton = false
+                showPauseButton = false,
+                // Presencia: marca en la mesa qué humanos están caídos (indicador en su avatar).
+                offlineSeatIds = offlineSeats
             )
             TextButton(
                 onClick = { navController.popBackStack() },

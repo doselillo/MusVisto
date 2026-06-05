@@ -45,6 +45,8 @@ private val AccentGreen = Color(0xFF6A994E)
 private val SeatCardGreen = Color(0xFF0A7A5C)
 private val TeamAColor = Color(0xFF5B8FD6)
 private val TeamBColor = Color(0xFFD08770)
+private val ConnectedColor = Color(0xFF9BE29B)
+private val DisconnectedColor = Color(0xFF8A8A8A)
 
 @Composable
 fun OnlineLobbyScreen(navController: NavController, viewModel: LobbyViewModel) {
@@ -226,7 +228,24 @@ private fun SeatRow(
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(seatTitle(seat, isMySeat, isHostSeat), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Punto de presencia: solo para asientos HUMANOS ocupados (la IA siempre
+                // está "ahí", el vacío no tiene a nadie). Verde = conectado, gris = caído.
+                if (seat.uid != null && !seat.isAi) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(if (seat.connected) ConnectedColor else DisconnectedColor, CircleShape)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(
+                    seatTitle(seat, isMySeat, isHostSeat),
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Text(seatSubtitle(seat), color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
         }
         SeatTrailing(seat, amHost, onAddAi, onCycle, onClear)
@@ -267,6 +286,7 @@ private fun seatTitle(seat: RoomSeat, isMySeat: Boolean, isHostSeat: Boolean): S
 
 private fun seatSubtitle(seat: RoomSeat): String = when {
     seat.isAi -> "IA · ${archetypeLabel(seat)}"
+    seat.uid != null && !seat.connected -> "Desconectado"
     seat.uid != null -> if (seat.ready) "Listo" else "Esperando…"
     else -> "Asiento libre"
 }

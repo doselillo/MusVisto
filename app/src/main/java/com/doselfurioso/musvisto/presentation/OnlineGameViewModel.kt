@@ -8,6 +8,7 @@ import com.doselfurioso.musvisto.logic.GameStore
 import com.doselfurioso.musvisto.logic.LobbyService
 import com.doselfurioso.musvisto.logic.MusGameLogic
 import com.doselfurioso.musvisto.logic.OnlineMatchHost
+import com.doselfurioso.musvisto.logic.PresenceService
 import com.doselfurioso.musvisto.model.Card
 import com.doselfurioso.musvisto.model.GameAction
 import com.doselfurioso.musvisto.model.GameCommand
@@ -15,14 +16,17 @@ import com.doselfurioso.musvisto.model.GameState
 import com.doselfurioso.musvisto.model.LastActionInfo
 import com.doselfurioso.musvisto.model.Player
 import com.doselfurioso.musvisto.model.Rank
+import com.doselfurioso.musvisto.model.RoomSnapshot
 import com.doselfurioso.musvisto.model.ScoreBreakdown
 import com.doselfurioso.musvisto.model.Suit
 import com.doselfurioso.musvisto.model.toAction
 import com.doselfurioso.musvisto.model.toCommand
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
@@ -57,9 +61,17 @@ class OnlineGameViewModel(
         database.reference.child("rooms").child(roomId)
     )
 
+    private val presence = PresenceService()
+
     private val _view = MutableStateFlow<GameState?>(null)
     private val _selectedCards = MutableStateFlow<Set<Card>>(emptySet())
     private val _isSelectingBet = MutableStateFlow(false)
+
+    // Presencia en la mesa: asientos HUMANOS marcados como caídos en la sala. El SDK de RTDB
+    // re-sincroniza la vista solos al reconectar; esto es solo para PINTAR quién está caído.
+    private val _offlineSeats = MutableStateFlow<Set<String>>(emptySet())
+    val offlineSeats: StateFlow<Set<String>> = _offlineSeats.asStateFlow()
+    private var roomObserver: ValueEventListener? = null
 
     /** Vista lista para pintar con [GameTable]: la del host + estado de UI local, adaptada. */
     val displayState: StateFlow<GameState?> =
@@ -73,6 +85,12 @@ class OnlineGameViewModel(
         // Las callbacks de Firebase llegan en el hilo principal → actualizar el
         // StateFlow directo es seguro.
         transport.observeView(mySeatId) { state -> _view.value = state }
+        // Presencia: anuncia MI asiento como conectado (re-arma el onDisconnect que dejó el
+        // lobby) y observa la sala para saber qué humanos están caídos (indicador en la mesa).
+        presence.attach(roomId, mySeatId)
+        roomObserver = lobby.observeRoom(roomId) { snapshot ->
+            _offlineSeats.value = offlineHumanSeatIds(snapshot)
+        }
         if (isHost) startHost()
     }
 
@@ -123,6 +141,14 @@ class OnlineGameViewModel(
         }
     }
 
+    override fun onCleared() {
+        // Salir de la mesa = salir de la sala: baja el flag de presencia y suelta el observador.
+        presence.goOffline()
+        roomObserver?.let { lobby.stopObserving(roomId, it) }
+        roomObserver = null
+        super.onCleared()
+    }
+
     private companion object {
         const val MP_TAG = "MusVistoMP"
     }
@@ -171,6 +197,18 @@ internal fun adaptOnlineView(
     val myTeam = view.players.firstOrNull { it.id == mySeatId }?.team
     return if (myTeam == TEAM_B) display.swapTeamsForDisplay() else display
 }
+
+/**
+ * Asientos HUMANOS marcados como caídos en la sala (uid presente, no IA, `connected == false`).
+ * Puro/testeable: el indicador de presencia en la mesa atenúa + marca estos asientos. Una IA o un
+ * asiento vacío nunca cuenta como caído. `null` (sala ilegible) → vacío (no marca a nadie).
+ */
+internal fun offlineHumanSeatIds(room: RoomSnapshot?): Set<String> =
+    room?.seats
+        ?.filter { it.uid != null && !it.isAi && !it.connected }
+        ?.map { it.seatId }
+        ?.toSet()
+        .orEmpty()
 
 private const val TEAM_A = "teamA"
 private const val TEAM_B = "teamB"
