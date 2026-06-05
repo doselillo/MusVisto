@@ -22,9 +22,9 @@ import kotlin.random.Random
  *
  * Cubierto desde Fase 3c: **transiciones de ronda** (al llegar a ROUND_OVER el host
  * puntúa, muestra el resultado y reparte la siguiente cuando un humano pulsa "Continuar";
- * ver [MatchHostService]). NO cubierto aún (Fase 4 / 5): señas (`onEnterMusPhase` no se
- * aplica → sin delegación de corte de Mus online), turn timers/AFK y vacas/multi-chico
- * (llegar al chico = fin de partida).
+ * ver [MatchHostService]). También: señas online (Fase 4), turn timers/AFK, vacas/multi-chico
+ * (#29) y **mus corrido de apertura** (#17, mano aleatoria); `onEnterMusPhase` no se aplica
+ * host-side (las señas las planifica/pacea [MatchHostService.resolveAiGestures]).
  */
 class OnlineMatchHost(
     private val gameLogic: MusGameLogic,
@@ -46,7 +46,9 @@ class OnlineMatchHost(
     fun start(seats: List<RoomSeat>, settings: GameSettings) {
         val players = seats.map { it.toPlayer() }
         val seatIds = players.map { it.id }
-        val manoId = players.first().id
+        // Mano de apertura ALEATORIA (no siempre el host = p1): con 2 humanos, fijar la mano al
+        // host le regalaría la prioridad de mano cada partida. El motor lleva el turno desde aquí.
+        val manoId = players[rng.nextInt(players.size)].id
         val shuffled = gameLogic.shuffleDeck(gameLogic.createDeck())
         val (dealt, remaining) = gameLogic.dealCards(players, shuffled, manoId)
 
@@ -58,6 +60,9 @@ class OnlineMatchHost(
             manoPlayerId = manoId,
             currentTurnPlayerId = manoId,
             playersInLance = seatIds.toSet(),
+            // Apertura = mus corrido (#17), como offline (GameViewModel.startNewGame con isFirstHand):
+            // el que corta se vuelve mano y esta mano NO hay señas. dealNextRound lo deja en false.
+            musCorrido = true,
             availableActions = listOf(GameAction.Mus, GameAction.NoMus)
         )
 
