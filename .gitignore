@@ -19,3 +19,9 @@ docs
 
 # Firebase: claves del proyecto. No se commitea (se baja de la consola por dev/maquina).
 app/google-services.json
+
+# Firebase emulador / tests de reglas (artefactos locales).
+firebase-tests/node_modules/
+firebase-tests/package-lock.json
+*-debug.log
+.firebase/

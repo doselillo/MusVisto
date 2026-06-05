@@ -1,0 +1,45 @@
+{
+  "rules": {
+    "codes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null && !data.exists() && newData.isString()"
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".write": "auth != null && !data.exists() && newData.child('meta').child('hostUid').val() === auth.uid",
+        ".read": "auth != null",
+        "meta": {
+          ".write": "data.child('hostUid').val() === auth.uid",
+          "hostUid": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "status": {
+            ".validate": "newData.isString() && (newData.val() === 'lobby' || newData.val() === 'playing' || newData.val() === 'finished')"
+          }
+        },
+        "seats": {
+          ".write": "auth != null && ( root.child('rooms').child($roomId).child('meta').child('hostUid').val() === auth.uid || ( ( newData.child('p1').child('uid').val() === data.child('p1').child('uid').val() || ( data.child('p1').child('uid').val() === null && newData.child('p1').child('uid').val() === auth.uid ) ) && ( newData.child('p2').child('uid').val() === data.child('p2').child('uid').val() || ( data.child('p2').child('uid').val() === null && newData.child('p2').child('uid').val() === auth.uid ) ) && ( newData.child('p3').child('uid').val() === data.child('p3').child('uid').val() || ( data.child('p3').child('uid').val() === null && newData.child('p3').child('uid').val() === auth.uid ) ) && ( newData.child('p4').child('uid').val() === data.child('p4').child('uid').val() || ( data.child('p4').child('uid').val() === null && newData.child('p4').child('uid').val() === auth.uid ) ) ) )",
+          "$seatId": {
+            "uid": {
+              ".validate": "newData.val() === null || newData.val() === auth.uid || root.child('rooms').child($roomId).child('meta').child('hostUid').val() === auth.uid"
+            },
+            "connected": {
+              ".validate": "newData.isBoolean()"
+            }
+          }
+        },
+        "views": {
+          ".write": "root.child('rooms').child($roomId).child('meta').child('hostUid').val() === auth.uid"
+        },
+        "actions": {
+          ".write": "root.child('rooms').child($roomId).child('meta').child('hostUid').val() === auth.uid",
+          "$seatId": {
+            ".write": "auth != null && root.child('rooms').child($roomId).child('seats').child($seatId).child('uid').val() === auth.uid"
+          }
+        }
+      }
+    }
+  }
+}
