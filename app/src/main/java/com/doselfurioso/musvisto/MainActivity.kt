@@ -18,6 +18,7 @@ import androidx.navigation.navArgument
 import com.doselfurioso.musvisto.logic.AILogic
 import com.doselfurioso.musvisto.logic.AIProfile
 import com.doselfurioso.musvisto.logic.AndroidGameLogger
+import com.doselfurioso.musvisto.logic.FirebaseCrashReporting
 import com.doselfurioso.musvisto.logic.GameRepository
 import com.doselfurioso.musvisto.logic.FirebaseAuthGateway
 import com.doselfurioso.musvisto.logic.LobbyService
@@ -45,7 +46,7 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(MainMenuViewModel::class.java)) {
                     @Suppress("UNCHECKED_CAST")
-                    return MainMenuViewModel(gameRepository) as T
+                    return MainMenuViewModel(gameRepository, FirebaseCrashReporting()) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }

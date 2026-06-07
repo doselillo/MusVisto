@@ -4,7 +4,9 @@ package com.doselfurioso.musvisto.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.doselfurioso.musvisto.logic.AIArchetype
+import com.doselfurioso.musvisto.logic.CrashReporting
 import com.doselfurioso.musvisto.logic.GameStore
+import com.doselfurioso.musvisto.logic.NoOpCrashReporting
 import com.doselfurioso.musvisto.model.GameSettings
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -26,7 +28,10 @@ private const val SEAT_PARTNER = 1
 private const val SEAT_RIVAL_LEFT = 2
 private const val SEAT_RIVAL_RIGHT = 3
 
-class MainMenuViewModel(private val gameRepository: GameStore) : ViewModel() {
+class MainMenuViewModel(
+    private val gameRepository: GameStore,
+    private val crashReporting: CrashReporting = NoOpCrashReporting
+) : ViewModel() {
 
     private val _hasSavedGame = MutableStateFlow(false)
     val hasSavedGame = _hasSavedGame.asStateFlow()
@@ -135,6 +140,16 @@ class MainMenuViewModel(private val gameRepository: GameStore) : ViewModel() {
 
     /** Color del tapete de la mesa (#36); la clave la resuelve la UI (TableTheme). */
     fun setTableColor(colorKey: String) = update { it.copy(tableColor = colorKey) }
+
+    /**
+     * Consentimiento de telemetría de cuelgues (Crashlytics, opt-out RGPD). Aplica
+     * el cambio al SDK AL INSTANTE (deja de recoger en cuanto se apaga) además de
+     * persistirlo; MusVistoApp lo relee y aplica en el próximo arranque.
+     */
+    fun setCrashReporting(enabled: Boolean) {
+        crashReporting.setEnabled(enabled)
+        update { it.copy(crashReportingEnabled = enabled) }
+    }
 
     /**
      * Partida rápida: caras DISTINTAS al azar en los 4 asientos + personalidad al

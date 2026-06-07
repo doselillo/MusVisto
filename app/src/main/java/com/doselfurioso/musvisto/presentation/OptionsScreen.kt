@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -22,6 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+
+// Ancho del ajuste con interruptor (deja aire en los bordes, como los selectores).
+private const val TOGGLE_ROW_WIDTH_FRACTION = 0.85f
 
 /**
  * Pantalla de Opciones (#29 Fase 2). De momento solo el ajuste de la vaca
@@ -80,6 +85,18 @@ fun OptionsScreen(navController: NavController, viewModel: MainMenuViewModel) {
                 textAlign = TextAlign.Center
             )
 
+            Spacer(modifier = Modifier.height(36.dp))
+
+            // Telemetría de cuelgues (RGPD, opt-out). A diferencia de los ajustes de
+            // reglas, este se aplica AL INSTANTE (no espera a la próxima partida).
+            ToggleSetting(
+                title = "Enviar informes de fallos",
+                subtitle = "Cuelgues anónimos para arreglarlos. No incluyen tu nombre ni tus partidas.",
+                checked = settings.crashReportingEnabled,
+                onCheckedChange = viewModel::setCrashReporting,
+                accent = tableAccent
+            )
+
             Spacer(modifier = Modifier.height(48.dp))
 
             Button(
@@ -133,6 +150,50 @@ private fun SettingSelector(
                 }
             }
         }
+    }
+}
+
+/**
+ * Un ajuste booleano (interruptor) con título y explicación. El texto va a la
+ * izquierda y el [Switch] a la derecha; el cambio se aplica al instante.
+ */
+@Composable
+private fun ToggleSetting(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    accent: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(TOGGLE_ROW_WIDTH_FRACTION),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 13.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = accent,
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Color.Black.copy(alpha = 0.3f)
+            )
+        )
     }
 }
 

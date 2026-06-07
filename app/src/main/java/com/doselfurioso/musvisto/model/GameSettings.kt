@@ -32,7 +32,13 @@ data class GameSettings(
     val rivalLeftArchetype: String = "AGRESIVO",
     val rivalRightArchetype: String = "FAROLERO",
     // #36 Color del tapete de la mesa. Clave -> Color en la capa UI (TableTheme).
-    val tableColor: String = "GREEN"
+    val tableColor: String = "GREEN",
+    // Consentimiento de telemetría de cuelgues (Crashlytics). Opt-out: activo por
+    // defecto (interés legítimo: estabilidad), desactivable en Opciones. La seam
+    // CrashReporting traduce este flag a FirebaseCrashlytics; MusVistoApp lo aplica
+    // al arrancar y el toggle lo aplica al instante. Default true → saves previos
+    // (sin el campo) cargan con la telemetría activada.
+    val crashReportingEnabled: Boolean = true
 ) {
     /** Chicos necesarios para ganar la vaca: ceil(bestOfChicos / 2). */
     val chicosToWinVaca: Int get() = bestOfChicos / 2 + 1

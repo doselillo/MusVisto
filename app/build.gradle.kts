@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.detekt)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 detekt {
@@ -86,5 +87,9 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.database)
     implementation(libs.firebase.auth)
+    // Crashlytics: telemetría de CUELGUES para abrir la beta a público (sin
+    // Analytics → minimización de datos RGPD). La recogida es opt-out, gobernada
+    // por GameSettings.crashReportingEnabled vía la seam CrashReporting.
+    implementation(libs.firebase.crashlytics)
 
 }
