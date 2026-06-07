@@ -206,6 +206,33 @@ class MatchHost(
     }
 
     /**
+     * "Jugar de Nuevo" online (paridad #1): re-arranca una VACA desde cero reusando los
+     * MISMOS jugadores/asientos y ajustes. Espejo de [OnlineMatchHost.start] (mano de apertura
+     * ALEATORIA + mus corrido #17) pero in-place: marcador 0-0 y chicos a cero (defaults de
+     * `GameState`, no se arrastran como en [dealNextRound]/[dealNextChico]). Lo dispara un humano
+     * desde el overlay de fin de partida; lo intercepta [MatchHostService.applyIncoming] (como
+     * `Continue` → NO pasa por el reducer, que no re-arranca partida).
+     */
+    fun startNewMatch() {
+        val players = authoritativeState.players
+        val manoId = players[rng.nextInt(players.size)].id
+        val shuffled = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, remaining) = gameLogic.dealCards(players, shuffled, manoId)
+
+        authoritativeState = GameState(
+            players = dealt,
+            deck = remaining,
+            settings = authoritativeState.settings,
+            gamePhase = GamePhase.MUS,
+            manoPlayerId = manoId,
+            currentTurnPlayerId = manoId,
+            playersInLance = players.map { it.id }.toSet(),
+            musCorrido = true,
+            availableActions = listOf(GameAction.Mus, GameAction.NoMus)
+        )
+    }
+
+    /**
      * Transición de ronda (Fase 3c), parte 2: **REPARTIR** la siguiente. Replica el
      * reparto de `GameViewModel.startNewGame` (rota la mano un puesto en el orden de
      * turno, baraja y da 4 cartas) pero en **MUS PLANO sin señas** —coherente con

@@ -488,6 +488,54 @@ class MatchHostServiceTest {
         assertEquals(GameCommand.NoTengo, announcements["p4"])
     }
 
+    @Test
+    fun `Jugar de Nuevo - en fin de vaca, NewGame re-arranca una partida limpia`() {
+        val gameLogic = MusGameLogic(Random(0))
+        val deck = gameLogic.shuffleDeck(gameLogic.createDeck())
+        val (dealt, rest) = gameLogic.dealCards(players(), deck, "p1")
+        // Vaca terminada (teamA ganó): GAME_OVER + winningTeam, con marcador y chicos acumulados.
+        val state = GameState(
+            players = dealt, deck = rest, gamePhase = GamePhase.GAME_OVER,
+            currentTurnPlayerId = "p1", manoPlayerId = "p1",
+            winningTeam = "teamA",
+            score = mapOf("teamA" to 40, "teamB" to 12),
+            chicosWon = mapOf("teamA" to 2, "teamB" to 0),
+            playersInLance = seatIds.toSet()
+        )
+        val host = MatchHost(gameLogic, state, Random(0))
+        val transport = FakeMatchTransport()
+        MatchHostService(host, transport, seatIds, scope = CoroutineScope(Dispatchers.Unconfined)).start()
+
+        // Un humano pulsa "Jugar de Nuevo" (overlay de fin de vaca) → llega por el transporte.
+        transport.sendCommand("p1", GameCommand.NewGame)
+
+        val after = host.authoritativeState
+        assertEquals("re-arranca en MUS", GamePhase.MUS, after.gamePhase)
+        assertNull("la vaca anterior se olvida", after.winningTeam)
+        assertEquals("marcador teamA a cero", 0, after.score["teamA"])
+        assertEquals("marcador teamB a cero", 0, after.score["teamB"])
+        assertEquals("chicos a cero", 0, after.chicosWon["teamA"])
+        assertTrue("apertura = mus corrido (#17)", after.musCorrido)
+        assertTrue("reparte manos nuevas de 4 cartas", after.players.all { it.hand.size == 4 })
+        // La vista publicada a los clientes refleja el re-arranque.
+        assertEquals(GamePhase.MUS, transport.lastView.getValue("p1").gamePhase)
+    }
+
+    @Test
+    fun `Jugar de Nuevo - sin fin de vaca, NewGame se ignora (no resetea la partida en curso)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState(), Random(0))
+        val transport = FakeMatchTransport()
+        MatchHostService(host, transport, seatIds, scope = CoroutineScope(Dispatchers.Unconfined)).start()
+        val before = host.authoritativeState
+
+        // Un cliente manda NewGame en plena partida (winningTeam == null) → no debe hacer nada.
+        transport.sendCommand("p1", GameCommand.NewGame)
+
+        val after = host.authoritativeState
+        assertEquals("la fase no cambia", before.gamePhase, after.gamePhase)
+        assertNull("no aparece ganador de la nada", after.winningTeam)
+    }
+
     /** Suscribe un observador y devuelve un getter de la última vista recibida. */
     private fun capture(transport: FakeMatchTransport, seatId: String): () -> GameState {
         var latest: GameState? = null

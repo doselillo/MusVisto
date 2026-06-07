@@ -143,7 +143,28 @@ class MatchHostService(
             revealHumanGesture(seatId)
             return
         }
+        if (command == GameCommand.NewGame) {
+            startNewMatch()
+            return
+        }
         host.submitCommand(seatId, command)
+    }
+
+    /**
+     * "Jugar de Nuevo" (paridad #1): NO pasa por el reducer (no re-arranca partida).
+     * Solo se honra cuando la VACA ha terminado (`winningTeam != null`) — es justo cuando
+     * el overlay ofrece el botón (con la vaca viva muestra "Siguiente chico" → `Continue`),
+     * así un comando rezagado o un cliente que se adelanta no resetea una partida en curso.
+     * Re-arranca host-side y limpia los flags por-partida; [start] re-publica y relanza el
+     * avance, como con `Continue`.
+     */
+    private fun startNewMatch() {
+        if (host.authoritativeState.winningTeam == null) return
+        host.startNewMatch()
+        gesturesResolved = false
+        ordagoSettled = false
+        afkSeats.clear()
+        consecutiveTimeouts.clear()
     }
 
     /**
