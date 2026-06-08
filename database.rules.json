@@ -3,12 +3,18 @@
     "codes": {
       ".read": "auth != null",
       "$code": {
-        ".write": "auth != null && !data.exists() && newData.isString()"
+        ".write": "auth != null && ( ( !data.exists() && newData.isString() ) || ( !newData.exists() && ( root.child('rooms').child(data.val()).child('meta').child('hostUid').val() === auth.uid || root.child('roomIndex').child(data.val()).child('createdAt').val() < now - 21600000 ) ) )"
+      }
+    },
+    "roomIndex": {
+      ".read": "auth != null",
+      "$roomId": {
+        ".write": "auth != null && ( ( !data.exists() && newData.child('createdAt').isNumber() ) || ( !newData.exists() && ( root.child('rooms').child($roomId).child('meta').child('hostUid').val() === auth.uid || data.child('createdAt').val() < now - 21600000 ) ) )"
       }
     },
     "rooms": {
       "$roomId": {
-        ".write": "auth != null && !data.exists() && newData.child('meta').child('hostUid').val() === auth.uid",
+        ".write": "auth != null && ( ( !data.exists() && newData.child('meta').child('hostUid').val() === auth.uid ) || ( !newData.exists() && ( data.child('meta').child('hostUid').val() === auth.uid || root.child('roomIndex').child($roomId).child('createdAt').val() < now - 21600000 ) ) )",
         ".read": "auth != null",
         "meta": {
           ".write": "data.child('hostUid').val() === auth.uid",

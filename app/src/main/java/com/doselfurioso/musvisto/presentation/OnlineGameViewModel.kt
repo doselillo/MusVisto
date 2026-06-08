@@ -73,6 +73,9 @@ class OnlineGameViewModel(
     val offlineSeats: StateFlow<Set<String>> = _offlineSeats.asStateFlow()
     private var roomObserver: ValueEventListener? = null
 
+    // Código de la sala (para borrarla al salir si soy el host); lo captura el observador/arranque.
+    private var roomCode: String = ""
+
     /** Vista lista para pintar con [GameTable]: la del host + estado de UI local, adaptada. */
     val displayState: StateFlow<GameState?> =
         combine(_view, _selectedCards, _isSelectingBet) { view, selected, selectingBet ->
@@ -90,6 +93,7 @@ class OnlineGameViewModel(
         presence.attach(roomId, mySeatId)
         roomObserver = lobby.observeRoom(roomId) { snapshot ->
             _offlineSeats.value = offlineHumanSeatIds(snapshot)
+            snapshot?.code?.takeIf { it.isNotBlank() }?.let { roomCode = it }
         }
         if (isHost) startHost()
     }
@@ -135,6 +139,7 @@ class OnlineGameViewModel(
     private fun startHost() {
         lobby.fetchRoom(roomId) { room ->
             room ?: return@fetchRoom
+            roomCode = room.code
             host = OnlineMatchHost(gameLogic, transport, viewModelScope, log = { Log.w(MP_TAG, it) }).also {
                 it.start(room.seats, store.loadSettings())
             }
@@ -143,9 +148,12 @@ class OnlineGameViewModel(
 
     override fun onCleared() {
         // Salir de la mesa = salir de la sala: baja el flag de presencia y suelta el observador.
+        // goOffline ANTES de borrar: cancela el onDisconnect (si no, resucitaría el nodo borrado).
         presence.goOffline()
         roomObserver?.let { lobby.stopObserving(roomId, it) }
         roomObserver = null
+        // El host sale de la mesa = la partida muere para todos (es el motor): borra la sala (RGPD).
+        if (isHost) lobby.deleteRoom(roomId, roomCode)
         super.onCleared()
     }
 

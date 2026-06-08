@@ -70,6 +70,7 @@ class LobbyViewModel(
         _state.update { it.copy(phase = LobbyPhase.CONNECTING, error = null) }
         auth.ensureSignedIn { authResult ->
             authResult.onSuccess { uid ->
+                lobby.purgeStaleRooms() // barrido oportunista de salas abandonadas (RGPD)
                 lobby.createRoom(uid, name, store.loadSettings()) { result ->
                     result.onSuccess { handle -> enterRoom(uid, handle) }.onFailure(::fail)
                 }
@@ -88,6 +89,7 @@ class LobbyViewModel(
         _state.update { it.copy(phase = LobbyPhase.CONNECTING, error = null) }
         auth.ensureSignedIn { authResult ->
             authResult.onSuccess { uid ->
+                lobby.purgeStaleRooms() // barrido oportunista de salas abandonadas (RGPD)
                 lobby.joinRoom(trimmed, uid, name) { result ->
                     result.onSuccess { handle -> enterRoom(uid, handle) }.onFailure(::fail)
                 }
@@ -165,9 +167,13 @@ class LobbyViewModel(
     }
 
     fun leaveRoom() {
+        val state = _state.value
         detachObserver()
         // Salida explícita: baja el flag de presencia ya (no esperar a que el SO mate el proceso).
+        // ANTES de borrar: goOffline cancela el onDisconnect (si no, resucitaría el nodo borrado).
         presence.goOffline()
+        // El host se va = la sala muere (es el motor): bórrala para no dejar residuo (RGPD).
+        if (state.isHost) state.room?.let { lobby.deleteRoom(it.roomId, it.code) }
         // Conserva el nombre (ya persistido) para no obligar a reescribirlo al volver.
         _state.value = LobbyUiState(displayName = initialLobbyName(store.loadSettings().humanName))
     }

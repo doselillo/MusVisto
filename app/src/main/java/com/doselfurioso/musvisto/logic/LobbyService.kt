@@ -33,6 +33,7 @@ class LobbyService(
 
     private val roomsRef: DatabaseReference get() = root.child("rooms")
     private val codesRef: DatabaseReference get() = root.child("codes")
+    private val indexRef: DatabaseReference get() = root.child("roomIndex")
 
     /**
      * Crea una sala: el host reclama p1, los otros tres asientos quedan VACÍOS
@@ -57,7 +58,12 @@ class LobbyService(
             "rooms/$roomId/meta/code" to code,
             "rooms/$roomId/meta/createdAt" to ServerValue.TIMESTAMP,
             "rooms/$roomId/meta/settingsJson" to json.encodeToString(settings),
-            "codes/$code" to roomId
+            "codes/$code" to roomId,
+            // Índice público SIN PII (solo fecha + código) para que el barrido por edad
+            // pueda encontrar salas caducadas sin leer la sala (que sí lleva nombres/uid).
+            // Ver purgeStaleRooms + database.rules.json (roomIndex).
+            "roomIndex/$roomId/createdAt" to ServerValue.TIMESTAMP,
+            "roomIndex/$roomId/code" to code
         )
         Rooms.SEAT_IDS.forEach { seatId ->
             updates["rooms/$roomId/seats/$seatId"] = seatNode(
@@ -197,6 +203,55 @@ class LobbyService(
         roomsRef.child(roomId).child("meta").child("status").setValue(status)
     }
 
+    // ---- Limpieza de salas (RGPD: las salas no se quedan para siempre) ----
+
+    /**
+     * Borra una sala por completo: el nodo `rooms`, su índice de código y la entrada de
+     * `roomIndex`, en UNA actualización atómica (las reglas evalúan los tres borrados contra
+     * el mismo estado previo). Lo usa el HOST al salir limpio; las reglas también lo permiten
+     * a cualquiera si la sala está caducada (ver [purgeStaleRooms]).
+     */
+    fun deleteRoom(roomId: String, code: String) {
+        val updates = hashMapOf<String, Any?>(
+            "rooms/$roomId" to null,
+            "roomIndex/$roomId" to null
+        )
+        if (code.isNotBlank()) updates["codes/$code"] = null
+        root.updateChildren(updates)
+    }
+
+    /**
+     * Barrido por EDAD: lee el índice público (solo fechas, sin PII) y borra toda sala con
+     * `createdAt` anterior a `now - olderThanMs` (= abandonada; ninguna partida dura tanto).
+     * Lo dispara un cliente al abrir el lobby online; las reglas RTDB autorizan el borrado de
+     * salas caducadas a cualquier cliente autenticado. Best-effort: los fallos se ignoran (un
+     * write denegado por una sala en el límite se barre la próxima vez). [onDone] recibe
+     * cuántas se intentaron borrar (para tests/log).
+     */
+    fun purgeStaleRooms(
+        now: Long = System.currentTimeMillis(),
+        olderThanMs: Long = STALE_ROOM_MS,
+        onDone: (Int) -> Unit = {}
+    ) {
+        indexRef.get()
+            .addOnSuccessListener { snapshot ->
+                val stale = staleRoomEntries(parseRoomIndex(snapshot), now, olderThanMs)
+                stale.forEach { deleteRoom(it.roomId, it.code) }
+                onDone(stale.size)
+            }
+            .addOnFailureListener { onDone(0) }
+    }
+
+    private fun parseRoomIndex(snapshot: DataSnapshot): List<RoomIndexEntry> =
+        snapshot.children.mapNotNull { child ->
+            val roomId = child.key ?: return@mapNotNull null
+            RoomIndexEntry(
+                roomId = roomId,
+                createdAt = child.child("createdAt").getValue(Long::class.java) ?: 0L,
+                code = child.child("code").getValue(String::class.java).orEmpty()
+            )
+        }
+
     private fun seatRef(roomId: String, seatId: String): DatabaseReference =
         roomsRef.child(roomId).child("seats").child(seatId)
 
@@ -247,5 +302,22 @@ class LobbyService(
         const val CODE_LENGTH = 4
         // Sin 0/O/1/I para que el código sea fácil de dictar.
         const val CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        // 6 h. DEBE COINCIDIR con el umbral de database.rules.json (21600000) — las reglas
+        // son quienes AUTORIZAN el borrado por caducidad; el cliente solo decide qué intentar.
+        const val STALE_ROOM_MS = 6L * 60 * 60 * 1000
     }
 }
+
+/** Entrada del índice público de salas (`roomIndex/{roomId}`): solo fecha + código, sin PII. */
+internal data class RoomIndexEntry(val roomId: String, val createdAt: Long, val code: String)
+
+/**
+ * Salas CADUCADAS (abandonadas): las creadas antes de `now - olderThanMs`. Puro/testeable;
+ * las reglas RTDB aplican el MISMO criterio con la hora del servidor (el cliente solo decide
+ * qué intentar borrar, las reglas son la verdad). Ver [LobbyService.purgeStaleRooms].
+ */
+internal fun staleRoomEntries(
+    entries: List<RoomIndexEntry>,
+    now: Long,
+    olderThanMs: Long
+): List<RoomIndexEntry> = entries.filter { it.createdAt < now - olderThanMs }

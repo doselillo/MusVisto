@@ -23,11 +23,14 @@ const testEnv = await initializeTestEnvironment({
 
 // --- Semilla: una sala de ejemplo escrita como ADMIN (saltándose las reglas). ---
 // alice = host (p1) · bob = p2 · p3 vacío · p4 = IA.
+const FRESH = Date.now();             // sala "recién creada"
+const STALE = FRESH - 24 * 3600 * 1000; // hace 24 h → caducada (umbral de reglas = 6 h)
+
 await testEnv.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.database();
   await set(ref(db, 'codes/ABCD'), 'ROOM1');
   await set(ref(db, 'rooms/ROOM1'), {
-    meta: { hostUid: 'alice', status: 'lobby', code: 'ABCD', createdAt: 0, settingsJson: '{}' },
+    meta: { hostUid: 'alice', status: 'lobby', code: 'ABCD', createdAt: FRESH, settingsJson: '{}' },
     seats: {
       p1: { team: 'teamA', uid: 'alice', displayName: 'Alice', isAi: false, ready: true, connected: true },
       p2: { team: 'teamB', uid: 'bob', displayName: 'Bob', isAi: false, ready: false, connected: true },
@@ -35,6 +38,21 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
       p4: { team: 'teamB', uid: null, displayName: 'IA', isAi: true, ready: true, connected: true },
     },
   });
+  await set(ref(db, 'roomIndex/ROOM1'), { createdAt: FRESH, code: 'ABCD' });
+
+  // Limpieza de salas (RGPD). STALE1 = caducada (cualquiera la puede barrer); FRESHA/FRESHB =
+  // recientes (solo el host las borra). Cada sala lleva su índice público (fecha + código).
+  await set(ref(db, 'codes/STAL'), 'STALE1');
+  await set(ref(db, 'rooms/STALE1'), { meta: { hostUid: 'zoe', status: 'lobby', code: 'STAL', createdAt: STALE } });
+  await set(ref(db, 'roomIndex/STALE1'), { createdAt: STALE, code: 'STAL' });
+
+  await set(ref(db, 'codes/FRSA'), 'FRESHA');
+  await set(ref(db, 'rooms/FRESHA'), { meta: { hostUid: 'alice', status: 'lobby', code: 'FRSA', createdAt: FRESH } });
+  await set(ref(db, 'roomIndex/FRESHA'), { createdAt: FRESH, code: 'FRSA' });
+
+  await set(ref(db, 'codes/FRSB'), 'FRESHB');
+  await set(ref(db, 'rooms/FRESHB'), { meta: { hostUid: 'alice', status: 'lobby', code: 'FRSB', createdAt: FRESH } });
+  await set(ref(db, 'roomIndex/FRESHB'), { createdAt: FRESH, code: 'FRSB' });
 });
 
 const alice = testEnv.authenticatedContext('alice').database();     // host + p1
@@ -68,6 +86,13 @@ await expect('carol reclama el asiento vacio p3', true, () =>
   update(ref(carol, 'rooms/ROOM1/seats'), { 'p3/uid': 'carol', 'p3/displayName': 'Carol', 'p3/connected': true }));
 await expect('dave crea una sala nueva siendo el host', true, () =>
   set(ref(dave, 'rooms/ROOM2'), { meta: { hostUid: 'dave', status: 'lobby' }, seats: { p1: { uid: 'dave', isAi: false } } }));
+await expect('carol lee el indice publico de salas', true, () => get(ref(carol, 'roomIndex')));
+await expect('dave crea su entrada de indice al crear sala', true, () =>
+  update(ref(dave, '/'), { 'roomIndex/ROOM2/createdAt': FRESH, 'roomIndex/ROOM2/code': 'WXYZ' }));
+await expect('mallory barre una sala CADUCADA (room+code+index)', true, () =>
+  update(ref(mallory, '/'), { 'rooms/STALE1': null, 'codes/STAL': null, 'roomIndex/STALE1': null }));
+await expect('alice (host) borra su propia sala', true, () =>
+  update(ref(alice, '/'), { 'rooms/FRESHA': null, 'codes/FRSA': null, 'roomIndex/FRESHA': null }));
 
 console.log('DENEGADOS:');
 await expect('anonimo NO lee la sala', false, () => get(ref(anon, 'rooms/ROOM1')));
@@ -81,6 +106,12 @@ await expect('mallory NO secuestra el codigo ABCD', false, () => set(ref(mallory
 await expect('connected como string viola .validate', false, () => set(ref(bob, 'rooms/ROOM1/seats/p2/connected'), 'true'));
 await expect('dave NO crea sala poniendo a otro de host', false, () =>
   set(ref(dave, 'rooms/ROOM3'), { meta: { hostUid: 'eve', status: 'lobby' } }));
+await expect('mallory NO borra una sala FRESCA ajena', false, () =>
+  update(ref(mallory, '/'), { 'rooms/FRESHB': null, 'codes/FRSB': null, 'roomIndex/FRESHB': null }));
+await expect('mallory NO borra el codigo de una sala fresca', false, () =>
+  set(ref(mallory, 'codes/FRSB'), null));
+await expect('mallory NO falsifica la fecha de un indice existente', false, () =>
+  set(ref(mallory, 'roomIndex/ROOM1/createdAt'), 0));
 
 await testEnv.cleanup();
 console.log(`\n${pass} OK, ${fail} fallos`);
