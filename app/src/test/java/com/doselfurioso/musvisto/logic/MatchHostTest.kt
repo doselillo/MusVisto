@@ -138,6 +138,79 @@ class MatchHostTest {
         assertEquals(2, host.authoritativeState.discardCounts[mano])
     }
 
+    @Test
+    fun `un descarte de SOLO cartas fantasma se rechaza por completo (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        repeat(4) { host.submitCommand(host.authoritativeState.currentTurnPlayerId!!, GameCommand.Mus) }
+        assertEquals(GamePhase.DISCARD, host.authoritativeState.gamePhase)
+
+        val mano = host.authoritativeState.currentTurnPlayerId!!
+        val deckBefore = host.authoritativeState.deck.size
+        val realHand = host.authoritativeState.players.first { it.id == mano }.hand
+        // Carta FANTASMA: una que NO está en la mano (forjada por un cliente trampero).
+        val ghost = MusGameLogic(Random(0)).createDeck().first { it !in realHand }
+        host.submitCommand(mano, GameCommand.Discard(listOf(ghost)))
+
+        val after = host.authoritativeState
+        // No se roba reemplazo por una carta inexistente: la mano sigue en 4 y el mazo intacto.
+        assertEquals(4, after.players.first { it.id == mano }.hand.size)
+        assertEquals(deckBefore, after.deck.size)
+        // El comando ilegal se ignora → sigue siendo el turno del mismo jugador.
+        assertEquals(mano, after.currentTurnPlayerId)
+    }
+
+    @Test
+    fun `un descarte mixto solo cambia las cartas reales (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        repeat(4) { host.submitCommand(host.authoritativeState.currentTurnPlayerId!!, GameCommand.Mus) }
+        val mano = host.authoritativeState.currentTurnPlayerId!!
+        val deckBefore = host.authoritativeState.deck.size
+        val realHand = host.authoritativeState.players.first { it.id == mano }.hand
+        val ghost = MusGameLogic(Random(0)).createDeck().first { it !in realHand }
+        // 1 carta real + 1 fantasma: solo debe descartar la real (robar 1, no 2).
+        host.submitCommand(mano, GameCommand.Discard(listOf(realHand.first(), ghost)))
+
+        val after = host.authoritativeState
+        assertEquals("la mano sigue en 4 cartas", 4, after.players.first { it.id == mano }.hand.size)
+        assertEquals("solo se roba 1 carta (la fantasma no cuenta)", deckBefore - 1, after.deck.size)
+        assertEquals("descarta 1, no 2", 1, after.discardCounts[mano])
+    }
+
+    @Test
+    fun `submitCommand ignora un envite con importe ilegal (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        host.submitCommand("p1", GameCommand.NoMus) // MUS -> GRANDE, turno de la mano (p1)
+        assertEquals(GamePhase.GRANDE, host.authoritativeState.gamePhase)
+
+        // Importe imposible (> tope de un juego): no abre apuesta.
+        host.submitCommand("p1", GameCommand.Bet(999))
+        assertNull("un envite de 999 no abre apuesta", host.authoritativeState.currentBet)
+        // Importe negativo: tampoco.
+        host.submitCommand("p1", GameCommand.Bet(-5))
+        assertNull("un envite negativo no abre apuesta", host.authoritativeState.currentBet)
+        // Apertura por debajo del mínimo (la apertura es >= 2): tampoco.
+        host.submitCommand("p1", GameCommand.Bet(1))
+        assertNull("una apertura de 1 es ilegal", host.authoritativeState.currentBet)
+
+        // Un envite legítimo SÍ abre apuesta.
+        host.submitCommand("p1", GameCommand.Bet(2))
+        assertEquals(2, host.authoritativeState.currentBet?.amount)
+    }
+
+    @Test
+    fun `submitCommand solo anuncia comandos que cambian el estado (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        // Comando fuera de turno (es turno de p1): el reducer lo rechaza.
+        host.submitCommand("p2", GameCommand.Mus)
+        assertNull("un comando rechazado no se anuncia", host.viewFor("p1").lastActionView)
+        assertEquals("ni cambia el estado", "p1", host.authoritativeState.currentTurnPlayerId)
+
+        // El mismo comando, del asiento de turno, SÍ cambia el estado y se anuncia.
+        host.submitCommand("p1", GameCommand.Mus)
+        assertEquals("p1", host.viewFor("p3").lastActionView?.seatId)
+        assertEquals(GameCommand.Mus, host.viewFor("p3").lastActionView?.command)
+    }
+
     // --- Señas online (Fase 4.2) ---
 
     @Test

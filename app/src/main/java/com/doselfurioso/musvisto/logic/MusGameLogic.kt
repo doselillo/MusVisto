@@ -408,6 +408,14 @@ class MusGameLogic constructor(
 
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
+        // Anti-trampa (multijugador): el importe viaja en GameCommand.Bet(amount) y el reducer
+        // valida por CLASE (Envido), no por valor → un cliente podía mandar Envido(999) o
+        // Envido(-5) y reventar el marcador. Se acota al rango legítimo que produce la UI: una
+        // apertura es >=2, una subida >=1, y ningún incremento supera MAX_BET (40 = tope del
+        // selector / valor de un juego). Fuera de rango se rechaza (no avanza turno). La IA
+        // (betAmount 1..5, órdago aparte) y el BetSelector ya respetan este rango.
+        val minIncrement = if (currentState.currentBet != null) 1 else 2
+        if (amount < minIncrement || amount > MAX_BET) return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
         val previousBetAmount = currentState.currentBet?.amount ?: 0
@@ -756,11 +764,21 @@ class MusGameLogic constructor(
     // Reemplaza la función antigua con esta
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
-        val cardsToDiscard = currentState.selectedCardsForDiscard
+        // Anti-trampa (multijugador): el comando de descarte LLEVA las cartas elegidas por
+        // el cliente; solo se honran las que REALMENTE están en su mano. Sin este filtro,
+        // descartar cartas FANTASMA no quitaba nada (filterNot no casa) pero sí robaba `size`
+        // cartas de reemplazo del mazo → mano de >4 cartas, y metía las fantasma en el
+        // descarte (cartas duplicadas en circulación al rebarajar). Offline es inalcanzable
+        // (la UI solo deja seleccionar de la propia mano); online es un write legal a
+        // actions/{miAsiento} con cualquier payload, así que se valida aquí, en la autoridad.
+        val cardsToDiscard = currentState.selectedCardsForDiscard.filter { it in player.hand }.toSet()
         var event: GameEvent? = null
 
-        if (currentState.gamePhase == GamePhase.DISCARD && currentState.selectedCardsForDiscard.isEmpty()) {
-            logger.e("MusGameLogic", "Error: Intento de descarte vacío en fase de Mus por el jugador $playerId.")
+        // Rechaza un descarte que, tras el filtro anti-trampa, queda vacío: descarte vacío
+        // legítimo en Mus (la UI exige ≥1, no debería pasar) o comando con SOLO cartas
+        // fantasma. En ambos casos no se avanza el turno (sigue siendo del jugador).
+        if (currentState.gamePhase == GamePhase.DISCARD && cardsToDiscard.isEmpty()) {
+            logger.e("MusGameLogic", "Error: Intento de descarte vacío/ilegal en fase de Mus por el jugador $playerId.")
             return currentState // Devuelve el estado sin cambios.
         }
 
@@ -1101,5 +1119,13 @@ class MusGameLogic constructor(
             playersWhoPassed = emptySet(),
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
+    }
+
+    private companion object {
+        // Tope de un incremento de envite. 40 = puntos para ganar un chico / órdago: no tiene
+        // sentido envidar más en un solo envite. DUPLICA a propósito el MAX_BET de la UI
+        // (presentation.GameScreen) — el motor no debe depender de la capa de presentación;
+        // el de aquí es la validación AUTORITATIVA (también frente a un cliente online trampero).
+        const val MAX_BET = 40
     }
 }
