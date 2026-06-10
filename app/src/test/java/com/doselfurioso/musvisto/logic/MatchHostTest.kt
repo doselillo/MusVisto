@@ -138,6 +138,44 @@ class MatchHostTest {
         assertEquals(2, host.authoritativeState.discardCounts[mano])
     }
 
+    @Test
+    fun `un descarte de SOLO cartas fantasma se rechaza por completo (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        repeat(4) { host.submitCommand(host.authoritativeState.currentTurnPlayerId!!, GameCommand.Mus) }
+        assertEquals(GamePhase.DISCARD, host.authoritativeState.gamePhase)
+
+        val mano = host.authoritativeState.currentTurnPlayerId!!
+        val deckBefore = host.authoritativeState.deck.size
+        val realHand = host.authoritativeState.players.first { it.id == mano }.hand
+        // Carta FANTASMA: una que NO está en la mano (forjada por un cliente trampero).
+        val ghost = MusGameLogic(Random(0)).createDeck().first { it !in realHand }
+        host.submitCommand(mano, GameCommand.Discard(listOf(ghost)))
+
+        val after = host.authoritativeState
+        // No se roba reemplazo por una carta inexistente: la mano sigue en 4 y el mazo intacto.
+        assertEquals(4, after.players.first { it.id == mano }.hand.size)
+        assertEquals(deckBefore, after.deck.size)
+        // El comando ilegal se ignora → sigue siendo el turno del mismo jugador.
+        assertEquals(mano, after.currentTurnPlayerId)
+    }
+
+    @Test
+    fun `un descarte mixto solo cambia las cartas reales (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        repeat(4) { host.submitCommand(host.authoritativeState.currentTurnPlayerId!!, GameCommand.Mus) }
+        val mano = host.authoritativeState.currentTurnPlayerId!!
+        val deckBefore = host.authoritativeState.deck.size
+        val realHand = host.authoritativeState.players.first { it.id == mano }.hand
+        val ghost = MusGameLogic(Random(0)).createDeck().first { it !in realHand }
+        // 1 carta real + 1 fantasma: solo debe descartar la real (robar 1, no 2).
+        host.submitCommand(mano, GameCommand.Discard(listOf(realHand.first(), ghost)))
+
+        val after = host.authoritativeState
+        assertEquals("la mano sigue en 4 cartas", 4, after.players.first { it.id == mano }.hand.size)
+        assertEquals("solo se roba 1 carta (la fantasma no cuenta)", deckBefore - 1, after.deck.size)
+        assertEquals("descarta 1, no 2", 1, after.discardCounts[mano])
+    }
+
     // --- Señas online (Fase 4.2) ---
 
     @Test

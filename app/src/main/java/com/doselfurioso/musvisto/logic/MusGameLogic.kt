@@ -756,11 +756,21 @@ class MusGameLogic constructor(
     // Reemplaza la función antigua con esta
     private fun handleDiscard(currentState: GameState, playerId: String): GameState {
         val player = currentState.players.find { it.id == playerId } ?: return currentState
-        val cardsToDiscard = currentState.selectedCardsForDiscard
+        // Anti-trampa (multijugador): el comando de descarte LLEVA las cartas elegidas por
+        // el cliente; solo se honran las que REALMENTE están en su mano. Sin este filtro,
+        // descartar cartas FANTASMA no quitaba nada (filterNot no casa) pero sí robaba `size`
+        // cartas de reemplazo del mazo → mano de >4 cartas, y metía las fantasma en el
+        // descarte (cartas duplicadas en circulación al rebarajar). Offline es inalcanzable
+        // (la UI solo deja seleccionar de la propia mano); online es un write legal a
+        // actions/{miAsiento} con cualquier payload, así que se valida aquí, en la autoridad.
+        val cardsToDiscard = currentState.selectedCardsForDiscard.filter { it in player.hand }.toSet()
         var event: GameEvent? = null
 
-        if (currentState.gamePhase == GamePhase.DISCARD && currentState.selectedCardsForDiscard.isEmpty()) {
-            logger.e("MusGameLogic", "Error: Intento de descarte vacío en fase de Mus por el jugador $playerId.")
+        // Rechaza un descarte que, tras el filtro anti-trampa, queda vacío: descarte vacío
+        // legítimo en Mus (la UI exige ≥1, no debería pasar) o comando con SOLO cartas
+        // fantasma. En ambos casos no se avanza el turno (sigue siendo del jugador).
+        if (currentState.gamePhase == GamePhase.DISCARD && cardsToDiscard.isEmpty()) {
+            logger.e("MusGameLogic", "Error: Intento de descarte vacío/ilegal en fase de Mus por el jugador $playerId.")
             return currentState // Devuelve el estado sin cambios.
         }
 
