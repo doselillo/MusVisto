@@ -176,6 +176,27 @@ class MatchHostTest {
         assertEquals("descarta 1, no 2", 1, after.discardCounts[mano])
     }
 
+    @Test
+    fun `submitCommand ignora un envite con importe ilegal (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        host.submitCommand("p1", GameCommand.NoMus) // MUS -> GRANDE, turno de la mano (p1)
+        assertEquals(GamePhase.GRANDE, host.authoritativeState.gamePhase)
+
+        // Importe imposible (> tope de un juego): no abre apuesta.
+        host.submitCommand("p1", GameCommand.Bet(999))
+        assertNull("un envite de 999 no abre apuesta", host.authoritativeState.currentBet)
+        // Importe negativo: tampoco.
+        host.submitCommand("p1", GameCommand.Bet(-5))
+        assertNull("un envite negativo no abre apuesta", host.authoritativeState.currentBet)
+        // Apertura por debajo del mínimo (la apertura es >= 2): tampoco.
+        host.submitCommand("p1", GameCommand.Bet(1))
+        assertNull("una apertura de 1 es ilegal", host.authoritativeState.currentBet)
+
+        // Un envite legítimo SÍ abre apuesta.
+        host.submitCommand("p1", GameCommand.Bet(2))
+        assertEquals(2, host.authoritativeState.currentBet?.amount)
+    }
+
     // --- Señas online (Fase 4.2) ---
 
     @Test

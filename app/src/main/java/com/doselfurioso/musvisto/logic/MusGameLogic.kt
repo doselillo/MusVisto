@@ -408,6 +408,14 @@ class MusGameLogic constructor(
 
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
         val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
+        // Anti-trampa (multijugador): el importe viaja en GameCommand.Bet(amount) y el reducer
+        // valida por CLASE (Envido), no por valor → un cliente podía mandar Envido(999) o
+        // Envido(-5) y reventar el marcador. Se acota al rango legítimo que produce la UI: una
+        // apertura es >=2, una subida >=1, y ningún incremento supera MAX_BET (40 = tope del
+        // selector / valor de un juego). Fuera de rango se rechaza (no avanza turno). La IA
+        // (betAmount 1..5, órdago aparte) y el BetSelector ya respetan este rango.
+        val minIncrement = if (currentState.currentBet != null) 1 else 2
+        if (amount < minIncrement || amount > MAX_BET) return currentState
         val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
 
         val previousBetAmount = currentState.currentBet?.amount ?: 0
@@ -1111,5 +1119,13 @@ class MusGameLogic constructor(
             playersWhoPassed = emptySet(),
             availableActions = listOf(GameAction.Paso, GameAction.Envido(2), GameAction.Órdago)
         )
+    }
+
+    private companion object {
+        // Tope de un incremento de envite. 40 = puntos para ganar un chico / órdago: no tiene
+        // sentido envidar más en un solo envite. DUPLICA a propósito el MAX_BET de la UI
+        // (presentation.GameScreen) — el motor no debe depender de la capa de presentación;
+        // el de aquí es la validación AUTORITATIVA (también frente a un cliente online trampero).
+        const val MAX_BET = 40
     }
 }
