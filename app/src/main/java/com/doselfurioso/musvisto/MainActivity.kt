@@ -64,8 +64,8 @@ class MainActivity : ComponentActivity() {
                     val aiLogicFactory: (AIProfile) -> AILogic = { profile ->
                         AILogic(gameLogic, random, profile)
                     }
-                    val gameRepository = GameRepository(applicationContext)
-
+                    // Reusa el gameRepository (by lazy) de la Activity en vez de crear otra
+                    // instancia: ambas apuntan a las mismas SharedPreferences, una basta.
                     @Suppress("UNCHECKED_CAST")
                     return GameViewModel(gameLogic, aiLogicFactory, gameRepository) as T
                 }

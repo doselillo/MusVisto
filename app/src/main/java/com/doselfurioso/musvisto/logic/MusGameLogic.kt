@@ -458,10 +458,11 @@ class MusGameLogic constructor(
             betInitiatorTeam = bettingPlayer.team,
             playersPendingResponse = orderedEligibleOpponents,
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
-            playerMaxBetThisRound = newMaxBets,
-            // Cuando alguien sube la apuesta, los que habían pasado ("Paso") pueden volver a hablar,
-            // pero los que dijeron "No Quiero" no. Por eso, reiniciamos la lista de "pasos".
-            playersWhoPassed = currentState.playersWhoPassed
+            playerMaxBetThisRound = newMaxBets
+            // playersWhoPassed se conserva intacto a propósito: con una apuesta activa el turno
+            // avanza por playersPendingResponse, no por la lista de "pasos" (antes había aquí una
+            // asignación no-op `playersWhoPassed = currentState.playersWhoPassed` con un comentario
+            // que decía "reiniciamos" — no reiniciaba nada; eliminada).
         )
     }
 
