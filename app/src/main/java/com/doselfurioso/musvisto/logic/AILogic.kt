@@ -1537,43 +1537,6 @@ class AILogic constructor(
         return juegoStrength
     }
 
-
-
-    // ---------------- Helpers ----------------
-    private fun isTopRank(card: Card): Boolean = card.rank.value == 3 || card.rank.value == 12
-    private fun isSecondRank(card: Card): Boolean = card.rank.value == 2 || card.rank.value == 1
-
-    private fun cardKeepPriority(card: Card, hand: List<Card>, isMano: Boolean): Int {
-        var p = 0
-        when {
-            isTopRank(card) -> p += 40
-            isSecondRank(card) -> p += 30
-            else -> p += 10
-        }
-
-        val sameCount = hand.count { it.rank == card.rank }
-        if (sameCount >= 2) p += 50
-
-        val valueForJuego = cardJuegoValue(card)
-        if (valueForJuego >= 10) p += 20
-
-        if (isMano) p += 10
-
-        return p
-    }
-
-    private fun allowDiscardTopRank(hand: List<Card>, isMano: Boolean): Boolean {
-        val topCount = hand.count { isTopRank(it) }
-        val hasPair = gameLogic.getHandPares(hand) !is ParesPlay.NoPares
-        val juego = gameLogic.getHandJuegoValue(hand)
-        return !isMano && topCount == 1 && !hasPair && juego < 31
-    }
-
-    private fun cardJuegoValue(card: Card): Int = when (card.rank.value) {
-        in 10..12 -> 10
-        else -> card.rank.value
-    }
-
     private sealed class GestureMeaning {
         data class Pares(val play: ParesPlay) : GestureMeaning()
         data class Juego(val value: Int) : GestureMeaning()
