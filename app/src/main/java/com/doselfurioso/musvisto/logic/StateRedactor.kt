@@ -16,7 +16,10 @@ import com.doselfurioso.musvisto.model.GameState
  * Qué se OCULTA a `seatId`:
  *  - la mano de los DEMÁS jugadores —incluido el compañero: en el Mus no se ve, se
  *    señaliza— salvo en el enseñe final (`revealAllHands == true`).
- *  - el mazo por repartir (`deck`).
+ *  - el mazo por repartir (`deck`) y el montón de descartes (`discardPile`): ambos
+ *    revelan cartas concretas (las descartadas permiten card-counting + inferir manos);
+ *    el cliente no los pinta. Distinto de `discardCounts` (cuántas cambió cada uno), que
+ *    SÍ es público (el badge del avatar lo muestra).
  *  - **las señas (Fase 4.2):** `knownGestures`/`pendingGestures` son estado INTERNO
  *    del host (la "memoria" de la IA + su pre-decisión) → nunca viajan al cliente.
  *    `activeGesture` (la seña que se está mostrando) se filtra por asiento: la propia
@@ -36,6 +39,7 @@ object StateRedactor {
         if (state.revealAllHands) {
             return state.copy(
                 deck = emptyList(),
+                discardPile = emptyList(),
                 activeGesture = visibleGesture,
                 knownGestures = emptyMap(),
                 pendingGestures = emptyMap()
@@ -47,6 +51,7 @@ object StateRedactor {
         return state.copy(
             players = redactedPlayers,
             deck = emptyList(),
+            discardPile = emptyList(),
             activeGesture = visibleGesture,
             knownGestures = emptyMap(),
             pendingGestures = emptyMap()

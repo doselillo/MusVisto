@@ -54,6 +54,17 @@ class StateRedactorTest {
     }
 
     @Test
+    fun `redactFor siempre oculta el monton de descartes`() {
+        // Las cartas concretas descartadas permiten card-counting + inferir manos; el
+        // cliente no las pinta (sólo el contador discardCounts, que sí es público).
+        val withDiscards = state().copy(discardPile = hand(Rank.REY, Rank.AS, Rank.SOTA))
+        assertTrue(StateRedactor.redactFor("p1", withDiscards).discardPile.isEmpty())
+        assertTrue(
+            StateRedactor.redactFor("p1", withDiscards.copy(revealAllHands = true)).discardPile.isEmpty()
+        )
+    }
+
+    @Test
     fun `redactFor conserva la informacion publica`() {
         val redacted = StateRedactor.redactFor("p1", state())
         assertEquals("p1", redacted.currentTurnPlayerId)
