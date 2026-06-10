@@ -55,8 +55,17 @@ class MatchHost(
             )
             else -> authoritativeState
         }
-        authoritativeState = gameLogic.processAction(stateForAction, command.toAction(), seatId)
-            .copy(lastActionView = LastActionView(seatId, command))
+        val reduced = gameLogic.processAction(stateForAction, command.toAction(), seatId)
+        // Solo sella el anuncio (lastActionView) si la acción REALMENTE cambió el estado. El
+        // reducer devuelve el MISMO estado que recibió ante un comando rechazado (fuera de
+        // turno, ilegal, importe/cartas inválidos → ver MusGameLogic.processAction), así que
+        // la desigualdad lo distingue. Sin esto se anunciaría una acción que nunca ocurrió
+        // ("p2: ¡Órdago!" fantasma) y se persistiría la inyección de cartas de un descarte
+        // rechazado. Se compara contra stateForAction (no authoritativeState) para que el
+        // descarte legítimo —que inyecta sus cartas antes de reducir— cuente como cambio.
+        if (reduced != stateForAction) {
+            authoritativeState = reduced.copy(lastActionView = LastActionView(seatId, command))
+        }
         return authoritativeState
     }
 

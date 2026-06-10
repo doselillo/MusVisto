@@ -197,6 +197,20 @@ class MatchHostTest {
         assertEquals(2, host.authoritativeState.currentBet?.amount)
     }
 
+    @Test
+    fun `submitCommand solo anuncia comandos que cambian el estado (anti-trampa)`() {
+        val host = MatchHost(MusGameLogic(Random(0)), dealtMusState())
+        // Comando fuera de turno (es turno de p1): el reducer lo rechaza.
+        host.submitCommand("p2", GameCommand.Mus)
+        assertNull("un comando rechazado no se anuncia", host.viewFor("p1").lastActionView)
+        assertEquals("ni cambia el estado", "p1", host.authoritativeState.currentTurnPlayerId)
+
+        // El mismo comando, del asiento de turno, SÍ cambia el estado y se anuncia.
+        host.submitCommand("p1", GameCommand.Mus)
+        assertEquals("p1", host.viewFor("p3").lastActionView?.seatId)
+        assertEquals(GameCommand.Mus, host.viewFor("p3").lastActionView?.command)
+    }
+
     // --- Señas online (Fase 4.2) ---
 
     @Test
