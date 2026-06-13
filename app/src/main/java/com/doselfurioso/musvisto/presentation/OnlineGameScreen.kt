@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -18,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -35,6 +37,7 @@ private val BackgroundGreen = Color(0xFF006A4E)
 fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewModel) {
     val state by viewModel.displayState.collectAsState()
     val offlineSeats by viewModel.offlineSeats.collectAsState()
+    val closure by viewModel.closure.collectAsState()
 
     Box(
         modifier = Modifier
@@ -73,6 +76,42 @@ fun OnlineGameScreen(navController: NavController, viewModel: OnlineGameViewMode
                     .padding(8.dp)
             ) {
                 Text("Salir", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+            }
+        }
+
+        // "Mesa muerta": el host (motor de la partida) se fue y no hay migración (#2). Tapa la mesa
+        // congelada con un aviso claro en vez de dejar al jugador mirando una pantalla muerta.
+        closure?.let { reason ->
+            DeadTableOverlay(reason = reason, onLeave = { navController.popBackStack() })
+        }
+    }
+}
+
+@Composable
+private fun DeadTableOverlay(reason: TableClosure, onLeave: () -> Unit) {
+    val message = when (reason) {
+        TableClosure.ROOM_CLOSED -> "La sala se ha cerrado."
+        TableClosure.HOST_GONE -> "El anfitrión ha dejado la mesa."
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = message,
+                color = Color.White,
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onLeave) {
+                Text("Salir")
             }
         }
     }

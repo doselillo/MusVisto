@@ -23,12 +23,15 @@ import com.doselfurioso.musvisto.model.toAction
 import com.doselfurioso.musvisto.model.toCommand
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * ViewModel de la PARTIDA online (Fase 3c — Slice B). El cliente renderiza la MISMA
@@ -73,6 +76,13 @@ class OnlineGameViewModel(
     val offlineSeats: StateFlow<Set<String>> = _offlineSeats.asStateFlow()
     private var roomObserver: ValueEventListener? = null
 
+    // "Mesa muerta": el host ES el motor (sin migración, #2). Si se va, la mesa se congela en
+    // SILENCIO (sala borrada → la vista no se actualiza; muerte sucia → solo avatar atenuado).
+    // Este estado lo detecta y deja que la pantalla ofrezca salir. Sticky: una vez muerta, muerta.
+    private val _closure = MutableStateFlow<TableClosure?>(null)
+    val closure: StateFlow<TableClosure?> = _closure.asStateFlow()
+    private var hostGraceJob: Job? = null
+
     // Código de la sala (para borrarla al salir si soy el host); lo captura el observador/arranque.
     private var roomCode: String = ""
 
@@ -91,11 +101,40 @@ class OnlineGameViewModel(
         // Presencia: anuncia MI asiento como conectado (re-arma el onDisconnect que dejó el
         // lobby) y observa la sala para saber qué humanos están caídos (indicador en la mesa).
         presence.attach(roomId, mySeatId)
-        roomObserver = lobby.observeRoom(roomId) { snapshot ->
-            _offlineSeats.value = offlineHumanSeatIds(snapshot)
-            snapshot?.code?.takeIf { it.isNotBlank() }?.let { roomCode = it }
-        }
+        roomObserver = lobby.observeRoom(roomId) { snapshot -> onRoomUpdate(snapshot) }
         if (isHost) startHost()
+    }
+
+    /**
+     * Cada cambio de la sala. Además de la presencia, vigila la salud del HOST (que es el motor):
+     *  - sala borrada (`null`) → el host salió limpio y la borró (RGPD): mesa cerrada, ya.
+     *  - asiento del host desconectado > [HOST_GRACE_MS] → muerte sucia: el anfitrión se fue.
+     * La gracia evita falsos positivos: una caída breve de red del host re-sincroniza sola (su app
+     * sigue viva y el SDK reconecta). Solo aplica al cliente: si YO soy el host no me vigilo.
+     */
+    private fun onRoomUpdate(snapshot: RoomSnapshot?) {
+        if (snapshot == null) {
+            // Sala borrada (o ilegible). Para el host es su propia salida (ya navega); para el resto,
+            // la mesa ha desaparecido bajo los pies.
+            if (!isHost) _closure.value = _closure.value ?: TableClosure.ROOM_CLOSED
+            return
+        }
+        if (snapshot.code.isNotBlank()) roomCode = snapshot.code
+        _offlineSeats.value = offlineHumanSeatIds(snapshot)
+        if (!isHost) watchHostPresence(snapshot)
+    }
+
+    /** Arranca/cancela la gracia de "host caído" según el flag de presencia del asiento del host. */
+    private fun watchHostPresence(room: RoomSnapshot) {
+        if (isHostConnected(room)) {
+            hostGraceJob?.cancel()
+            hostGraceJob = null
+        } else if (hostGraceJob == null && _closure.value == null) {
+            hostGraceJob = viewModelScope.launch {
+                delay(HOST_GRACE_MS)
+                if (_closure.value == null) _closure.value = TableClosure.HOST_GONE
+            }
+        }
     }
 
     /**
@@ -159,7 +198,20 @@ class OnlineGameViewModel(
 
     private companion object {
         const val MP_TAG = "MusVistoMP"
+        // Margen antes de declarar muerto al host por presencia: cubre una caída breve de red (el
+        // SDK reconecta y re-arma el flag). Más generoso que un parpadeo, más corto que el turn
+        // timer (45 s) para no dejar al cliente mirando una mesa congelada eternamente.
+        const val HOST_GRACE_MS = 12_000L
     }
+}
+
+/** Por qué la mesa online ha dejado de estar viva (ver [OnlineGameViewModel.closure]). */
+enum class TableClosure {
+    /** La sala se borró (el host salió limpio y la cerró). */
+    ROOM_CLOSED,
+
+    /** El asiento del host lleva desconectado más que la gracia (muerte sucia: app matada / sin red). */
+    HOST_GONE
 }
 
 /**
@@ -217,6 +269,14 @@ internal fun offlineHumanSeatIds(room: RoomSnapshot?): Set<String> =
         ?.map { it.seatId }
         ?.toSet()
         .orEmpty()
+
+/**
+ * ¿Está conectado el HOST (el motor de la partida)? El asiento del host es el que lleva su `uid`.
+ * Puro/testeable: la detección de "mesa muerta" arranca la gracia cuando esto es `false`. `null`
+ * (sala ilegible) o asiento del host ausente → `false` (= se considera caído).
+ */
+internal fun isHostConnected(room: RoomSnapshot?): Boolean =
+    room?.seats?.firstOrNull { it.uid == room.hostUid }?.connected ?: false
 
 private const val TEAM_A = "teamA"
 private const val TEAM_B = "teamB"
