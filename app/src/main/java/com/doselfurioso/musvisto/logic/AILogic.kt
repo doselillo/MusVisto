@@ -140,8 +140,7 @@ class AILogic constructor(
 
         val gestureAdjustedStrength = adjustStrengthsBasedOnKnownGestures(baseStrength, gameState, aiPlayer, logBuilder)
 
-        val opponentTeam = if (aiPlayer.team == "teamA") "teamB" else "teamA"
-        val scoreDifference = (gameState.score[aiPlayer.team] ?: 0) - (gameState.score[opponentTeam] ?: 0)
+        val scoreDifference = myScore - rivalScore
         val riskFactor = when {
             scoreDifference < -20 -> 15; scoreDifference < -10 -> 10
             scoreDifference > 20 -> -15; scoreDifference > 10 -> -10
@@ -1098,8 +1097,7 @@ class AILogic constructor(
         val isLate = myPos >= 0 && myPos >= order.size - 2 // postre o penúltimo
         // Rivales que YA han pasado este lance => iniciativa más libre (robo).
         val opponentsPassed = gameState.playersWhoPassed.count { pid ->
-            gameState.players.find { it.id == pid }?.team != aiPlayer.team &&
-                gameState.players.any { it.id == pid }
+            gameState.players.find { it.id == pid }?.let { it.team != aiPlayer.team } == true
         }
         val stealSpot = opponentsPassed >= 1
         val scoreRisky = opponentScore >= 33 || myTeamScore >= 33
@@ -1222,7 +1220,9 @@ class AILogic constructor(
         // Mus obligatorio: si nada baja del umbral (mano excelente), descarta la peor.
         if (cardsToDiscard.isEmpty()) {
             val worstCard = hand.minByOrNull { cardScores[it] ?: 0 } ?: hand.first()
-            Log.d(TAG, "Mus obligatorio: descartando la peor carta: ${cardToShortString(worstCard)}")
+            if (DebugFeatures.IS_ENABLED) {
+                Log.d(TAG, "Mus obligatorio: descartando la peor carta: ${cardToShortString(worstCard)}")
+            }
             cardsToDiscard = setOf(worstCard)
         }
 
@@ -1495,9 +1495,6 @@ class AILogic constructor(
                 explanation.appendLine("     - 31 sin ser mano, $rivalsAhead rival(es) delante (P perder ${(pLose * 100).toInt()}%) -> -$posPenalty pts")
             }
 
-            // Los empates de Juego los gana quien está más cerca de mano. Con un
-            // juego no-31 (empatable a menudo), cuanto más tarde se actúa peor:
-            // un 32 en postre pierde el desempate. Penaliza por posición.
             // Los empates de Juego los gana quien está más cerca de mano. Con un
             // juego no-31 (empatable a menudo), cuantos más RIVALES han actuado
             // antes peor: un 32 en postre con dos rivales delante pierde a

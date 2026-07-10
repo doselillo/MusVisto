@@ -235,7 +235,6 @@ fun GameTable(
                 fontSizeMedium      = (16.sp * scaleFactor).let { if (it.value < 10f) 10.sp else if (it.value > 17f) 17.sp else it },
                 fontSizeSmall       = (10.sp * scaleFactor).let { if (it.value <  8f)  8.sp else if (it.value > 13f) 13.sp else it },
                 buttonVPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
-                buttonHPadding      = (5.dp * scaleFactor).coerceIn(3.dp, 10.dp),
                 scaleFactor         = scaleFactor
             )
         }
@@ -640,29 +639,18 @@ private fun GameActionButton(
         if (action.iconResId != null) {
 
             if (action.actionType == ActionType.BET && isEnabled) {
-                // Get the TextUnit value (e.g., 15.sp * 1.5 = 22.5.sp)
-                val iconSizeSp =
-                    dimens.fontSizeLarge
-
-                // Convert the sp value to Dp.
-                // While there isn't a direct .toDp() from sp, you can use the .value
-                // and treat it as a dp value if that's your design intent.
-                // Or, more accurately, if you want the size in Dp that sp would occupy,
-                // you'd use LocalDensity, but for icons, directly using the value as dp is common.
-                val iconSizeDp =
-                    iconSizeSp.value.dp // Takes the float value (e.g., 22.5f) and converts to Dp
-
+                // El icono escala con la fuente del botón (valor sp reusado como dp).
                 Icon(
                     painter = painterResource(id = action.iconResId),
                     contentDescription = null,
-                    modifier = Modifier.size(iconSizeDp),
+                    modifier = Modifier.size(dimens.fontSizeLarge.value.dp),
                     tint = secondaryColor
                 )
-            }else{
-                    Icon(
-                painter = painterResource(id = action.iconResId),
-                contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.IconSize)
+            } else {
+                Icon(
+                    painter = painterResource(id = action.iconResId),
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize)
                 )
             }
 
@@ -887,7 +875,7 @@ private fun GameCard(
             .aspectRatio(dimens.cardAspectRatio)
             .shadow(elevation = 3.dp, shape = RoundedCornerShape(4.dp), clip = false)
             .graphicsLayer {
-                clip = if (isSelected) false else true
+                clip = !isSelected
                 translationY = if (isSelected) -80f else 0f
             }
             .clickable(
@@ -1051,9 +1039,9 @@ fun Scoreboard(
     modifier: Modifier = Modifier,
     chicosWon: Map<String, Int> = emptyMap(),
     chicosToWin: Int = 0,
-    dimens: ResponsiveDimens? = null
+    dimens: ResponsiveDimens
 ) {
-    val fontSize = dimens?.fontSizeMedium ?: 14.sp
+    val fontSize = dimens.fontSizeMedium
     // #29 vacas: solo se muestran los chicos si se juega a más de uno.
     val showChicos = chicosToWin > 1
     Card(
@@ -1076,7 +1064,7 @@ private fun ScoreboardRow(
     chicos: Int,
     label: String,
     points: Int,
-    fontSize: androidx.compose.ui.unit.TextUnit
+    fontSize: TextUnit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (showChicos) {
@@ -1885,7 +1873,6 @@ data class ResponsiveDimens(
     val fontSizeMedium: TextUnit,
     val fontSizeSmall: TextUnit,
     val buttonVPadding: Dp,
-    val buttonHPadding: Dp,
     val scaleFactor: Float,
     val actionButtonsPadding: Dp
 )

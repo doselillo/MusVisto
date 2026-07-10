@@ -3,7 +3,6 @@ package com.doselfurioso.musvisto.presentation
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.doselfurioso.musvisto.R
 import com.doselfurioso.musvisto.debug.DebugFeatures
 import com.doselfurioso.musvisto.logic.AIArchetype
 import com.doselfurioso.musvisto.logic.AILogic

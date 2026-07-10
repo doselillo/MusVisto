@@ -406,8 +406,35 @@ class MusGameLogic constructor(
         return result
     }
 
+    /**
+     * Contexto común de envite/órdago: quién apuesta, los oponentes aptos en el
+     * orden de turno correcto y los tantos de la no-querida (los ya acordados o 1).
+     * null = apuesta inválida (jugador desconocido o sin oponentes aptos que
+     * respondan). Compartido por [handleEnvido] y [handleOrdago] (era duplicación).
+     */
+    private data class BetSetup(
+        val bettingPlayer: Player,
+        val responders: List<String>,
+        val pointsIfRejected: Int
+    )
+
+    private fun betSetup(currentState: GameState, playerId: String): BetSetup? {
+        val bettingPlayer = currentState.players.find { it.id == playerId } ?: return null
+        val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
+        val allEligibleOpponents =
+            getEligiblePlayersForLance(currentState).filter { it.team == opponentTeam }
+        if (allEligibleOpponents.isEmpty()) return null
+        val responders = orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
+        if (responders.isEmpty()) return null
+        val previousBetAmount = currentState.currentBet?.amount ?: 0
+        return BetSetup(
+            bettingPlayer = bettingPlayer,
+            responders = responders,
+            pointsIfRejected = if (previousBetAmount == 0) 1 else previousBetAmount
+        )
+    }
+
     private fun handleEnvido(currentState: GameState, playerId: String, amount: Int): GameState {
-        val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
         // Anti-trampa (multijugador): el importe viaja en GameCommand.Bet(amount) y el reducer
         // valida por CLASE (Envido), no por valor → un cliente podía mandar Envido(999) o
         // Envido(-5) y reventar el marcador. Se acota al rango legítimo que produce la UI: una
@@ -416,35 +443,14 @@ class MusGameLogic constructor(
         // (betAmount 1..5, órdago aparte) y el BetSelector ya respetan este rango.
         val minIncrement = if (currentState.currentBet != null) 1 else 2
         if (amount < minIncrement || amount > MAX_BET) return currentState
-        val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
-
-        val previousBetAmount = currentState.currentBet?.amount ?: 0
-        val pointsIfRejected = if (previousBetAmount == 0) 1 else previousBetAmount
-        // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
-        val eligiblePlayers = getEligiblePlayersForLance(currentState)
-
-        // 2. Filtramos solo a los oponentes que son aptos para hablar
-        val allEligibleOpponents = eligiblePlayers.filter { it.team == opponentTeam }
-
-        // Si no hay oponentes aptos, la acción no es válida
-        if (allEligibleOpponents.isEmpty()) {
-            return currentState
-        }
-
-        val orderedEligibleOpponents =
-            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
-
-        // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
-        if (orderedEligibleOpponents.isEmpty()) {
-            return currentState
-        }
+        val setup = betSetup(currentState, playerId) ?: return currentState
 
         val totalAmount = (currentState.currentBet?.amount ?: 0) + amount
         val newBet = BetInfo(
             amount = totalAmount,
             bettingPlayerId = playerId,
-            respondingPlayerId = orderedEligibleOpponents.first(),
-            pointsIfRejected = pointsIfRejected
+            respondingPlayerId = setup.responders.first(),
+            pointsIfRejected = setup.pointsIfRejected
         )
         // #16 R4.e: actualiza el envido MÁXIMO que este jugador ha lanzado en
         // esta ronda. AILogic.decideResponse usa este histórico para endurecer
@@ -454,9 +460,9 @@ class MusGameLogic constructor(
 
         return currentState.copy(
             currentBet = newBet,
-            currentTurnPlayerId = orderedEligibleOpponents.first(),
-            betInitiatorTeam = bettingPlayer.team,
-            playersPendingResponse = orderedEligibleOpponents,
+            currentTurnPlayerId = setup.responders.first(),
+            betInitiatorTeam = setup.bettingPlayer.team,
+            playersPendingResponse = setup.responders,
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero, GameAction.Envido(2), GameAction.Órdago),
             playerMaxBetThisRound = newMaxBets
             // playersWhoPassed se conserva intacto a propósito: con una apuesta activa el turno
@@ -600,37 +606,15 @@ class MusGameLogic constructor(
 
 
     private fun handleOrdago(currentState: GameState, playerId: String): GameState {
-        val bettingPlayer = currentState.players.find { it.id == playerId } ?: return currentState
-        val opponentTeam = if (bettingPlayer.team == "teamA") "teamB" else "teamA"
-        val previousBetAmount = currentState.currentBet?.amount ?: 0
-        val pointsIfRejected = if (previousBetAmount == 0) 1 else previousBetAmount
-
-        // 1. Obtenemos la lista de TODOS los jugadores aptos para este lance
-        val eligiblePlayers = getEligiblePlayersForLance(currentState)
-
-        // 2. Filtramos solo a los oponentes que son aptos para hablar
-        val allEligibleOpponents = eligiblePlayers.filter { it.team == opponentTeam }
-
-        // Si no hay oponentes aptos, la acción no es válida
-        if (allEligibleOpponents.isEmpty()) {
-            return currentState
-        }
-
-        val orderedEligibleOpponents =
-            orderedEligibleOpponentIds(currentState, playerId, allEligibleOpponents)
-
-        // Si por alguna razón no se encuentran oponentes, devolvemos el estado actual
-        if (orderedEligibleOpponents.isEmpty()) {
-            return currentState
-        }
+        val setup = betSetup(currentState, playerId) ?: return currentState
 
         // El órdago se juega los 40 puntos del juego.
         val newBet = BetInfo(
             amount = 40,
             bettingPlayerId = playerId,
-            respondingPlayerId = orderedEligibleOpponents.first(),
+            respondingPlayerId = setup.responders.first(),
             isOrdago = true, // Marcamos la apuesta como un órdago
-            pointsIfRejected = pointsIfRejected
+            pointsIfRejected = setup.pointsIfRejected
         )
         // #16 R4.e: el órdago cuenta como la apuesta MÁXIMA posible (40) en
         // playerMaxBetThisRound — un futuro órdago RIVAL al que respondamos
@@ -639,9 +623,9 @@ class MusGameLogic constructor(
 
         return currentState.copy(
             currentBet = newBet,
-            currentTurnPlayerId = orderedEligibleOpponents.first(),
-            betInitiatorTeam = bettingPlayer.team,
-            playersPendingResponse = orderedEligibleOpponents,
+            currentTurnPlayerId = setup.responders.first(),
+            betInitiatorTeam = setup.bettingPlayer.team,
+            playersPendingResponse = setup.responders,
             playerMaxBetThisRound = newMaxBets,
             // Al órdago solo se puede responder con "Quiero" o "No Quiero".
             availableActions = listOf(GameAction.Quiero, GameAction.NoQuiero),

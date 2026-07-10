@@ -128,9 +128,9 @@ class LobbyViewModel(
 
     /** El host añade IA en un asiento vacío (arquetipo inicial = el primero). */
     fun addAi(seatId: String) {
-        val state = _state.value
-        if (!state.isHost) return
-        lobby.setSeatAi(state.room!!.roomId, seatId, AIArchetype.values().first().name)
+        val room = _state.value.room ?: return
+        if (!_state.value.isHost) return
+        lobby.setSeatAi(room.roomId, seatId, AIArchetype.values().first().name)
     }
 
     /** El host rota la personalidad de un asiento de IA. */
